@@ -12,7 +12,7 @@ export const initializeAuth = async () => {
   }
 
   try {
-    const response = await meApi();
+    const response = await meApi(token);
 
     const existingUser = useAuthStore.getState().user;
 

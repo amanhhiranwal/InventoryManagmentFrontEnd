@@ -38,4 +38,8 @@ export interface AuthUser {
   email: string;
 
   exp: number;
+
+  role_id?: string;
+
+  permissions?: Permission[];
 }
