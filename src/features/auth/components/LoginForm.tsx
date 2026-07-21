@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AxiosError } from "axios";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { loginApi, meApi } from "../api/auth.api";
@@ -34,27 +35,32 @@ export default function LoginForm() {
 
       const me = await meApi(login.access_token);
 
+      const rawUser = login.user as unknown as Record<string, unknown>;
+      const parsedIsSuperAdmin = !!(rawUser.is_super_admin ?? rawUser.super_admin ?? rawUser.isSuperAdmin);
+
       setAuth(login.access_token, {
         id: login.user.id,
         first_name: login.user.first_name,
         last_name: login.user.last_name,
         email: login.user.email,
+        is_super_admin: parsedIsSuperAdmin,
         role_id: me.data.role_id,
         permissions: me.data.permissions || [],
         exp: me.data.exp,
       });
 
       router.replace("/dashboard");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      if (err.message === "Network Error" || !err.response) {
+      const axiosError = err as AxiosError<{ message?: string }>;
+      if (axiosError.message === "Network Error" || !axiosError.response) {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080";
         setErrorMsg(
           `Connection failed. Please verify that the backend server is running at ${apiUrl} and CORS is configured correctly.`
         );
       } else {
         setErrorMsg(
-          err.response?.data?.message || "Invalid credentials. Please try again."
+          axiosError.response?.data?.message || "Invalid credentials. Please try again."
         );
       }
     } finally {
@@ -69,8 +75,8 @@ export default function LoginForm() {
     >
       <div className="text-center">
         {/* Branding accent */}
-        <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-white font-extrabold text-xl shadow-lg">
-          R
+        <div className="mx-auto mb-4 flex h-11 w-14 items-center justify-center rounded-xl bg-primary text-white font-extrabold text-xl shadow-lg">
+          CRM
         </div>
 
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-tight">

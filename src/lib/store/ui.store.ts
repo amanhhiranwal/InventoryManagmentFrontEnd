@@ -1,10 +1,19 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export interface ToastMessage {
+  id: string;
+  type: "success" | "error" | "info" | "warning";
+  message: string;
+}
+
 interface UIState {
   isSidebarOpen: boolean; // mobile drawer open state
   isSidebarCollapsed: boolean; // desktop collapsed state
   theme: "light" | "dark";
+  toasts: ToastMessage[];
+  addToast: (message: string, type: ToastMessage["type"]) => void;
+  removeToast: (id: string) => void;
   toggleSidebarOpen: () => void;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebarCollapsed: () => void;
@@ -19,6 +28,22 @@ export const useUIStore = create<UIState>()(
       isSidebarOpen: false,
       isSidebarCollapsed: false,
       theme: "light",
+      toasts: [],
+      addToast: (message, type) =>
+        set((state) => {
+          const id = Math.random().toString(36).substring(2, 9);
+          // Auto remove after 5 seconds
+          setTimeout(() => {
+            useUIStore.getState().removeToast(id);
+          }, 5000);
+          return {
+            toasts: [...state.toasts, { id, message, type }],
+          };
+        }),
+      removeToast: (id) =>
+        set((state) => ({
+          toasts: state.toasts.filter((t) => t.id !== id),
+        })),
       toggleSidebarOpen: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       setSidebarOpen: (open) => set({ isSidebarOpen: open }),
       toggleSidebarCollapsed: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),

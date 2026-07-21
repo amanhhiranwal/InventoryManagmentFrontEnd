@@ -61,6 +61,8 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
+import { useUIStore } from "./store/ui.store";
+
 api.interceptors.response.use(
   (response) => response,
 
@@ -71,6 +73,12 @@ api.interceptors.response.use(
       if (typeof window !== "undefined") {
         window.location.href = "/login";
       }
+    } else if (error.response?.status === 403) {
+      // Trigger global permission denied toast
+      useUIStore.getState().addToast(
+        "Permission Denied: You do not have the required administrative permissions to perform this action.",
+        "error"
+      );
     }
 
     return Promise.reject(error);

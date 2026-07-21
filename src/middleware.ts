@@ -5,7 +5,7 @@ export function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  const protectedRoutes = ["/dashboard"];
+  const protectedRoutes = ["/dashboard", "/users", "/companies", "/locations", "/rbac", "/workflows", "/leads"];
 
   const authRoutes = ["/login"];
 
@@ -31,5 +31,14 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login"],
+  matcher: [
+    "/dashboard/:path*",
+    "/users/:path*",
+    "/companies/:path*",
+    "/locations/:path*",
+    "/rbac/:path*",
+    "/workflows/:path*",
+    "/leads/:path*",
+    "/login"
+  ],
 };

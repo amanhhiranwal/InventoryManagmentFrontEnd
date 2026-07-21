@@ -8,6 +8,7 @@ export interface LoginResponse {
     first_name: string;
     last_name: string;
     email: string;
+    is_super_admin: boolean;
   };
 }
 
@@ -36,6 +37,8 @@ export interface AuthUser {
   last_name: string;
 
   email: string;
+
+  is_super_admin: boolean;
 
   exp: number;
 

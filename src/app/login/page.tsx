@@ -22,7 +22,13 @@ export default function LoginPage() {
     y: -500,
   });
 
-  const [gridCells, setGridCells] = useState<any[]>([]);
+  interface GridCell {
+    row: number;
+    col: number;
+    icon: string;
+  }
+
+  const [gridCells, setGridCells] = useState<GridCell[]>([]);
   const [hoverCell, setHoverCell] = useState({
     col: -1,
     row: -1,
@@ -32,7 +38,9 @@ export default function LoginPage() {
 
   // Detect desktop after mount (avoid hydration mismatch)
   useEffect(() => {
-    setIsDesktop(window.matchMedia("(pointer:fine)").matches);
+    Promise.resolve().then(() => {
+      setIsDesktop(window.matchMedia("(pointer:fine)").matches);
+    });
   }, []);
 
   // Generate grid cells
@@ -41,7 +49,7 @@ export default function LoginPage() {
 
     const cols = Math.ceil(window.innerWidth / GRID);
     const rows = Math.ceil(window.innerHeight / GRID);
-    const cells: any[] = [];
+    const cells: GridCell[] = [];
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -60,7 +68,9 @@ export default function LoginPage() {
       }
     }
 
-    setGridCells(cells);
+    Promise.resolve().then(() => {
+      setGridCells(cells);
+    });
   }, [isDesktop]);
 
   // Icon animation
