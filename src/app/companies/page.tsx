@@ -7,12 +7,13 @@ import {
   createCompanyApi,
   updateCompanyApi,
   deleteCompanyApi,
+  uploadCompanyLogoApi,
   Company,
   CreateCompanyPayload
 } from "@/features/companies/api/companies.api";
 import { useAuthStore } from "@/features/auth/store/auth.store";
-import { hasPermission } from "@/features/auth/utils/permissions";
 import { useUIStore } from "@/lib/store/ui.store";
+import { hasPermission } from "@/features/auth/utils/permissions";
 import { FiPlus, FiBriefcase, FiCheckCircle, FiEdit2, FiTrash2, FiGlobe, FiPhone, FiMail, FiMapPin } from "react-icons/fi";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
@@ -29,6 +30,7 @@ export default function CompaniesPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -125,8 +127,12 @@ export default function CompaniesPage() {
 
     try {
       setCreating(true);
-      await createCompanyApi(formData);
+      const newCompany = await createCompanyApi(formData);
+      if (logoFile && newCompany?.id) {
+        await uploadCompanyLogoApi(newCompany.id, logoFile);
+      }
       addToast("Company created successfully!", "success");
+      setLogoFile(null);
       setShowCreateModal(false);
       fetchCompanies();
     } catch (err: unknown) {
@@ -149,7 +155,11 @@ export default function CompaniesPage() {
     try {
       setUpdating(true);
       await updateCompanyApi(selectedCompany.id, formData);
+      if (logoFile) {
+        await uploadCompanyLogoApi(selectedCompany.id, logoFile);
+      }
       addToast("Company updated successfully!", "success");
+      setLogoFile(null);
       setShowEditModal(false);
       fetchCompanies();
     } catch (err: unknown) {
@@ -222,9 +232,17 @@ export default function CompaniesPage() {
             >
               <td className="py-4 px-5">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500 text-lg font-bold">
-                    <FiBriefcase />
-                  </div>
+                  {company.logo_url ? (
+                    <img
+                      src={company.logo_url}
+                      alt={company.company_name}
+                      className="h-10 w-10 shrink-0 object-contain rounded-xl border border-slate-200 bg-white p-0.5"
+                    />
+                  ) : (
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500 text-lg font-bold">
+                      <FiBriefcase />
+                    </div>
+                  )}
                   <div>
                     <p className="font-bold text-slate-800 dark:text-white text-sm">
                       {company.company_name}
@@ -357,6 +375,27 @@ export default function CompaniesPage() {
               value={formData.gst_number}
               onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })}
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Company Logo (PNG, JPG, WEBP, SVG)
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+                className="text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
+              />
+              {formData.logo_url && !logoFile && (
+                <img
+                  src={formData.logo_url}
+                  alt="Company Logo"
+                  className="h-8 w-auto object-contain rounded border border-slate-200"
+                />
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
