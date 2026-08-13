@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Table from "@/components/ui/Table";
@@ -32,7 +32,7 @@ export default function CategoryGroupsPage() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
 
-  const fetchCategoryGroups = async () => {
+  const fetchCategoryGroups = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getCategoryGroupsApi();
@@ -43,11 +43,11 @@ export default function CategoryGroupsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [addToast]);
 
   useEffect(() => {
     fetchCategoryGroups();
-  }, []);
+  }, [fetchCategoryGroups]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
