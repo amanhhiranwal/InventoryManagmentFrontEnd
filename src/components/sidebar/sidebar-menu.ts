@@ -1,115 +1,127 @@
 import {
-  FaUsers,
-  FaUserPlus,
-  FaList,
-  FaHome,
-  FaBuilding,
-  FaMapMarkerAlt,
-  FaShieldAlt,
-  FaSitemap,
-  FaLightbulb,
-  FaDatabase,
-  FaUserTag,
-  FaBoxes,
-  FaTag,
-  FaChartLine,
-  FaUserFriends,
-  FaBullseye,
-} from "react-icons/fa";
+  LuLayoutGrid,
+  LuContact,
+  LuMegaphone,
+  LuUser,
+  LuStar,
+  LuUsers,
+  LuPackage,
+  LuFileText,
+  LuTrendingUp,
+  LuDatabase,
+  LuBuilding,
+  LuMapPin,
+  LuTag,
+  LuBoxes,
+  LuLayers,
+  LuList,
+  LuGitBranch,
+  LuShieldCheck,
+} from "react-icons/lu";
+import { IconType } from "react-icons";
 
-export const sidebarMenu = [
+export interface SidebarItemConfig {
+  title: string;
+  icon: IconType;
+  path?: string;
+  children?: Array<{
+    title: string;
+    icon: IconType;
+    path: string;
+  }>;
+}
+
+export const sidebarMenu: SidebarItemConfig[] = [
   {
     title: "Dashboard",
-    icon: FaHome,
+    icon: LuLayoutGrid,
     path: "/dashboard",
   },
-
   {
-    title: "Users",
-    icon: FaUsers,
-    children: [
-      {
-        title: "User List",
-        icon: FaList,
-        path: "/users",
-      },
-      {
-        title: "Add User",
-        icon: FaUserPlus,
-        path: "/users/add",
-      },
-    ],
+    title: "Customers",
+    icon: LuContact,
+    path: "/sales/customers",
   },
-
-  {
-    title: "Masters",
-    icon: FaDatabase,
-    children: [
-      {
-        title: "Companies",
-        icon: FaBuilding,
-        path: "/companies",
-      },
-      {
-        title: "Locations",
-        icon: FaMapMarkerAlt,
-        path: "/locations",
-      },
-      {
-        title: "Customer Type",
-        icon: FaUserTag,
-        path: "/customer-types",
-      },
-      {
-        title: "Product Type",
-        icon: FaBoxes,
-        path: "/product-types",
-      },
-      {
-        title: "Category Group",
-        icon: FaTag,
-        path: "/category-groups",
-      },
-    ],
-  },
-
-  {
-    title: "Roles & Permissions",
-    icon: FaShieldAlt,
-    path: "/rbac",
-  },
-
-  {
-    title: "Workflows",
-    icon: FaSitemap,
-    path: "/workflows",
-  },
-
   {
     title: "Sales",
-    icon: FaChartLine,
+    icon: LuMegaphone,
     children: [
       {
-        title: "Customer",
-        icon: FaUserFriends,
-        path: "/sales/customers",
-      },
-      {
-        title: "Lead",
-        icon: FaLightbulb,
+        title: "Leads",
+        icon: LuUser,
         path: "/leads",
       },
       {
-        title: "Opportunity",
-        icon: FaBullseye,
+        title: "Oppurtunity",
+        icon: LuStar,
         path: "/sales/opportunities",
       },
     ],
   },
-
+  {
+    title: "Accounts",
+    icon: LuUsers,
+    path: "/users",
+  },
   {
     title: "Inventory",
-    icon: FaBoxes,
+    icon: LuPackage,
     path: "/inventory",
+  },
+  {
+    title: "Sales Orders",
+    icon: LuFileText,
+    path: "/sales/orders",
+  },
+  {
+    title: "Reports",
+    icon: LuTrendingUp,
+    path: "/dashboard",
+  },
+  {
+    title: "Masters",
+    icon: LuDatabase,
+    children: [
+      {
+        title: "Companies",
+        icon: LuBuilding,
+        path: "/companies",
+      },
+      {
+        title: "Locations",
+        icon: LuMapPin,
+        path: "/locations",
+      },
+      {
+        title: "Customer Type",
+        icon: LuTag,
+        path: "/customer-types",
+      },
+      {
+        title: "Product Type",
+        icon: LuBoxes,
+        path: "/product-types",
+      },
+      {
+        title: "Category Group",
+        icon: LuLayers,
+        path: "/category-groups",
+      },
+      {
+        title: "Units",
+        icon: LuList,
+        path: "/units",
+      },
+      {
+        title: "Roles & Access",
+        icon: LuShieldCheck,
+        path: "/rbac",
+      },
+    ],
+  },
+  {
+    title: "Workflows",
+    icon: LuGitBranch,
+    path: "/workflows",
   },
 ];

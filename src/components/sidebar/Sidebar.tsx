@@ -2,24 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FiChevronDown, FiChevronLeft, FiX } from "react-icons/fi";
-import { sidebarMenu } from "./sidebar-menu";
+import {
+  LuChevronDown,
+  LuChevronLeft,
+  LuX,
+  LuSettings,
+} from "react-icons/lu";
+import { sidebarMenu, SidebarItemConfig } from "./sidebar-menu";
 import { useUIStore } from "@/lib/store/ui.store";
 import { useEffect, useState } from "react";
 import { hasPermission, isSuperAdmin } from "@/features/auth/utils/permissions";
 import { useAuthStore } from "@/features/auth/store/auth.store";
-import { IconType } from "react-icons";
-
-interface SidebarMenuItem {
-  title: string;
-  icon: IconType;
-  path?: string;
-  children?: Array<{
-    title: string;
-    icon: IconType;
-    path: string;
-  }>;
-}
 
 export default function Sidebar() {
   const {
@@ -30,7 +23,8 @@ export default function Sidebar() {
   } = useUIStore();
 
   const pathname = usePathname();
-  const [openMenus, setOpenMenus] = useState<string[]>([]);
+  const [openMenus, setOpenMenus] = useState<string[]>(["Sales"]);
+  const user = useAuthStore((state) => state.user);
 
   // Close mobile sidebar on navigation change
   useEffect(() => {
@@ -59,33 +53,27 @@ export default function Sidebar() {
     );
   };
 
-  const isMenuChildActive = (menu: SidebarMenuItem) => {
-    if (!menu.children) return pathname === menu.path;
-    return menu.children.some((child) => pathname === child.path);
-  };
-
-  const user = useAuthStore((state) => state.user);
-
   const isRouteVisible = (path: string): boolean => {
     if (path === "/dashboard") return true;
     if (path === "/sales/customers") return true;
     if (path === "/sales/opportunities") return true;
+    if (path === "/sales/orders") return true;
+    if (path === "/leads") return true;
+    if (path === "/inventory") return true;
     if (path === "/users") return isSuperAdmin() || hasPermission("user.read");
-    if (path === "/users/add") return isSuperAdmin() || hasPermission("user.create");
+    if (path === "/rbac") return isSuperAdmin() || hasPermission("role.read");
     if (path === "/companies") return isSuperAdmin() || hasPermission("company.read");
     if (path === "/locations") return isSuperAdmin() || hasPermission("location.read");
     if (path === "/customer-types") return isSuperAdmin() || hasPermission("customer_type.read");
     if (path === "/product-types") return isSuperAdmin() || hasPermission("product_type.read");
     if (path === "/category-groups") return isSuperAdmin() || hasPermission("category_group.read");
-    if (path === "/rbac") return isSuperAdmin() || hasPermission("role.read");
+    if (path === "/units") return isSuperAdmin() || hasPermission("unit.read");
     if (path === "/workflows") return isSuperAdmin();
-    if (path === "/leads") return isSuperAdmin() || hasPermission("lead.read") || hasPermission("lead.create") || !!user?.role_id;
-    if (path === "/inventory") return isSuperAdmin() || hasPermission("inventory.read");
     return true;
   };
 
-  const renderNavItems = () => {
-    const visibleMenu = sidebarMenu.map((menu) => {
+  const visibleMenu = sidebarMenu
+    .map((menu) => {
       if (menu.children) {
         const visibleChildren = menu.children.filter((child) => isRouteVisible(child.path));
         if (visibleChildren.length === 0) return null;
@@ -95,106 +83,15 @@ export default function Sidebar() {
         return menu;
       }
       return null;
-    }).filter(Boolean);
-
-    return (
-      <nav className="p-3 space-y-1.5">
-        {(visibleMenu as SidebarMenuItem[]).map((menu) => {
-          const Icon = menu.icon;
-          const isChildActive = isMenuChildActive(menu);
-
-          if (menu.children) {
-            const isOpen = openMenus.includes(menu.title);
-
-            return (
-              <div key={menu.title} className="space-y-1">
-                <button
-                  onClick={() => toggleMenu(menu.title)}
-                  className={`
-                    flex w-full items-center justify-between rounded-xl p-3 text-sm font-medium transition-all duration-200 cursor-pointer
-                    ${
-                      isChildActive
-                        ? "bg-primary-light/50 dark:bg-primary-light/5 text-primary dark:text-[#38bdf8]"
-                        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100"
-                    }
-                  `}
-                >
-                  <div className="flex items-center gap-3.5">
-                    <Icon className="text-lg shrink-0" />
-                    {(!isSidebarCollapsed || isSidebarOpen) && (
-                      <span>{menu.title}</span>
-                    )}
-                  </div>
-
-                  {(!isSidebarCollapsed || isSidebarOpen) && (
-                    <FiChevronDown
-                      className={`text-slate-400 transition-transform duration-200 ${
-                        isOpen ? "rotate-180" : ""
-                      }`}
-                    />
-                  )}
-                </button>
-
-                {isOpen && (!isSidebarCollapsed || isSidebarOpen) && (
-                  <div className="ml-6 pl-3 border-l border-slate-200 dark:border-slate-800 mt-1 space-y-1 animate-fadeIn">
-                    {menu.children.map((child) => {
-                      const ChildIcon = child.icon;
-                      const isActive = pathname === child.path;
-
-                      return (
-                        <Link
-                          key={child.path}
-                          href={child.path}
-                          className={`
-                            flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150
-                            ${
-                              isActive
-                                ? "bg-primary text-white shadow-sm shadow-primary/20 dark:shadow-none"
-                                : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100"
-                            }
-                          `}
-                        >
-                          <ChildIcon className="text-base shrink-0" />
-                          <span>{child.title}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          }
-
-          const isActive = pathname === menu.path;
-
-          return (
-            <Link
-              key={menu.path}
-              href={menu.path!}
-              className={`
-                flex items-center gap-3.5 rounded-xl p-3 text-sm font-medium transition-all duration-200
-                ${
-                  isActive
-                    ? "bg-primary text-white shadow-md shadow-primary/10 dark:shadow-none"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100"
-                }
-              `}
-            >
-              <Icon className="text-lg shrink-0" />
-              {(!isSidebarCollapsed || isSidebarOpen) && <span>{menu.title}</span>}
-            </Link>
-          );
-        })}
-      </nav>
-    );
-  };
+    })
+    .filter(Boolean) as SidebarItemConfig[];
 
   return (
     <>
       {/* Mobile Drawer Backdrop */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm lg:hidden transition-opacity duration-300"
+          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs lg:hidden transition-opacity duration-300"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -202,56 +99,54 @@ export default function Sidebar() {
       {/* Sidebar Container */}
       <aside
         className={`
-          fixed top-0 bottom-0 left-0 z-50 flex flex-col bg-white dark:bg-[#051422] border-r border-slate-200 dark:border-[#0d2336]
-          transition-all duration-300 ease-in-out lg:static lg:z-30 h-screen
-          ${isSidebarCollapsed ? "lg:w-20" : "lg:w-64"}
-          ${isSidebarOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full lg:translate-x-0"}
+          fixed top-0 bottom-0 left-0 z-50 flex flex-col bg-white dark:bg-[#061423] border-r border-slate-200/80 dark:border-[#0d2336]
+          transition-all duration-300 ease-in-out lg:static lg:z-30 h-screen select-none
+          ${isSidebarCollapsed ? "lg:w-[72px]" : "lg:w-[240px]"}
+          ${isSidebarOpen ? "w-[240px] translate-x-0" : "w-[240px] -translate-x-full lg:translate-x-0"}
         `}
       >
-        {/* Header */}
-        <div className="flex h-16 items-center justify-between px-5 border-b border-slate-100 dark:border-[#0d2336] shrink-0">
-          {(!isSidebarCollapsed || isSidebarOpen) && (
-            <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-90 transition-all select-none">
-              <div className="flex flex-col items-start leading-none py-1">
-                <div className="flex items-baseline font-bold">
-                  <span className="text-xl font-extrabold tracking-tight text-slate-800 dark:text-white font-sans">
-                    Synergy
-                  </span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#e07a22] ml-0.5 shrink-0 align-baseline" />
-                  <span className="text-[7px] font-sans text-slate-400 align-super ml-0.5 font-bold">
-                    TM
-                  </span>
-                </div>
-                <span className="text-[10px] font-black tracking-[0.2em] text-[#e07a22] uppercase pl-1.5 mt-0.5">
-                  GLOBAL
+        {/* Brand Header */}
+        <div className="flex h-20 items-center justify-between px-6 shrink-0 border-b border-transparent">
+          {(!isSidebarCollapsed || isSidebarOpen) ? (
+            <Link href="/dashboard" className="flex flex-col group transition-opacity">
+              <div className="flex items-baseline">
+                <span className="text-[26px] font-black tracking-tight text-[#16294a] dark:text-white font-sans">
+                  Synergy
                 </span>
+                <span className="text-[12px] font-bold text-[#16294a] dark:text-white ml-0.5 relative -top-2">
+                  ™
+                </span>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#ea580c] inline-block ml-1 relative -top-1" />
               </div>
+              <span className="text-[9.5px] font-black tracking-[0.22em] text-[#ea580c] uppercase pl-7 -mt-1 font-sans">
+                GLOBAL
+              </span>
             </Link>
-          )}
-
-          {isSidebarCollapsed && !isSidebarOpen && (
+          ) : (
             <Link
               href="/dashboard"
-              className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900/5 dark:bg-white/5 text-[#e07a22] font-black text-sm border border-slate-200 dark:border-slate-800 shadow-sm"
+              className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-[#16294a] text-white font-black text-sm shadow-xs"
             >
-              SG
+              S<span className="text-[#ea580c]">•</span>
             </Link>
           )}
 
-          {/* Toggle buttons */}
+          {/* Mobile Close Button */}
           <button
             onClick={() => setSidebarOpen(false)}
             className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden cursor-pointer"
           >
-            <FiX className="text-xl" />
+            <LuX className="text-xl" />
           </button>
 
+          {/* Desktop Collapse Button */}
           <button
             onClick={toggleSidebarCollapsed}
-            className="hidden rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 lg:block cursor-pointer"
+            className="hidden rounded-lg p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 lg:block cursor-pointer"
+            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
           >
-            <FiChevronLeft
-              className={`text-xl transition-transform duration-300 ${
+            <LuChevronLeft
+              className={`text-lg transition-transform duration-300 ${
                 isSidebarCollapsed ? "rotate-180" : ""
               }`}
             />
@@ -259,16 +154,132 @@ export default function Sidebar() {
         </div>
 
         {/* Navigation Section */}
-        <div className="flex-grow overflow-y-auto mt-2">
-          {renderNavItems()}
+        <div className="flex-grow overflow-y-auto pt-2 pb-4 scrollbar-none">
+          <nav className="space-y-1">
+            {visibleMenu.map((menu) => {
+              const Icon = menu.icon;
+
+              if (menu.children) {
+                const isOpen = openMenus.includes(menu.title);
+                const isChildActive = menu.children.some((child) => pathname === child.path);
+
+                return (
+                  <div key={menu.title} className="space-y-1">
+                    {/* Parent row */}
+                    <div className="relative pl-3">
+                      <button
+                        onClick={() => toggleMenu(menu.title)}
+                        className={`
+                          flex w-full items-center justify-between rounded-l-2xl py-2.5 px-4 text-left transition-all duration-150 cursor-pointer
+                          ${
+                            isChildActive && !isOpen
+                              ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-semibold border-l-[3.5px] border-[#16294a] dark:border-sky-400 pl-[12.5px]"
+                              : "text-slate-800 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/40"
+                          }
+                        `}
+                      >
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <Icon className="text-[20px] shrink-0 text-slate-800 dark:text-slate-200" />
+                          {(!isSidebarCollapsed || isSidebarOpen) && (
+                            <span className="text-[14.5px] font-medium text-slate-800 dark:text-slate-200 truncate">
+                              {menu.title}
+                            </span>
+                          )}
+                        </div>
+
+                        {(!isSidebarCollapsed || isSidebarOpen) && (
+                          <LuChevronDown
+                            className={`text-xs text-slate-400 transition-transform duration-200 shrink-0 ml-1 ${
+                              isOpen ? "rotate-180" : ""
+                            }`}
+                          />
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Submenu items with clean vertical branch indicator */}
+                    {isOpen && (!isSidebarCollapsed || isSidebarOpen) && (
+                      <div className="ml-[31px] pl-3.5 border-l border-slate-300 dark:border-slate-700/80 my-1 space-y-1">
+                        {menu.children.map((child) => {
+                          const ChildIcon = child.icon;
+                          const isActive = pathname === child.path;
+
+                          return (
+                            <div key={child.path} className="relative">
+                              <Link
+                                href={child.path}
+                                className={`
+                                  flex items-center gap-3 rounded-l-xl py-2 px-3 text-[13.5px] transition-colors
+                                  ${
+                                    isActive
+                                      ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-bold border-l-[3px] border-[#16294a] dark:border-sky-400 pl-[9px]"
+                                      : "text-slate-700 dark:text-slate-300 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 font-medium"
+                                  }
+                                `}
+                              >
+                                <ChildIcon className={`text-[17px] shrink-0 ${isActive ? "text-[#16294a] dark:text-sky-300" : "text-slate-600 dark:text-slate-400"}`} />
+                                <span className="truncate">{child.title}</span>
+                              </Link>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              const isActive = pathname === menu.path;
+
+              return (
+                <div key={menu.path || menu.title} className="relative pl-3">
+                  <Link
+                    href={menu.path!}
+                    className={`
+                      flex items-center gap-3.5 rounded-l-2xl py-2.5 px-4 transition-all duration-150
+                      ${
+                        isActive
+                          ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-semibold border-l-[3.5px] border-[#16294a] dark:border-sky-400 pl-[12.5px]"
+                          : "text-slate-800 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/40 font-medium"
+                      }
+                    `}
+                  >
+                    <Icon
+                      className={`text-[20px] shrink-0 ${
+                        isActive ? "text-[#16294a] dark:text-sky-300" : "text-slate-800 dark:text-slate-200"
+                      }`}
+                    />
+                    {(!isSidebarCollapsed || isSidebarOpen) && (
+                      <span className="text-[14.5px] truncate">
+                        {menu.title}
+                      </span>
+                    )}
+                  </Link>
+                </div>
+              );
+            })}
+          </nav>
         </div>
 
-        {/* Footer info/tag */}
+        {/* Footer Profile / Settings Quicklink */}
         {(!isSidebarCollapsed || isSidebarOpen) && (
-          <div className="p-4 border-t border-slate-100 dark:border-[#0d2336] text-center shrink-0">
-            <p className="text-[10px] font-medium text-slate-400 tracking-wider uppercase">
-              V1.0.0
-            </p>
+          <div className="p-3 border-t border-slate-100 dark:border-[#0d2336] shrink-0">
+            <Link
+              href="/profile"
+              className="flex items-center gap-3 rounded-xl px-3 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all text-xs font-medium"
+            >
+              <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-[#0d2336] text-slate-600 dark:text-slate-300">
+                <LuSettings className="text-base" />
+              </div>
+              <div className="truncate">
+                <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                  {user?.first_name ? `${user.first_name} ${user.last_name || ""}` : "Settings"}
+                </p>
+                <p className="text-[10px] text-slate-400 truncate">
+                  {user?.email || "Account & Preferences"}
+                </p>
+              </div>
+            </Link>
           </div>
         )}
       </aside>
