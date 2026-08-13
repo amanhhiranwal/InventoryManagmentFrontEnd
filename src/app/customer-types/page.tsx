@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Table from "@/components/ui/Table";
@@ -33,7 +33,7 @@ export default function CustomerTypesPage() {
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
 
-  const fetchCustomerTypes = async () => {
+  const fetchCustomerTypes = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getCustomerTypesApi();
@@ -44,11 +44,11 @@ export default function CustomerTypesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [addToast]);
 
   useEffect(() => {
     fetchCustomerTypes();
-  }, []);
+  }, [fetchCustomerTypes]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
