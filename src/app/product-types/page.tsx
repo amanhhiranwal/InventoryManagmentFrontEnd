@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Table from "@/components/ui/Table";
@@ -17,16 +17,11 @@ import {
   FiSliders,
   FiPlusCircle,
   FiEdit2,
-  FiGrid,
-  FiCheckCircle,
   FiFileText,
-  FiSettings,
   FiEye,
-  FiTag,
   FiToggleLeft,
   FiHash,
   FiList,
-  FiCheck,
   FiAlertCircle
 } from "react-icons/fi";
 import {
@@ -93,7 +88,7 @@ export default function ProductTypesPage() {
   const [newFieldRequired, setNewFieldRequired] = useState(false);
   const [newFieldOptions, setNewFieldOptions] = useState(""); // comma separated options
 
-  const fetchProductTypes = async () => {
+  const fetchProductTypes = useCallback(async () => {
     setLoading(true);
     try {
       const ptData = await getProductTypesApi();
@@ -114,11 +109,11 @@ export default function ProductTypesPage() {
       console.error(err);
     }
     setLoading(false);
-  };
+  }, [addToast, category]);
 
   useEffect(() => {
     fetchProductTypes();
-  }, []);
+  }, [fetchProductTypes]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();

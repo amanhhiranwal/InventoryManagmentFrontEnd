@@ -6,8 +6,6 @@ import { useUIStore } from "@/lib/store/ui.store";
 import api from "@/lib/axios";
 import {
   FiUser,
-  FiMail,
-  FiPhone,
   FiBriefcase,
   FiMapPin,
   FiShield,
@@ -30,7 +28,6 @@ export default function ProfilePage() {
   const [phone, setPhone] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [rolesList, setRolesList] = useState<string[]>([]);
   
   // Security Mock States
   const [oldPassword, setOldPassword] = useState("");
@@ -47,7 +44,6 @@ export default function ProfilePage() {
       setPhone(profile.phone_number || "");
       setEmployeeId(profile.employee_id || "");
       setAvatarUrl(profile.avatar_url || null);
-      setRolesList(profile.roles || []);
     } catch (err) {
       console.error(err);
       addToast("Failed to fetch user profile details.", "error");
