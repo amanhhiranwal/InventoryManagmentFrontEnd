@@ -14,6 +14,7 @@ export interface Company {
   state?: string;
   country?: string;
   postal_code?: string;
+  logo_url?: string;
   is_active: boolean;
   created_at?: string;
 }
@@ -31,6 +32,7 @@ export interface CreateCompanyPayload {
   state?: string;
   country?: string;
   postal_code?: string;
+  logo_url?: string;
   is_active?: boolean;
 }
 
@@ -59,4 +61,13 @@ export const updateCompanyApi = async (companyId: string, payload: Partial<Creat
 
 export const deleteCompanyApi = async (companyId: string): Promise<void> => {
   await api.delete(`/api/v1/companies/${companyId}`);
+};
+
+export const uploadCompanyLogoApi = async (companyId: string, file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post(`/api/v1/companies/${companyId}/logo`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data.logo_url;
 };

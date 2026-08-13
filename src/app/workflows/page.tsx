@@ -18,7 +18,7 @@ import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import PageHeader from "@/components/ui/PageHeader";
 import Modal from "@/components/ui/Modal";
-import { FiPlus, FiTrash2, FiPlay, FiRefreshCw, FiSettings, FiActivity, FiEdit2 } from "react-icons/fi";
+import { FiPlus, FiTrash2, FiActivity, FiEdit2 } from "react-icons/fi";
 
 interface CanvasNode {
   id: string;
@@ -59,18 +59,22 @@ export default function WorkflowsPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [rolesData, workflowsData] = await Promise.all([
-        getRolesApi(),
-        getWorkflowsApi(),
-      ]);
-      setRoles(rolesData);
-      setWorkflows(workflowsData);
-      if (rolesData.length > 0) {
-        setSelectedRoleId(rolesData[0].id);
+      try {
+        const wfData = await getWorkflowsApi();
+        setWorkflows(wfData);
+      } catch (err) {
+        console.error("Failed to load workflows:", err);
       }
-    } catch (err: unknown) {
-      console.error(err);
-      addToast("Failed to load workflows or roles configuration.", "error");
+
+      try {
+        const rolesData = await getRolesApi();
+        setRoles(rolesData);
+        if (rolesData.length > 0) {
+          setSelectedRoleId(rolesData[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load roles:", err);
+      }
     } finally {
       setLoading(false);
     }

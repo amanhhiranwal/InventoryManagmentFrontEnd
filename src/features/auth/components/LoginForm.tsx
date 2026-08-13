@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { AxiosError } from "axios";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
@@ -75,8 +76,23 @@ export default function LoginForm() {
     >
       <div className="text-center">
         {/* Branding accent */}
-        <div className="mx-auto mb-4 flex h-11 w-14 items-center justify-center rounded-xl bg-primary text-white font-extrabold text-xl shadow-lg">
-          CRM
+        <div className="mx-auto mb-6 flex justify-center select-none">
+          <Image
+            src="/logo-light.png"
+            alt="Synergy Global"
+            width={180}
+            height={50}
+            priority
+            className="dark:hidden object-contain"
+          />
+          <Image
+            src="/logo-dark.png"
+            alt="Synergy Global"
+            width={180}
+            height={50}
+            priority
+            className="hidden dark:block object-contain"
+          />
         </div>
 
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-tight">

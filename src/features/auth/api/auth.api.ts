@@ -29,5 +29,5 @@ export const meApi = async (
   return data;
 };
 export const logoutApi = async () => {
-  return api.post("/logout");
+  return api.post("/api/v1/auth/logout");
 };

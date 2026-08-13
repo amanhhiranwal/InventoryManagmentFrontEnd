@@ -8,7 +8,7 @@ import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
 import { getCompaniesApi, Company } from "@/features/companies/api/companies.api";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
-import { FiArrowLeft, FiUser, FiMail, FiLock, FiPhone, FiCreditCard, FiTag, FiBriefcase } from "react-icons/fi";
+import { FiArrowLeft, FiUser, FiMail, FiLock, FiPhone, FiCreditCard } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 import Link from "next/link";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";

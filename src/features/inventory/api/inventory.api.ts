@@ -130,7 +130,7 @@ export const createCustomerTypeApi = async (payload: {
 };
 
 export const deleteCustomerTypeApi = async (id: string): Promise<void> => {
-  await api.delete(`/api/v1/customer-types/`);
+  await api.delete(`/api/v1/customer-types/${id}`);
 };
 
 

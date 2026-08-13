@@ -6,9 +6,9 @@ import { getUsersApi, createUserApi, updateUserApi, deleteUserApi, User } from "
 import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
 import { getCompaniesApi, Company } from "@/features/companies/api/companies.api";
 import { useAuthStore } from "@/features/auth/store/auth.store";
-import { hasPermission } from "@/features/auth/utils/permissions";
 import { useUIStore } from "@/lib/store/ui.store";
-import { FiPlus, FiSearch, FiUser, FiMail, FiPhone, FiTag, FiCheckCircle, FiLock, FiBriefcase, FiEdit3, FiTrash2, FiEdit2 } from "react-icons/fi";
+import { hasPermission } from "@/features/auth/utils/permissions";
+import { FiPlus, FiSearch, FiUser, FiMail, FiPhone, FiTag, FiCheckCircle, FiTrash2, FiEdit2 } from "react-icons/fi";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
