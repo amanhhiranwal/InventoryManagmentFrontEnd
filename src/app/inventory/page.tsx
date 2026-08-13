@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import Switch from "@/components/ui/Switch";
+import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 import {
   getInventoryItemsApi,
@@ -18,19 +19,14 @@ import {
   getProductTypesApi,
   InventoryItem,
   InventoryTemplate,
-  InventoryField,
   ProductTypeModel,
 } from "@/features/inventory/api/inventory.api";
 import {
   FiPlus,
   FiTrash2,
   FiSearch,
-  FiSliders,
   FiDatabase,
-  FiTag,
-  FiCpu,
   FiEye,
-  FiGrid,
   FiEdit2,
   FiUploadCloud,
   FiImage,
@@ -47,15 +43,24 @@ export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilterCategory, setSelectedFilterCategory] = useState<string>("");
 
+  // Masters units list
+  const [unitsList, setUnitsList] = useState<string[]>([]);
+
   // Create Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  // New Item Fields
+  // New Item Core Fields
   const [name, setName] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [selectedTypeCode, setSelectedTypeCode] = useState("");
   const [imageBase64, setImageBase64] = useState<string | null>(null);
+
+  // Mandatory standard attributes
+  const [rate, setRate] = useState("");
+  const [unit, setUnit] = useState("");
+  const [instock, setInstock] = useState("");
+  const [caseSize, setCaseSize] = useState("");
 
   // Dynamic template fields loaded for selected product type (Create Modal)
   const [activeTemplate, setActiveTemplate] = useState<InventoryTemplate | null>(null);
@@ -73,6 +78,13 @@ export default function InventoryPage() {
   const [editSerialNumber, setEditSerialNumber] = useState("");
   const [editSelectedTypeCode, setEditSelectedTypeCode] = useState("");
   const [editImageBase64, setEditImageBase64] = useState<string | null>(null);
+
+  // Mandatory standard attributes (Edit)
+  const [editRate, setEditRate] = useState("");
+  const [editUnit, setEditUnit] = useState("");
+  const [editInstock, setEditInstock] = useState("");
+  const [editCaseSize, setEditCaseSize] = useState("");
+
   const [editDynamicValues, setEditDynamicValues] = useState<Record<string, any>>({});
   const [editActiveTemplate, setEditActiveTemplate] = useState<InventoryTemplate | null>(null);
   const [loadingEditTemplate, setLoadingEditTemplate] = useState(false);
@@ -99,6 +111,22 @@ export default function InventoryPage() {
     }
   }, [selectedFilterCategory, searchQuery, addToast]);
 
+  const fetchUnits = useCallback(async () => {
+    try {
+      const res = await api.get("/api/v1/inventory/units/");
+      if (res.data?.success) {
+        const uList = res.data.data || [];
+        setUnitsList(uList);
+        if (uList.length > 0) {
+          setUnit(uList[0]);
+          setEditUnit(uList[0]);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load units:", err);
+    }
+  }, []);
+
   const fetchProductTypes = useCallback(async () => {
     try {
       const data = await getProductTypesApi();
@@ -114,7 +142,8 @@ export default function InventoryPage() {
 
   useEffect(() => {
     fetchProductTypes();
-  }, [fetchProductTypes]);
+    fetchUnits();
+  }, [fetchProductTypes, fetchUnits]);
 
   useEffect(() => {
     fetchItems();
@@ -190,6 +219,13 @@ export default function InventoryPage() {
     setEditSerialNumber(item.serial_number);
     setEditSelectedTypeCode(item.product_type_code);
     setEditImageBase64(item.image_base64 || null);
+
+    // Extract standard attributes
+    setEditRate(item.attributes?.rate?.toString() || "");
+    setEditUnit(item.attributes?.unit || (unitsList.length > 0 ? unitsList[0] : ""));
+    setEditInstock((item.attributes?.instock ?? item.attributes?.stock ?? "").toString());
+    setEditCaseSize(item.attributes?.case_size?.toString() || "");
+
     setEditDynamicValues(item.attributes || {});
     setShowEditModal(true);
   };
@@ -220,23 +256,57 @@ export default function InventoryPage() {
       return;
     }
 
+    const rateVal = parseFloat(rate) ?? -1;
+    const instockVal = parseFloat(instock) ?? -1;
+    const caseSizeVal = parseFloat(caseSize) ?? -1;
+
+    if (rate.trim() === "" || rateVal < 0) {
+      addToast("Rate per quantity is required and must be 0 or greater.", "warning");
+      return;
+    }
+    if (!unit) {
+      addToast("Units specification is required.", "warning");
+      return;
+    }
+    if (instock.trim() === "" || instockVal < 0) {
+      addToast("In-stock inventory count is required and must be 0 or greater.", "warning");
+      return;
+    }
+    if (caseSize.trim() === "" || caseSizeVal < 1) {
+      addToast("Wholesale case size is required and must be 1 or greater.", "warning");
+      return;
+    }
+
     const typeDetails = productTypes.find((t) => t.code === selectedTypeCode);
     if (!typeDetails) return;
 
     try {
       setCreating(true);
+      const mergedAttributes = {
+        ...dynamicValues,
+        rate: rateVal,
+        rate_per_unit: rateVal,
+        unit: unit,
+        instock: instockVal,
+        stock: instockVal,
+        case_size: caseSizeVal
+      };
+
       await createInventoryItemApi({
         name: name.trim(),
         serial_number: serialNumber.trim().toUpperCase(),
         product_type_code: selectedTypeCode,
         category: typeDetails.category,
-        attributes: dynamicValues,
+        attributes: mergedAttributes,
         image_base64: imageBase64 || undefined
       });
 
       addToast("Inventory item added successfully!", "success");
       setName("");
       setSerialNumber("");
+      setRate("");
+      setInstock("");
+      setCaseSize("");
       setDynamicValues({});
       setImageBase64(null);
       setShowCreateModal(false);
@@ -257,17 +327,48 @@ export default function InventoryPage() {
       return;
     }
 
+    const rateVal = parseFloat(editRate) ?? -1;
+    const instockVal = parseFloat(editInstock) ?? -1;
+    const caseSizeVal = parseFloat(editCaseSize) ?? -1;
+
+    if (editRate.trim() === "" || rateVal < 0) {
+      addToast("Rate per quantity is required and must be 0 or greater.", "warning");
+      return;
+    }
+    if (!editUnit) {
+      addToast("Units specification is required.", "warning");
+      return;
+    }
+    if (editInstock.trim() === "" || instockVal < 0) {
+      addToast("In-stock inventory count is required and must be 0 or greater.", "warning");
+      return;
+    }
+    if (editCaseSize.trim() === "" || caseSizeVal < 1) {
+      addToast("Wholesale case size is required and must be 1 or greater.", "warning");
+      return;
+    }
+
     const typeDetails = productTypes.find((t) => t.code === editSelectedTypeCode);
     if (!typeDetails) return;
 
     try {
       setUpdating(true);
+      const mergedEditAttributes = {
+        ...editDynamicValues,
+        rate: rateVal,
+        rate_per_unit: rateVal,
+        unit: editUnit,
+        instock: instockVal,
+        stock: instockVal,
+        case_size: caseSizeVal
+      };
+
       await updateInventoryItemApi(itemToEdit._id, {
         name: editName.trim(),
         serial_number: editSerialNumber.trim().toUpperCase(),
         product_type_code: editSelectedTypeCode,
         category: typeDetails.category,
-        attributes: editDynamicValues,
+        attributes: mergedEditAttributes,
         image_base64: editImageBase64 || undefined
       });
 
@@ -302,11 +403,17 @@ export default function InventoryPage() {
   };
 
   const handleDynamicChange = (key: string, val: any) => {
-    setDynamicValues((prev) => ({ ...prev, [key]: val }));
+    setDynamicValues({
+      ...dynamicValues,
+      [key]: val,
+    });
   };
 
   const handleEditDynamicChange = (key: string, val: any) => {
-    setEditDynamicValues((prev) => ({ ...prev, [key]: val }));
+    setEditDynamicValues({
+      ...editDynamicValues,
+      [key]: val,
+    });
   };
 
   return (
@@ -314,10 +421,16 @@ export default function InventoryPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <PageHeader
           title="Inventory Management"
-          description="View, track, filter, and create dynamically structured inventory products stored in MongoDB."
+          description="Access and track custom products data stored inside MongoDB collections."
         />
         <Button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            if (productTypes.length === 0) {
+              addToast("Please create a Product Type master first.", "warning");
+              return;
+            }
+            setShowCreateModal(true);
+          }}
           icon={<FiPlus />}
           className="shrink-0"
         >
@@ -374,9 +487,14 @@ export default function InventoryPage() {
             <span className="text-xs">Connecting to MongoDB databases...</span>
           </div>
         ) : items.length > 0 ? (
-          <Table headers={["Product Preview", "Item Name", "Serial Number", "Product Type", "Category Group", "Actions"]}>
+          <Table headers={["Product Preview", "Item Name", "Serial Number", "Category Group", "Stock Status *", "Wholesale Rate *", "Actions"]}>
             {items.map((item) => {
               const typeName = productTypes.find((t) => t.code === item.product_type_code)?.name || item.product_type_code;
+              const rateVal = item.attributes?.rate ?? 0;
+              const unitVal = item.attributes?.unit ?? "Unit";
+              const stockVal = item.attributes?.instock ?? item.attributes?.stock ?? 0;
+              const caseSizeVal = item.attributes?.case_size ?? 1;
+
               return (
                 <tr
                   key={item._id}
@@ -398,7 +516,10 @@ export default function InventoryPage() {
                   <td className="py-4 px-5 font-bold text-slate-800 dark:text-white text-sm">
                     <div className="flex items-center gap-2">
                       <FiDatabase className="text-primary text-xs shrink-0" />
-                      <span>{item.name}</span>
+                      <div>
+                        <span>{item.name}</span>
+                        <span className="text-[10px] text-slate-400 block font-normal">{typeName}</span>
+                      </div>
                     </div>
                   </td>
                   <td className="py-4 px-5">
@@ -406,11 +527,15 @@ export default function InventoryPage() {
                       {item.serial_number}
                     </span>
                   </td>
-                  <td className="py-4 px-5 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    {typeName}
-                  </td>
                   <td className="py-4 px-5 text-xs text-slate-500">
                     {item.category}
+                  </td>
+                  <td className="py-4 px-5 text-xs font-semibold text-slate-700 dark:text-slate-355 font-mono">
+                    {stockVal.toLocaleString('en-IN')} {unitVal}
+                  </td>
+                  <td className="py-4 px-5 text-xs font-semibold text-primary font-mono">
+                    ₹{rateVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })} / {unitVal}
+                    <span className="text-[10px] text-slate-400 block font-normal font-sans">({caseSizeVal} {unitVal}/Case)</span>
                   </td>
                   <td className="py-4 px-5 text-right">
                     <div className="flex justify-end gap-1.5">
@@ -501,13 +626,13 @@ export default function InventoryPage() {
                 </div>
                 <div className="mt-2">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Product Type</span>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-350 mt-0.5 block">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-355 mt-0.5 block">
                     {productTypes.find((t) => t.code === itemView.product_type_code)?.name || itemView.product_type_code}
                   </span>
                 </div>
                 <div className="mt-2">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Category Group</span>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-350 mt-0.5 block">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-355 mt-0.5 block">
                     {itemView.category}
                   </span>
                 </div>
@@ -516,7 +641,7 @@ export default function InventoryPage() {
 
             {/* Bottom Row: Specs & QR Code */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-              {/* Left specifications (7 cols) */}
+              {/* Left specifications (8 cols) */}
               <div className="md:col-span-8 space-y-3">
                 <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
                   Technical Attributes
@@ -524,14 +649,35 @@ export default function InventoryPage() {
 
                 {itemView.attributes && Object.keys(itemView.attributes).length > 0 ? (
                   <div className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-[#071929]/40 border border-slate-100 dark:border-[#0d2336] rounded-xl p-4 text-xs">
-                    {Object.entries(itemView.attributes).map(([key, value]) => (
-                      <div key={key} className="flex flex-col gap-0.5">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{key.replace(/_/g, " ")}</span>
-                        <span className="font-semibold text-slate-800 dark:text-white text-xs">
-                          {typeof value === "boolean" ? (value ? "Enabled" : "Disabled") : String(value)}
-                        </span>
-                      </div>
-                    ))}
+                    {Object.entries(itemView.attributes).map(([key, value]) => {
+                      if (["rate", "rate_per_unit", "unit", "instock", "stock", "case_size"].includes(key)) return null;
+                      return (
+                        <div key={key} className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{key.replace(/_/g, " ")}</span>
+                          <span className="font-semibold text-slate-800 dark:text-white text-xs">
+                            {typeof value === "boolean" ? (value ? "Enabled" : "Disabled") : String(value)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Rate per quantity</span>
+                      <span className="font-semibold text-primary font-mono text-xs">
+                        ₹{(itemView.attributes.rate ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} / {itemView.attributes.unit ?? "Unit"}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In stock inventory</span>
+                      <span className="font-semibold text-slate-800 dark:text-white font-mono text-xs">
+                        {(itemView.attributes.instock ?? itemView.attributes.stock ?? 0).toLocaleString('en-IN')} {itemView.attributes.unit ?? "Unit"}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Case Packaging</span>
+                      <span className="font-semibold text-slate-800 dark:text-white text-xs">
+                        {itemView.attributes.case_size ?? 1} {itemView.attributes.unit ?? "Unit"}/Case
+                      </span>
+                    </div>
                   </div>
                 ) : (
                   <p className="text-xs text-slate-400 italic py-2">
@@ -549,27 +695,28 @@ export default function InventoryPage() {
                 {/* Dynamically generated QR Code using public stateless API */}
                 <div className="p-2.5 bg-white border border-slate-200/50 rounded-xl shadow-sm">
                   <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=5&data=${encodeURIComponent(
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(
                       JSON.stringify({
                         id: itemView._id,
-                        name: itemView.name,
                         serial: itemView.serial_number,
-                        type: itemView.product_type_code
+                        name: itemView.name,
+                        type: itemView.product_type_code,
                       })
                     )}`}
-                    alt="System QR Code"
-                    className="w-28 h-28 select-none"
+                    alt="Product Identity QR Code"
+                    className="w-[100px] h-[100px]"
                   />
                 </div>
                 
-                <span className="text-[9px] text-slate-400 leading-normal">
-                  Scan code to instantly resolve specifications and logs for item <span className="font-mono font-semibold">{itemView.serial_number}</span>.
+                <span className="text-[9px] text-slate-400 leading-tight">
+                  Scan QR code tag to read structural spec properties instantly.
                 </span>
               </div>
             </div>
-
-            <div className="flex items-center justify-end pt-3 border-t border-slate-100 dark:border-[#0d2336]">
+            
+            <div className="flex justify-end pt-3 border-t border-slate-100 dark:border-[#0d2336]">
               <Button
+                variant="outline"
                 onClick={() => {
                   setShowViewModal(false);
                   setItemView(null);
@@ -590,147 +737,214 @@ export default function InventoryPage() {
           setImageBase64(null);
         }}
         title="Add Inventory Product"
-        hasUnsavedChanges={name.trim() !== "" || serialNumber.trim() !== "" || imageBase64 !== null || Object.values(dynamicValues).some(v => v !== "" && v !== false && v !== 0)}
+        size="xl"
+        hasUnsavedChanges={name.trim() !== "" || serialNumber.trim() !== "" || imageBase64 !== null || rate !== "" || instock !== "" || caseSize !== ""}
       >
-        <form onSubmit={handleCreate} className="space-y-4">
-          <Input
-            label="Product Name *"
-            required
-            placeholder="e.g. ViewSonic 75 Inch interactive Screen"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+        <form onSubmit={handleCreate} className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Left Column: Product Identity details */}
+            <div className="space-y-4 pr-0 md:pr-6 border-r-0 md:border-r border-slate-100 dark:border-[#0d2336]">
+              <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
+                Product Identity
+              </h4>
 
-          <Input
-            label="Hardware Serial Number (Unique) *"
-            required
-            placeholder="e.g. VS-75-99823"
-            value={serialNumber}
-            onChange={(e) => setSerialNumber(e.target.value)}
-          />
+              <Input
+                label="Product Name *"
+                required
+                placeholder="e.g. Fertilizer NPK 19-19-19"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
 
-          {/* IMAGE UPLOAD FIELD */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Product Image
-            </label>
-            <div className="grid grid-cols-12 gap-3 items-center">
-              <div className="col-span-8">
-                <label className="flex flex-col items-center justify-center border border-dashed border-slate-200 dark:border-[#0d2336] rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 hover:border-primary/50 transition-all cursor-pointer">
-                  <FiUploadCloud className="text-xl text-slate-400 mb-1" />
-                  <span className="text-[10px] font-bold text-slate-600 dark:text-slate-350">Upload Product Image</span>
-                  <span className="text-[8px] text-slate-400 mt-0.5">JPEG, PNG up to 2MB</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => handleImageUpload(e, false)}
-                  />
+              <Input
+                label="Hardware Serial Number (Unique) *"
+                required
+                placeholder="e.g. FT-NPK-12903"
+                value={serialNumber}
+                onChange={(e) => setSerialNumber(e.target.value)}
+              />
+
+              {/* IMAGE UPLOAD FIELD */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Product Image
                 </label>
+                <div className="grid grid-cols-12 gap-3 items-center">
+                  <div className="col-span-8">
+                    <label className="flex flex-col items-center justify-center border border-dashed border-slate-200 dark:border-[#0d2336] rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 hover:border-primary/50 transition-all cursor-pointer">
+                      <FiUploadCloud className="text-xl text-slate-400 mb-1" />
+                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-355">Upload Image</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleImageUpload(e, false)}
+                      />
+                    </label>
+                  </div>
+                  <div className="col-span-4 flex items-center justify-center bg-slate-100 dark:bg-[#071929]/50 border border-slate-200/50 dark:border-[#0d2336] rounded-xl h-20 relative">
+                    {imageBase64 ? (
+                      <>
+                        <img
+                          src={imageBase64}
+                          alt="Uploaded Preview"
+                          className="max-h-[70px] max-w-[90%] rounded object-contain"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setImageBase64(null)}
+                          className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-1 border-none hover:bg-rose-600 cursor-pointer shadow"
+                        >
+                          <FiX className="text-[10px]" />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[9px] text-slate-400 italic">No image</span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="col-span-4 flex items-center justify-center bg-slate-100 dark:bg-[#071929]/50 border border-slate-200/50 dark:border-[#0d2336] rounded-xl h-20 relative">
-                {imageBase64 ? (
-                  <>
-                    <img
-                      src={imageBase64}
-                      alt="Uploaded Preview"
-                      className="max-h-[70px] max-w-[90%] rounded object-contain"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setImageBase64(null)}
-                      className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-1 border-none hover:bg-rose-600 cursor-pointer shadow"
-                    >
-                      <FiX className="text-[10px]" />
-                    </button>
-                  </>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Product Category / Type
+                </label>
+                <select
+                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
+                  value={selectedTypeCode}
+                  onChange={(e) => setSelectedTypeCode(e.target.value)}
+                >
+                  {productTypes.map((t) => (
+                    <option key={t.code} value={t.code}>
+                      {t.name} ({t.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Right Column: Parameters and specifications */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
+                Mandatory Stock Parameters
+              </h4>
+
+              <div className="grid grid-cols-2 gap-3.5">
+                <Input
+                  label="Rate per unit (Exc. GST) *"
+                  required
+                  type="number"
+                  placeholder="e.g. 450"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                />
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Select Unit *
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                  >
+                    {unitsList.map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                    {unitsList.length === 0 && (
+                      <option value="">No units created in master...</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3.5">
+                <Input
+                  label="In-Stock Inventory (Qty) *"
+                  required
+                  type="number"
+                  placeholder="e.g. 150"
+                  value={instock}
+                  onChange={(e) => setInstock(e.target.value)}
+                />
+
+                <Input
+                  label="Case Size (Qty/Case) *"
+                  required
+                  type="number"
+                  placeholder="e.g. 25"
+                  value={caseSize}
+                  onChange={(e) => setCaseSize(e.target.value)}
+                />
+              </div>
+
+              {/* DYNAMIC FORM SECTION */}
+              <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">
+                <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
+                  Category Technical Specifications (Dynamic Fields)
+                </h4>
+
+                {loadingTemplate ? (
+                  <div className="flex justify-center items-center py-4 gap-2 text-slate-400">
+                    <CgSpinner className="animate-spin text-xl text-primary" />
+                    <span className="text-[10px]">Loading dynamic layout...</span>
+                  </div>
+                ) : activeTemplate && activeTemplate.fields && activeTemplate.fields.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3.5">
+                    {activeTemplate.fields.map((f) => {
+                      const val = dynamicValues[f.name] ?? "";
+                      return (
+                        <div key={f.name} className="space-y-1.5 col-span-2 sm:col-span-1">
+                          {f.type === "boolean" ? (
+                            <div className="flex items-center justify-between p-2 rounded-xl border border-slate-100 dark:border-[#0d2336] bg-slate-50/30">
+                              <span className="text-xs font-semibold text-slate-700 dark:text-slate-350">
+                                {f.label} {f.required && <span className="text-rose-500 font-bold">*</span>}
+                              </span>
+                              <Switch
+                                checked={!!val}
+                                onChange={(checked) => handleDynamicChange(f.name, checked)}
+                              />
+                            </div>
+                          ) : f.type === "select" ? (
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                {f.label} {f.required && <span className="text-rose-500 font-bold">*</span>}
+                              </label>
+                              <select
+                                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
+                                value={val}
+                                onChange={(e) => handleDynamicChange(f.name, e.target.value)}
+                              >
+                                <option value="">Select Option...</option>
+                                {f.options?.map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <Input
+                              label={`${f.label}${f.required ? " *" : ""}`}
+                              type={f.type === "number" ? "number" : "text"}
+                              placeholder={`Enter ${f.label.toLowerCase()}...`}
+                              value={val}
+                              onChange={(e) => handleDynamicChange(f.name, e.target.value)}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : (
-                  <span className="text-[9px] text-slate-400 italic">No image</span>
+                  <p className="text-xs text-slate-400 italic py-2">
+                    No custom specifications defined for this product category. Go to Product Types Master to add specs!
+                  </p>
                 )}
               </div>
             </div>
-          </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Product Category / Type
-            </label>
-            <select
-              className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-              value={selectedTypeCode}
-              onChange={(e) => setSelectedTypeCode(e.target.value)}
-            >
-              {productTypes.map((t) => (
-                <option key={t.code} value={t.code}>
-                  {t.name} ({t.code})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* DYNAMIC FORM SECTION */}
-          <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">
-            <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-              Category Technical Specifications (Dynamic Fields)
-            </h4>
-
-            {loadingTemplate ? (
-              <div className="flex justify-center items-center py-4 gap-2 text-slate-400">
-                <CgSpinner className="animate-spin text-xl text-primary" />
-                <span className="text-[10px]">Loading dynamic layout...</span>
-              </div>
-            ) : activeTemplate && activeTemplate.fields && activeTemplate.fields.length > 0 ? (
-              <div className="space-y-4">
-                {activeTemplate.fields.map((f) => {
-                  const val = dynamicValues[f.name] ?? "";
-                  return (
-                    <div key={f.name} className="space-y-1.5">
-                      {f.type === "boolean" ? (
-                        <div className="flex items-center justify-between p-2 rounded-xl border border-slate-100 dark:border-[#0d2336] bg-slate-50/30">
-                          <span className="text-xs font-semibold text-slate-700 dark:text-slate-350">
-                            {f.label} {f.required && <span className="text-rose-500 font-bold">*</span>}
-                          </span>
-                          <Switch
-                            checked={!!val}
-                            onChange={(checked) => handleDynamicChange(f.name, checked)}
-                          />
-                        </div>
-                      ) : f.type === "select" ? (
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                            {f.label} {f.required && <span className="text-rose-500 font-bold">*</span>}
-                          </label>
-                          <select
-                            className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-                            value={val}
-                            onChange={(e) => handleDynamicChange(f.name, e.target.value)}
-                          >
-                            <option value="">Select Option...</option>
-                            {f.options?.map((opt) => (
-                              <option key={opt} value={opt}>
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ) : (
-                        <Input
-                          label={`${f.label}${f.required ? " *" : ""}`}
-                          type={f.type === "number" ? "number" : "text"}
-                          placeholder={`Enter ${f.label.toLowerCase()}...`}
-                          value={val}
-                          onChange={(e) => handleDynamicChange(f.name, e.target.value)}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400 italic py-2">
-                No custom specifications defined for this product category. Go to Product Types Master to add specs!
-              </p>
-            )}
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-[#0d2336]">
@@ -761,147 +975,214 @@ export default function InventoryPage() {
             setEditImageBase64(null);
           }}
           title="Edit Inventory Product"
-          hasUnsavedChanges={editName !== itemToEdit.name || editSerialNumber !== itemToEdit.serial_number || editImageBase64 !== (itemToEdit.image_base64 || null) || editSelectedTypeCode !== itemToEdit.product_type_code || JSON.stringify(editDynamicValues) !== JSON.stringify(itemToEdit.attributes || {})}
+          size="xl"
+          hasUnsavedChanges={editName !== itemToEdit.name || editSerialNumber !== itemToEdit.serial_number || editImageBase64 !== (itemToEdit.image_base64 || null) || editSelectedTypeCode !== itemToEdit.product_type_code || editRate !== (itemToEdit.attributes?.rate?.toString() || "") || editUnit !== (itemToEdit.attributes?.unit || "") || editInstock !== ((itemToEdit.attributes?.instock ?? itemToEdit.attributes?.stock ?? "").toString()) || editCaseSize !== (itemToEdit.attributes?.case_size?.toString() || "") || JSON.stringify(editDynamicValues) !== JSON.stringify(itemToEdit.attributes || {})}
         >
-          <form onSubmit={handleUpdate} className="space-y-4">
-            <Input
-              label="Product Name *"
-              required
-              placeholder="e.g. ViewSonic 75 Inch interactive Screen"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-            />
+          <form onSubmit={handleUpdate} className="space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* Left Column: Product Identity details */}
+              <div className="space-y-4 pr-0 md:pr-6 border-r-0 md:border-r border-slate-100 dark:border-[#0d2336]">
+                <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
+                  Product Identity
+                </h4>
 
-            <Input
-              label="Hardware Serial Number (Unique) *"
-              required
-              placeholder="e.g. VS-75-99823"
-              value={editSerialNumber}
-              onChange={(e) => setEditSerialNumber(e.target.value)}
-            />
+                <Input
+                  label="Product Name *"
+                  required
+                  placeholder="e.g. Fertilizer NPK 19-19-19"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
 
-            {/* IMAGE UPLOAD FIELD (EDIT) */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Product Image
-              </label>
-              <div className="grid grid-cols-12 gap-3 items-center">
-                <div className="col-span-8">
-                  <label className="flex flex-col items-center justify-center border border-dashed border-slate-200 dark:border-[#0d2336] rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 hover:border-primary/50 transition-all cursor-pointer">
-                    <FiUploadCloud className="text-xl text-slate-400 mb-1" />
-                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-350">Change Product Image</span>
-                    <span className="text-[8px] text-slate-400 mt-0.5">JPEG, PNG up to 2MB</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => handleImageUpload(e, true)}
-                    />
+                <Input
+                  label="Hardware Serial Number (Unique) *"
+                  required
+                  placeholder="e.g. FT-NPK-12903"
+                  value={editSerialNumber}
+                  onChange={(e) => setEditSerialNumber(e.target.value)}
+                />
+
+                {/* IMAGE UPLOAD FIELD (EDIT) */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Product Image
                   </label>
+                  <div className="grid grid-cols-12 gap-3 items-center">
+                    <div className="col-span-8">
+                      <label className="flex flex-col items-center justify-center border border-dashed border-slate-200 dark:border-[#0d2336] rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 hover:border-primary/50 transition-all cursor-pointer">
+                        <FiUploadCloud className="text-xl text-slate-400 mb-1" />
+                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-355">Change Image</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleImageUpload(e, true)}
+                        />
+                      </label>
+                    </div>
+                    <div className="col-span-4 flex items-center justify-center bg-slate-100 dark:bg-[#071929]/50 border border-slate-200/50 dark:border-[#0d2336] rounded-xl h-20 relative">
+                      {editImageBase64 ? (
+                        <>
+                          <img
+                            src={editImageBase64}
+                            alt="Uploaded Preview"
+                            className="max-h-[70px] max-w-[90%] rounded object-contain"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditImageBase64(null)}
+                            className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-1 border-none hover:bg-rose-600 cursor-pointer shadow animate-fadeIn"
+                          >
+                            <FiX className="text-[10px]" />
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-[9px] text-slate-400 italic">No image</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="col-span-4 flex items-center justify-center bg-slate-100 dark:bg-[#071929]/50 border border-slate-200/50 dark:border-[#0d2336] rounded-xl h-20 relative">
-                  {editImageBase64 ? (
-                    <>
-                      <img
-                        src={editImageBase64}
-                        alt="Uploaded Preview"
-                        className="max-h-[70px] max-w-[90%] rounded object-contain"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setEditImageBase64(null)}
-                        className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-1 border-none hover:bg-rose-600 cursor-pointer shadow animate-fadeIn"
-                      >
-                        <FiX className="text-[10px]" />
-                      </button>
-                    </>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Product Category / Type
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
+                    value={editSelectedTypeCode}
+                    onChange={(e) => setEditSelectedTypeCode(e.target.value)}
+                  >
+                    {productTypes.map((t) => (
+                      <option key={t.code} value={t.code}>
+                        {t.name} ({t.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Right Column: Parameters and specifications */}
+              <div className="space-y-4">
+                <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
+                  Mandatory Stock Parameters
+                </h4>
+
+                <div className="grid grid-cols-2 gap-3.5">
+                  <Input
+                    label="Rate per unit (Exc. GST) *"
+                    required
+                    type="number"
+                    placeholder="e.g. 450"
+                    value={editRate}
+                    onChange={(e) => setEditRate(e.target.value)}
+                  />
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Select Unit *
+                    </label>
+                    <select
+                      className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
+                      value={editUnit}
+                      onChange={(e) => setEditUnit(e.target.value)}
+                    >
+                      {unitsList.map((u) => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                      {unitsList.length === 0 && (
+                        <option value="">No units created in master...</option>
+                      )}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3.5">
+                  <Input
+                    label="In-Stock Inventory (Qty) *"
+                    required
+                    type="number"
+                    placeholder="e.g. 150"
+                    value={editInstock}
+                    onChange={(e) => setEditInstock(e.target.value)}
+                  />
+
+                  <Input
+                    label="Case Size (Qty/Case) *"
+                    required
+                    type="number"
+                    placeholder="e.g. 25"
+                    value={editCaseSize}
+                    onChange={(e) => setEditCaseSize(e.target.value)}
+                  />
+                </div>
+
+                {/* DYNAMIC FORM SECTION */}
+                <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
+                    Category Technical Specifications (Dynamic Fields)
+                  </h4>
+
+                  {loadingEditTemplate ? (
+                    <div className="flex justify-center items-center py-4 gap-2 text-slate-400">
+                      <CgSpinner className="animate-spin text-xl text-primary" />
+                      <span className="text-[10px]">Loading dynamic layout...</span>
+                    </div>
+                  ) : editActiveTemplate && editActiveTemplate.fields && editActiveTemplate.fields.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3.5">
+                      {editActiveTemplate.fields.map((f) => {
+                        const val = editDynamicValues[f.name] ?? "";
+                        return (
+                          <div key={f.name} className="space-y-1.5 col-span-2 sm:col-span-1">
+                            {f.type === "boolean" ? (
+                              <div className="flex items-center justify-between p-2 rounded-xl border border-slate-100 dark:border-[#0d2336] bg-slate-50/30">
+                                <span className="text-xs font-semibold text-slate-755 dark:text-slate-350">
+                                  {f.label} {f.required && <span className="text-rose-500 font-bold">*</span>}
+                                </span>
+                                <Switch
+                                  checked={!!val}
+                                  onChange={(checked) => handleEditDynamicChange(f.name, checked)}
+                                />
+                              </div>
+                            ) : f.type === "select" ? (
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                  {f.label} {f.required && <span className="text-rose-500 font-bold">*</span>}
+                                </label>
+                                <select
+                                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
+                                  value={val}
+                                  onChange={(e) => handleEditDynamicChange(f.name, e.target.value)}
+                                >
+                                  <option value="">Select Option...</option>
+                                  {f.options?.map((opt) => (
+                                    <option key={opt} value={opt}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : (
+                              <Input
+                                label={`${f.label}${f.required ? " *" : ""}`}
+                                type={f.type === "number" ? "number" : "text"}
+                                placeholder={`Enter ${f.label.toLowerCase()}...`}
+                                value={val}
+                                onChange={(e) => handleEditDynamicChange(f.name, e.target.value)}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   ) : (
-                    <span className="text-[9px] text-slate-400 italic">No image</span>
+                    <p className="text-xs text-slate-400 italic py-2">
+                      No custom specifications defined for this product category. Go to Product Types Master to add specs!
+                    </p>
                   )}
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Product Category / Type
-              </label>
-              <select
-                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-                value={editSelectedTypeCode}
-                onChange={(e) => setEditSelectedTypeCode(e.target.value)}
-              >
-                {productTypes.map((t) => (
-                  <option key={t.code} value={t.code}>
-                    {t.name} ({t.code})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* DYNAMIC FORM SECTION */}
-            <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">
-              <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
-                Category Technical Specifications (Dynamic Fields)
-              </h4>
-
-              {loadingEditTemplate ? (
-                <div className="flex justify-center items-center py-4 gap-2 text-slate-400">
-                  <CgSpinner className="animate-spin text-xl text-primary" />
-                  <span className="text-[10px]">Loading dynamic layout...</span>
-                </div>
-              ) : editActiveTemplate && editActiveTemplate.fields && editActiveTemplate.fields.length > 0 ? (
-                <div className="space-y-4">
-                  {editActiveTemplate.fields.map((f) => {
-                    const val = editDynamicValues[f.name] ?? "";
-                    return (
-                      <div key={f.name} className="space-y-1.5">
-                        {f.type === "boolean" ? (
-                          <div className="flex items-center justify-between p-2 rounded-xl border border-slate-100 dark:border-[#0d2336] bg-slate-50/30">
-                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-350">
-                              {f.label} {f.required && <span className="text-rose-500 font-bold">*</span>}
-                            </span>
-                            <Switch
-                              checked={!!val}
-                              onChange={(checked) => handleEditDynamicChange(f.name, checked)}
-                            />
-                          </div>
-                        ) : f.type === "select" ? (
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                              {f.label} {f.required && <span className="text-rose-500 font-bold">*</span>}
-                            </label>
-                            <select
-                              className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-                              value={val}
-                              onChange={(e) => handleEditDynamicChange(f.name, e.target.value)}
-                            >
-                              <option value="">Select Option...</option>
-                              {f.options?.map((opt) => (
-                                <option key={opt} value={opt}>
-                                  {opt}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ) : (
-                          <Input
-                            label={`${f.label}${f.required ? " *" : ""}`}
-                            type={f.type === "number" ? "number" : "text"}
-                            placeholder={`Enter ${f.label.toLowerCase()}...`}
-                            value={val}
-                            onChange={(e) => handleEditDynamicChange(f.name, e.target.value)}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-slate-400 italic py-2">
-                  No custom specifications defined for this product category. Go to Product Types Master to add specs!
-                </p>
-              )}
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-[#0d2336]">
@@ -917,7 +1198,7 @@ export default function InventoryPage() {
                 Cancel
               </Button>
               <Button type="submit" loading={updating}>
-                Save Changes
+                Save Product
               </Button>
             </div>
           </form>
@@ -935,8 +1216,8 @@ export default function InventoryPage() {
           title="Delete Inventory Product"
         >
           <div className="space-y-4">
-            <p className="text-sm text-slate-500 dark:text-slate-450 leading-relaxed">
-              Are you sure you want to delete <span className="font-bold text-slate-800 dark:text-white">{itemToDelete.name}</span>? This is permanent.
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+              Are you sure you want to delete product item <span className="font-bold text-slate-800 dark:text-white">{itemToDelete.name}</span> (Serial: {itemToDelete.serial_number})? This is permanent.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-[#0d2336]">
@@ -950,7 +1231,7 @@ export default function InventoryPage() {
                 Cancel
               </Button>
               <Button variant="danger" onClick={handleConfirmDelete} loading={deleting}>
-                Delete Product
+                Delete Item
               </Button>
             </div>
           </div>
