@@ -2,17 +2,24 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState, useCallback } from "react";
 import {
   LuChevronDown,
   LuChevronLeft,
   LuX,
   LuSettings,
+  LuCircle,
 } from "react-icons/lu";
-import { sidebarMenu, SidebarItemConfig } from "./sidebar-menu";
+import * as LuIcons from "react-icons/lu";
+import { getSidebarMenusApi, DBMenuItem } from "@/features/menus/api/menus.api";
 import { useUIStore } from "@/lib/store/ui.store";
-import { useEffect, useState } from "react";
-import { hasPermission, isSuperAdmin } from "@/features/auth/utils/permissions";
 import { useAuthStore } from "@/features/auth/store/auth.store";
+
+function resolveIconComponent(iconName?: string) {
+  if (!iconName) return LuCircle;
+  const iconComp = (LuIcons as Record<string, any>)[iconName];
+  return iconComp || LuCircle;
+}
 
 export default function Sidebar() {
   const {
@@ -23,8 +30,25 @@ export default function Sidebar() {
   } = useUIStore();
 
   const pathname = usePathname();
+  const [dbMenus, setDbMenus] = useState<DBMenuItem[]>([]);
   const [openMenus, setOpenMenus] = useState<string[]>(["Sales"]);
   const user = useAuthStore((state) => state.user);
+
+  // Fetch DB-driven sidebar navigation
+  const fetchDbSidebar = useCallback(async () => {
+    try {
+      const data = await getSidebarMenusApi();
+      if (Array.isArray(data) && data.length > 0) {
+        setDbMenus(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch database sidebar menus:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDbSidebar();
+  }, [fetchDbSidebar, user?.role_id]);
 
   // Close mobile sidebar on navigation change
   useEffect(() => {
@@ -33,8 +57,8 @@ export default function Sidebar() {
 
   // Automatically expand active parent menus
   useEffect(() => {
-    sidebarMenu.forEach((menu) => {
-      if (menu.children && menu.children.some((child) => pathname === child.path)) {
+    dbMenus.forEach((menu) => {
+      if (menu.children && menu.children.some((child) => child.path && pathname === child.path)) {
         setOpenMenus((prev) => {
           if (!prev.includes(menu.title)) {
             return [...prev, menu.title];
@@ -43,7 +67,7 @@ export default function Sidebar() {
         });
       }
     });
-  }, [pathname]);
+  }, [pathname, dbMenus]);
 
   const toggleMenu = (title: string) => {
     setOpenMenus((prev) =>
@@ -52,39 +76,6 @@ export default function Sidebar() {
         : [...prev, title]
     );
   };
-
-  const isRouteVisible = (path: string): boolean => {
-    if (path === "/dashboard") return true;
-    if (path === "/sales/customers") return true;
-    if (path === "/sales/opportunities") return true;
-    if (path === "/sales/orders") return true;
-    if (path === "/leads") return true;
-    if (path === "/inventory") return true;
-    if (path === "/users") return isSuperAdmin() || hasPermission("user.read");
-    if (path === "/rbac") return isSuperAdmin() || hasPermission("role.read");
-    if (path === "/companies") return isSuperAdmin() || hasPermission("company.read");
-    if (path === "/locations") return isSuperAdmin() || hasPermission("location.read");
-    if (path === "/customer-types") return isSuperAdmin() || hasPermission("customer_type.read");
-    if (path === "/product-types") return isSuperAdmin() || hasPermission("product_type.read");
-    if (path === "/category-groups") return isSuperAdmin() || hasPermission("category_group.read");
-    if (path === "/units") return isSuperAdmin() || hasPermission("unit.read");
-    if (path === "/workflows") return isSuperAdmin();
-    return true;
-  };
-
-  const visibleMenu = sidebarMenu
-    .map((menu) => {
-      if (menu.children) {
-        const visibleChildren = menu.children.filter((child) => isRouteVisible(child.path));
-        if (visibleChildren.length === 0) return null;
-        return { ...menu, children: visibleChildren };
-      }
-      if (!menu.path || isRouteVisible(menu.path)) {
-        return menu;
-      }
-      return null;
-    })
-    .filter(Boolean) as SidebarItemConfig[];
 
   return (
     <>
@@ -153,19 +144,20 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {/* Navigation Section */}
+        {/* Navigation Section (100% Database-Driven) */}
         <div className="flex-grow overflow-y-auto pt-2 pb-4 scrollbar-none">
           <nav className="space-y-1">
-            {visibleMenu.map((menu) => {
-              const Icon = menu.icon;
+            {dbMenus.map((menu) => {
+              const Icon = resolveIconComponent(menu.icon);
+              const hasSubmenus = Array.isArray(menu.children) && menu.children.length > 0;
 
-              if (menu.children) {
+              if (hasSubmenus) {
                 const isOpen = openMenus.includes(menu.title);
-                const isChildActive = menu.children.some((child) => pathname === child.path);
+                const isChildActive = menu.children!.some((child) => child.path && pathname === child.path);
 
                 return (
-                  <div key={menu.title} className="space-y-1">
-                    {/* Parent row */}
+                  <div key={menu.id} className="space-y-1">
+                    {/* Parent Row */}
                     <div className="relative pl-3">
                       <button
                         onClick={() => toggleMenu(menu.title)}
@@ -197,17 +189,17 @@ export default function Sidebar() {
                       </button>
                     </div>
 
-                    {/* Submenu items with clean vertical branch indicator */}
+                    {/* Submenu Branch */}
                     {isOpen && (!isSidebarCollapsed || isSidebarOpen) && (
                       <div className="ml-[31px] pl-3.5 border-l border-slate-300 dark:border-slate-700/80 my-1 space-y-1">
-                        {menu.children.map((child) => {
-                          const ChildIcon = child.icon;
-                          const isActive = pathname === child.path;
+                        {menu.children!.map((child) => {
+                          const ChildIcon = resolveIconComponent(child.icon);
+                          const isActive = child.path ? pathname === child.path : false;
 
                           return (
-                            <div key={child.path} className="relative">
+                            <div key={child.id} className="relative">
                               <Link
-                                href={child.path}
+                                href={child.path || "#"}
                                 className={`
                                   flex items-center gap-3 rounded-l-xl py-2 px-3 text-[13.5px] transition-colors
                                   ${
@@ -229,12 +221,12 @@ export default function Sidebar() {
                 );
               }
 
-              const isActive = pathname === menu.path;
+              const isActive = menu.path ? pathname === menu.path : false;
 
               return (
-                <div key={menu.path || menu.title} className="relative pl-3">
+                <div key={menu.id} className="relative pl-3">
                   <Link
-                    href={menu.path!}
+                    href={menu.path || "#"}
                     className={`
                       flex items-center gap-3.5 rounded-l-2xl py-2.5 px-4 transition-all duration-150
                       ${

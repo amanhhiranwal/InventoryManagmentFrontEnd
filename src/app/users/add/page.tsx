@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation";
 import { createUserApi } from "@/features/users/api/users.api";
 import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
 import { getCompaniesApi, Company } from "@/features/companies/api/companies.api";
+import { getLocationsApi, Location } from "@/features/locations/api/locations.api";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
-import { FiArrowLeft, FiUser, FiMail, FiLock, FiPhone, FiCreditCard } from "react-icons/fi";
+import { FiArrowLeft, FiUser, FiMail, FiLock, FiPhone, FiCreditCard, FiMapPin, FiBriefcase, FiShield } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 import Link from "next/link";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
@@ -18,8 +19,8 @@ export default function AddUserPage() {
   const { addToast } = useUIStore();
   const [roles, setRoles] = useState<Role[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [loadingRoles, setLoadingRoles] = useState(true);
-  const [loadingCompanies, setLoadingCompanies] = useState(true);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [loadingSetup, setLoadingSetup] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -29,6 +30,8 @@ export default function AddUserPage() {
     password: "",
     phone_number: "",
     employee_id: "",
+    location_id: "",
+    status: "active",
     role_ids: [] as string[],
     company_ids: [] as string[],
   });
@@ -41,21 +44,21 @@ export default function AddUserPage() {
 
     const fetchData = async () => {
       try {
-        setLoadingRoles(true);
-        setLoadingCompanies(true);
-        const [rolesData, companiesResponse] = await Promise.all([
+        setLoadingSetup(true);
+        const [rolesData, companiesResponse, locationsResponse] = await Promise.all([
           getRolesApi(),
-          getCompaniesApi(),
+          getCompaniesApi(1, 100),
+          getLocationsApi(1, 100),
         ]);
         setRoles(rolesData);
         setCompanies(companiesResponse.data);
+        setLocations(locationsResponse.data);
       } catch (err: unknown) {
         console.error(err);
         const axiosError = err as AxiosError<{ message?: string }>;
         addToast(axiosError.response?.data?.message || "Failed to fetch setup data.", "error");
       } finally {
-        setLoadingRoles(false);
-        setLoadingCompanies(false);
+        setLoadingSetup(false);
       }
     };
 
@@ -110,7 +113,7 @@ export default function AddUserPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Link
           href="/users"
@@ -119,189 +122,226 @@ export default function AddUserPage() {
           <FiArrowLeft className="text-lg" />
         </Link>
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-800 dark:text-white tracking-tight">
-            Add New User
+          <h1 className="text-2xl font-extrabold text-slate-800 dark:text-white tracking-tight font-sans">
+            Add New User Account
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Create a new administrative or member account for your organization.
+            Guide user onboarding by assigning personal details, enterprise master entities, and security roles.
           </p>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] p-6 sm:p-8 shadow-sm">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* First Name */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Section 1: Personal Details */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-[#0d2336] bg-white dark:bg-[#051422] p-6 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-[#0d2336]">
+            <FiUser className="text-[#233353] dark:text-sky-400 text-base" />
+            <h3 className="font-extrabold text-slate-900 dark:text-white text-sm font-sans">
+              1. Personal & Contact Information
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 First Name <span className="text-rose-500">*</span>
               </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-                  <FiUser className="text-sm" />
-                </span>
-                <input
-                  type="text"
-                  name="first_name"
-                  required
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-primary focus:bg-white dark:focus:border-primary-hover dark:focus:bg-[#071929]"
-                  placeholder="John"
-                  value={formData.first_name}
-                  onChange={handleChange}
-                />
-              </div>
+              <input
+                type="text"
+                name="first_name"
+                required
+                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400"
+                placeholder="Rahul"
+                value={formData.first_name}
+                onChange={handleChange}
+              />
             </div>
 
-            {/* Last Name */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Last Name <span className="text-rose-500">*</span>
               </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-                  <FiUser className="text-sm" />
-                </span>
-                <input
-                  type="text"
-                  name="last_name"
-                  required
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-primary focus:bg-white dark:focus:border-primary-hover dark:focus:bg-[#071929]"
-                  placeholder="Doe"
-                  value={formData.last_name}
-                  onChange={handleChange}
-                />
-              </div>
+              <input
+                type="text"
+                name="last_name"
+                required
+                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400"
+                placeholder="Sharma"
+                value={formData.last_name}
+                onChange={handleChange}
+              />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Email Address */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Email Address <span className="text-rose-500">*</span>
               </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-                  <FiMail className="text-sm" />
-                </span>
-                <input
-                  type="email"
-                  name="email"
-                  required
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-primary focus:bg-white dark:focus:border-primary-hover dark:focus:bg-[#071929]"
-                  placeholder="john.doe@company.com"
-                  value={formData.email}
-                  onChange={handleChange}
-                />
-              </div>
+              <input
+                type="email"
+                name="email"
+                required
+                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400"
+                placeholder="rahul.sharma@company.com"
+                value={formData.email}
+                onChange={handleChange}
+              />
             </div>
 
-            {/* Password */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Password <span className="text-rose-500">*</span>
               </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-                  <FiLock className="text-sm" />
-                </span>
-                <input
-                  type="password"
-                  name="password"
-                  required
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-primary focus:bg-white dark:focus:border-primary-hover dark:focus:bg-[#071929]"
-                  placeholder="••••••••"
-                  value={formData.password}
-                  onChange={handleChange}
-                />
-              </div>
+              <input
+                type="password"
+                name="password"
+                required
+                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400"
+                placeholder="••••••••"
+                value={formData.password}
+                onChange={handleChange}
+              />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Phone Number */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Phone Number
               </label>
+              <input
+                type="tel"
+                name="phone_number"
+                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400"
+                placeholder="+91 98765 43210"
+                value={formData.phone_number}
+                onChange={handleChange}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Employee Code / ID
+              </label>
+              <input
+                type="text"
+                name="employee_id"
+                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400"
+                placeholder="EMP-1002"
+                value={formData.employee_id}
+                onChange={handleChange}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 2: Enterprise Masters Assignment */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-[#0d2336] bg-white dark:bg-[#051422] p-6 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-[#0d2336]">
+            <FiBriefcase className="text-[#233353] dark:text-sky-400 text-base" />
+            <h3 className="font-extrabold text-slate-900 dark:text-white text-sm font-sans">
+              2. Enterprise Masters & Location Assignment
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Primary Location Node
+              </label>
               <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-                  <FiPhone className="text-sm" />
-                </span>
-                <input
-                  type="tel"
-                  name="phone_number"
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-primary focus:bg-white dark:focus:border-primary-hover dark:focus:bg-[#071929]"
-                  placeholder="+1 (555) 000-0000"
-                  value={formData.phone_number}
+                <select
+                  name="location_id"
+                  className="w-full appearance-none rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400 cursor-pointer"
+                  value={formData.location_id}
                   onChange={handleChange}
-                />
+                >
+                  <option value="">Select Location Zone...</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.location_name} ({loc.location_code})
+                    </option>
+                  ))}
+                </select>
+                <span className="absolute inset-y-0 right-3.5 flex items-center pointer-events-none text-slate-400 text-[10px]">
+                  ▼
+                </span>
               </div>
             </div>
 
-            {/* Employee ID */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Employee ID
+                Account Status
               </label>
               <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-                  <FiCreditCard className="text-sm" />
-                </span>
-                <input
-                  type="text"
-                  name="employee_id"
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 pl-10 pr-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-primary focus:bg-white dark:focus:border-primary-hover dark:focus:bg-[#071929]"
-                  placeholder="EMP-12345"
-                  value={formData.employee_id}
+                <select
+                  name="status"
+                  className="w-full appearance-none rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400 cursor-pointer"
+                  value={formData.status}
                   onChange={handleChange}
-                />
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+                <span className="absolute inset-y-0 right-3.5 flex items-center pointer-events-none text-slate-400 text-[10px]">
+                  ▼
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Role selection dropdown */}
           <SearchableMultiSelect
-            label="Assigned Roles"
-            placeholder={loadingRoles ? "Loading available roles..." : "Select roles..."}
-            options={roles.map((r) => ({ id: r.id, name: r.name }))}
-            selectedIds={formData.role_ids}
-            onChange={(ids) => setFormData({ ...formData, role_ids: ids })}
-          />
-
-          {/* Company selection dropdown */}
-          <SearchableMultiSelect
-            label="Assigned Companies"
-            placeholder={loadingCompanies ? "Loading available companies..." : "Select companies..."}
+            label="Assigned Enterprise Companies"
+            placeholder={loadingSetup ? "Loading available companies..." : "Select companies..."}
             options={companies.map((c) => ({ id: c.id, name: c.company_name }))}
             selectedIds={formData.company_ids}
             onChange={(ids) => setFormData({ ...formData, company_ids: ids })}
           />
+        </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-[#0d2336]">
-            <Link
-              href="/users"
-              className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-[#0d2336] text-sm font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-[#0d2336] transition-all"
-            >
-              Cancel
-            </Link>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary-hover px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-primary/10 hover:shadow-primary/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? (
-                <>
-                  <CgSpinner className="animate-spin text-base" />
-                  <span>Creating Account...</span>
-                </>
-              ) : (
-                "Create Account"
-              )}
-            </button>
+        {/* Section 3: Role & Hierarchy Selection */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-[#0d2336] bg-white dark:bg-[#051422] p-6 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-[#0d2336]">
+            <FiShield className="text-[#233353] dark:text-sky-400 text-base" />
+            <h3 className="font-extrabold text-slate-900 dark:text-white text-sm font-sans">
+              3. Security Role & Hierarchy Role Assignment
+            </h3>
           </div>
-        </form>
-      </div>
+
+          <SearchableMultiSelect
+            label="Assigned Security Roles (Determines Menu Permissions & Reporting Hierarchy)"
+            placeholder={loadingSetup ? "Loading available security roles..." : "Select roles (e.g. Area Head)..."}
+            options={roles.map((r) => ({ id: r.id, name: r.name }))}
+            selectedIds={formData.role_ids}
+            onChange={(ids) => setFormData({ ...formData, role_ids: ids })}
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Link
+            href="/users"
+            className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-[#0d2336] text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-[#0d2336] transition-all"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="flex items-center justify-center gap-2 rounded-xl bg-[#233353] hover:bg-[#162238] dark:bg-sky-500 dark:hover:bg-sky-600 px-6 py-2.5 text-xs font-extrabold text-white shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? (
+              <>
+                <CgSpinner className="animate-spin text-base" />
+                <span>Registering Account...</span>
+              </>
+            ) : (
+              "Save & Register User"
+            )}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

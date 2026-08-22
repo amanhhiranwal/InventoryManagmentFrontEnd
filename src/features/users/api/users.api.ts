@@ -24,8 +24,8 @@ export interface CreateUserPayload {
   company_ids?: string[];
 }
 
-export const getUsersApi = async (page: number = 1, size: number = 20): Promise<{ data: User[]; total: number }> => {
-  const { data } = await api.get("/api/v1/users/", { params: { page, size } });
+export const getUsersApi = async (page: number = 1, size: number = 20, options?: { skipErrorToast?: boolean }): Promise<{ data: User[]; total: number }> => {
+  const { data } = await api.get("/api/v1/users/", { params: { page, size }, skipErrorToast: options?.skipErrorToast });
   return {
     data: data.data || [],
     total: data.total || 0,

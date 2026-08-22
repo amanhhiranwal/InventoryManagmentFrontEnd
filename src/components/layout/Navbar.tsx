@@ -16,7 +16,8 @@ import {
 } from "react-icons/fi";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import api from "@/lib/axios";
 
 export default function Navbar() {
   const user = useAuthStore((state) => state.user);
@@ -25,6 +26,22 @@ export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (user && user.avatar_url === undefined) {
+      api.get("/api/v1/profile/").then((res) => {
+        const currentUser = useAuthStore.getState().user;
+        if (currentUser) {
+          useAuthStore.setState({
+            user: {
+              ...currentUser,
+              avatar_url: res.data?.data?.avatar_url || null
+            }
+          });
+        }
+      }).catch(() => {});
+    }
+  }, [user]);
 
   const getPageTitle = () => {
     if (pathname === "/dashboard") return "Dashboard";
@@ -107,9 +124,17 @@ export default function Navbar() {
         {/* User Profile Avatar with Dropdown */}
         <div className="relative group">
           <div className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 dark:border-[#0d2336] p-1.5 hover:bg-slate-50 dark:hover:bg-[#071929] transition-all">
-            <div className="w-7 h-7 rounded-lg bg-[#233353] text-white flex items-center justify-center text-xs font-bold font-mono shadow-sm">
-              {user?.first_name ? user.first_name[0].toUpperCase() : "U"}
-            </div>
+            {user?.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt="Profile Avatar"
+                className="w-7 h-7 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shadow-xs"
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-lg bg-[#233353] text-white flex items-center justify-center text-xs font-bold font-mono shadow-sm">
+                {user?.first_name ? user.first_name[0].toUpperCase() : "U"}
+              </div>
+            )}
             <div className="hidden text-left sm:block pr-1">
               <p className="text-xs font-bold text-slate-800 dark:text-white leading-tight">
                 {user?.first_name || "User"}
@@ -122,15 +147,28 @@ export default function Navbar() {
           </div>
 
           {/* Dropdown menu */}
-          <div className="absolute right-0 top-full pt-2 z-50 hidden group-hover:block w-52 animate-fadeIn">
+          <div className="absolute right-0 top-full pt-2 z-50 hidden group-hover:block w-56 animate-fadeIn">
             <div className="rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] p-1.5 shadow-xl">
-              <div className="px-3 py-2 border-b border-slate-100 dark:border-[#0d2336]">
-                <p className="text-xs font-bold text-slate-800 dark:text-white truncate">
-                  {user?.first_name} {user?.last_name}
-                </p>
-                <p className="text-[10px] text-slate-400 truncate">
-                  {user?.email}
-                </p>
+              <div className="flex items-center gap-2.5 px-3 py-2 border-b border-slate-100 dark:border-[#0d2336]">
+                {user?.avatar_url ? (
+                  <img
+                    src={user.avatar_url}
+                    alt="User Avatar"
+                    className="w-8 h-8 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-lg bg-[#233353] text-white flex items-center justify-center text-xs font-bold font-mono shrink-0">
+                    {user?.first_name ? user.first_name[0].toUpperCase() : "U"}
+                  </div>
+                )}
+                <div className="truncate">
+                  <p className="text-xs font-bold text-slate-800 dark:text-white truncate">
+                    {user?.first_name} {user?.last_name}
+                  </p>
+                  <p className="text-[10px] text-slate-400 truncate">
+                    {user?.email}
+                  </p>
+                </div>
               </div>
               <ul className="space-y-0.5 mt-1.5">
                 <li>

@@ -44,5 +44,7 @@ export interface AuthUser {
 
   role_id?: string;
 
+  avatar_url?: string | null;
+
   permissions?: Permission[];
 }
