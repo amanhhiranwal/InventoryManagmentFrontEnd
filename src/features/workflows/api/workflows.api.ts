@@ -39,6 +39,10 @@ export interface Lead {
   quotation_items?: Array<{ item: string; qty: number; price: number }>;
   creator_id: string;
   creator_name: string;
+  assigned_to_id?: string;
+  assigned_to_name?: string;
+  assigned_by_id?: string;
+  assigned_by_name?: string;
   created_at: string;
 }
 
@@ -70,6 +74,7 @@ export const createLeadApi = async (payload: {
   title: string;
   description?: string;
   status?: string;
+  assigned_to_id?: string;
 }): Promise<Lead> => {
   const { data } = await api.post("/api/v1/leads/", payload);
   return data.data || data;
@@ -86,6 +91,11 @@ export interface ProgressLeadPayload {
 
 export const progressLeadApi = async (leadId: string, payload: ProgressLeadPayload): Promise<Lead> => {
   const { data } = await api.put(`/api/v1/leads/${leadId}/progress`, payload);
+  return data.data || data;
+};
+
+export const assignLeadApi = async (leadId: string, assignedToId: string): Promise<Lead> => {
+  const { data } = await api.put(`/api/v1/leads/${leadId}/assign`, { assigned_to_id: assignedToId });
   return data.data || data;
 };
 

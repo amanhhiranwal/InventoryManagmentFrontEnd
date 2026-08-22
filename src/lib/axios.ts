@@ -2,6 +2,12 @@ import axios from "axios";
 import Cookies from "js-cookie";
 import { useUIStore } from "./store/ui.store";
 
+declare module "axios" {
+  export interface AxiosRequestConfig {
+    skipErrorToast?: boolean;
+  }
+}
+
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
   timeout: 10000,
@@ -22,12 +28,14 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const isLoginRequest = error.config?.url?.includes("/auth/login");
+    const skipToast = error.config?.skipErrorToast === true;
+
     if (error.response?.status === 401 && !isLoginRequest) {
       Cookies.remove("token");
       if (typeof window !== "undefined") {
         window.location.href = "/login";
       }
-    } else {
+    } else if (!skipToast) {
       let errorMsg = "An unexpected error occurred. Please try again.";
 
       if (error.response?.status === 403) {
@@ -37,7 +45,6 @@ api.interceptors.response.use(
         if (typeof data.detail === "string") {
           errorMsg = data.detail;
         } else if (Array.isArray(data.detail)) {
-          // Format validation errors (e.g. FastAPI 422 errors)
           errorMsg = data.detail.map((err: any) => {
             const field = err.loc ? err.loc.filter((l: any) => l !== "body").join(".") : "field";
             return `${field}: ${err.msg}`;
