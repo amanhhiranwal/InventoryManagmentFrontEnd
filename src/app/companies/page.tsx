@@ -449,7 +449,7 @@ export default function CompaniesPage() {
                 <input
                   type="checkbox"
                   id="is_active"
-                  className="h-4 w-4 rounded border-slate-350 text-primary focus:ring-primary cursor-pointer"
+                  className="h-4 w-4 rounded accent-primary border-slate-350 text-primary focus:ring-primary cursor-pointer"
                   checked={formData.is_active}
                   onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                 />

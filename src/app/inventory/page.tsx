@@ -421,7 +421,7 @@ export default function InventoryPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <PageHeader
           title="Inventory Management"
-          description="Access and track custom products data stored inside MongoDB collections."
+          description="Access and track custom product specifications and inventory stock levels."
         />
         <Button
           onClick={() => {
@@ -484,7 +484,7 @@ export default function InventoryPage() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
             <CgSpinner className="animate-spin text-3xl text-primary" />
-            <span className="text-xs">Connecting to MongoDB databases...</span>
+            <span className="text-xs">Loading inventory items...</span>
           </div>
         ) : items.length > 0 ? (
           <Table headers={["Product Preview", "Item Name", "Serial Number", "Category Group", "Stock Status *", "Wholesale Rate *", "Actions"]}>
@@ -574,7 +574,7 @@ export default function InventoryPage() {
           </Table>
         ) : (
           <div className="text-center py-12 text-slate-400 italic text-xs">
-            No inventory products found inside MongoDB matching these filters.
+            No inventory products found matching these filters.
           </div>
         )}
       </Card>

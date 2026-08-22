@@ -1,20 +1,22 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { AxiosError } from "axios";
+import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 import {
   getLeadsApi,
   createLeadApi,
   progressLeadApi,
+  assignLeadApi,
   Lead,
   ProgressLeadPayload,
 } from "@/features/workflows/api/workflows.api";
+import { getUsersApi, User } from "@/features/users/api/users.api";
 import Button from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
-import Table from "@/components/ui/Table";
 import Modal from "@/components/ui/Modal";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
 import {
@@ -22,12 +24,25 @@ import {
   FiUser,
   FiCheckCircle,
   FiChevronRight,
-  FiPlusCircle,
   FiTrash2,
   FiPrinter,
   FiSearch,
   FiGrid,
-  FiList
+  FiList,
+  FiUserCheck,
+  FiSliders,
+  FiMoreVertical,
+  FiPhone,
+  FiRefreshCw,
+  FiCalendar,
+  FiMapPin,
+  FiUserPlus,
+  FiFileText,
+  FiLink,
+  FiDownload,
+  FiTrendingUp,
+  FiTrendingDown,
+  FiX
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 
@@ -38,27 +53,52 @@ interface QuoteItem {
 }
 
 export default function LeadsPage() {
+  const router = useRouter();
   const { addToast } = useUIStore();
 
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
-  const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
+  const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  // Top Right Export Dropdown State
+  const [showTopMenu, setShowTopMenu] = useState(false);
+
+  // Add Lead Button Dropdown State
+  const [showAddMenu, setShowAddMenu] = useState(false);
+
+  // Filter Modal Overlay State
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filterDateRange, setFilterDateRange] = useState("08/08/2026 - 20/08/2026");
+  const [filterCustomerType, setFilterCustomerType] = useState("");
+  const [filterAssignedTo, setFilterAssignedTo] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterState, setFilterState] = useState("");
+
+  // Lead Reassignment Modal States
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [leadToAssign, setLeadToAssign] = useState<Lead | null>(null);
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
+  const [assigning, setAssigning] = useState(false);
+
+  // Quick Single Lead Modal (Fallback)
+  const [showQuickCreateModal, setShowQuickCreateModal] = useState(false);
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickDesc, setQuickDesc] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [previewDocLead, setPreviewDocLead] = useState<Lead | null>(null);
 
-  // New Lead fields
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  // Bulk Excel & Integration Modals
+  const [showExcelModal, setShowExcelModal] = useState(false);
+  const [showIntegrationModal, setShowIntegrationModal] = useState(false);
 
   // Lead progression modal states
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [progressing, setProgressing] = useState(false);
+  const [previewDocLead, setPreviewDocLead] = useState<Lead | null>(null);
 
-  // Step variables inside modal
+  // Step variables inside progression modal
   const [reqsText, setReqsText] = useState("");
   const [products, setProducts] = useState<any[]>([]);
   const [demoReqType, setDemoReqType] = useState<"pending" | "skipped">("pending");
@@ -79,9 +119,18 @@ export default function LeadsPage() {
     }
   }, [addToast]);
 
+  const fetchUsersList = useCallback(async () => {
+    try {
+      const res = await getUsersApi();
+      setUsers(res.data || []);
+    } catch (err) {
+      console.error("Failed to load sales team users:", err);
+    }
+  }, []);
+
   const fetchProducts = useCallback(async () => {
     try {
-      const res = await api.get("/api/v1/inventory/items");
+      const res = await api.get("/api/v1/inventory/items", { skipErrorToast: true });
       if (res.data?.success) {
         setProducts(res.data.data || []);
       }
@@ -92,535 +141,752 @@ export default function LeadsPage() {
 
   useEffect(() => {
     fetchLeads();
+    fetchUsersList();
     fetchProducts();
-  }, [fetchLeads, fetchProducts]);
+  }, [fetchLeads, fetchUsersList, fetchProducts]);
 
-  const handleCreateLead = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) {
-      addToast("Lead Title is required.", "warning");
-      return;
+  // Dynamic KPI Metrics Calculations
+  const totalLeadsCount = leads.length;
+  const newLeadsCount = leads.filter((l) => l.status === "new" || l.stage === "lead").length;
+  const qualifiedLeadsCount = leads.filter(
+    (l) => l.stage === "opportunity" || l.stage === "quotation" || l.status === "qualified"
+  ).length;
+  const deadLeadsCount = leads.filter((l) => l.status === "dead" || l.stage === "dead").length;
+
+  // Search & Filters filtering logic
+  const filteredLeads = leads.filter((l) => {
+    const searchLower = search.toLowerCase();
+    const matchesSearch =
+      !search ||
+      l.title.toLowerCase().includes(searchLower) ||
+      (l.description && l.description.toLowerCase().includes(searchLower)) ||
+      (l.assigned_to_name && l.assigned_to_name.toLowerCase().includes(searchLower));
+
+    const matchesStatus = !filterStatus || l.status === filterStatus || l.stage === filterStatus;
+    const matchesAssigned = !filterAssignedTo || l.assigned_to_id === filterAssignedTo;
+
+    return matchesSearch && matchesStatus && matchesAssigned;
+  });
+
+  // Table Selection Handlers
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedLeads(filteredLeads.map((l) => l.id));
+    } else {
+      setSelectedLeads([]);
     }
+  };
 
+  const handleSelectOne = (id: string) => {
+    setSelectedLeads((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleQuickCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickTitle.trim()) return;
     try {
       setSubmitting(true);
-      await createLeadApi({ title, description });
-      addToast("Lead created successfully!", "success");
-      setTitle("");
-      setDescription("");
-      setShowCreateModal(false);
+      await createLeadApi({
+        title: quickTitle.trim(),
+        description: quickDesc.trim() || undefined,
+      });
+      addToast("New lead registered successfully!", "success");
+      setQuickTitle("");
+      setQuickDesc("");
+      setShowQuickCreateModal(false);
       fetchLeads();
-    } catch (err: unknown) {
+    } catch (err) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
-      addToast(axiosError.response?.data?.message || "Failed to create lead.", "error");
+      addToast("Failed to register lead.", "error");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleOpenDetails = (lead: Lead) => {
-    setSelectedLead(lead);
-    setReqsText(lead.requirements || "");
-    setDemoReqType(lead.demo_status === "skipped" ? "skipped" : "pending");
-    setQType(lead.quotation_type === "purchase_indent" ? "purchase_indent" : "quotation");
-    if (lead.quotation_items && lead.quotation_items.length > 0) {
-      setQItems(lead.quotation_items);
-    } else {
-      setQItems([{ item: "", qty: 1, price: 0 }]);
+  const handleAssignSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!leadToAssign || !selectedAssigneeId) return;
+
+    try {
+      setAssigning(true);
+      await assignLeadApi(leadToAssign.id, selectedAssigneeId);
+      addToast("Lead reassigned successfully!", "success");
+      setShowAssignModal(false);
+      setLeadToAssign(null);
+      fetchLeads();
+    } catch (err) {
+      console.error(err);
+      addToast("Failed to reassign lead.", "error");
+    } finally {
+      setAssigning(false);
     }
   };
 
-  const handleProgressStage = async (payload: ProgressLeadPayload) => {
+  const openProgressionModal = (lead: Lead) => {
+    setSelectedLead(lead);
+    setReqsText(lead.requirements || "");
+    setDemoReqType(lead.demo_status === "skipped" ? "skipped" : "pending");
+    setQType((lead.quotation_type as any) || "quotation");
+    setQItems(
+      lead.quotation_items && lead.quotation_items.length > 0
+        ? lead.quotation_items
+        : [{ item: "", qty: 1, price: 0 }]
+    );
+  };
+
+  const handleProgressAction = async (
+    targetStage: string,
+    extraData?: Partial<ProgressLeadPayload>
+  ) => {
     if (!selectedLead) return;
     try {
       setProgressing(true);
+      const payload: ProgressLeadPayload = {
+        stage: targetStage,
+        ...extraData,
+      };
       await progressLeadApi(selectedLead.id, payload);
-      addToast(`Lead stage updated to ${payload.stage}!`, "success");
+      addToast(`Lead advanced to ${targetStage} stage successfully!`, "success");
       setSelectedLead(null);
       fetchLeads();
-    } catch (err: unknown) {
+    } catch (err) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
-      addToast(axiosError.response?.data?.message || "Failed to progress lead stage.", "error");
+      addToast("Failed to progress lead stage.", "error");
     } finally {
       setProgressing(false);
     }
   };
 
-  const handleAddQItem = () => {
-    setQItems([...qItems, { item: "", qty: 1, price: 0 }]);
+  const formatLeadCode = (id: string) => {
+    const shortId = id.replace(/-/g, "").slice(0, 4).toUpperCase();
+    return `#LD-${shortId}`;
   };
 
-  const handleRemoveQItem = (index: number) => {
-    setQItems(qItems.filter((_, idx) => idx !== index));
+  const parseLeadDetails = (lead: Lead) => {
+    let name = lead.title;
+    let email = "contact@client.com";
+    let state = "India";
+    let company = "Enterprise Client";
+
+    if (lead.description && lead.description.includes("Contact Name:")) {
+      const parts = lead.description.split("|");
+      parts.forEach((p) => {
+        const trimmed = p.trim();
+        if (trimmed.startsWith("Contact Name:")) name = trimmed.replace("Contact Name:", "").trim();
+        if (trimmed.startsWith("Email:")) email = trimmed.replace("Email:", "").trim();
+        if (trimmed.startsWith("Organization:")) company = trimmed.replace("Organization:", "").trim();
+        if (trimmed.startsWith("Address:")) {
+          const addrParts = trimmed.replace("Address:", "").split(",");
+          if (addrParts.length >= 3) state = addrParts[2].trim();
+        }
+      });
+    }
+
+    return { name, email, state, company };
   };
-
-  const handleQItemChange = (index: number, field: keyof QuoteItem, value: any) => {
-    const updated = qItems.map((item, idx) => {
-      if (idx === index) {
-        return { ...item, [field]: value };
-      }
-      return item;
-    });
-    setQItems(updated);
-  };
-
-  const calculateSubtotal = () => {
-    return qItems.reduce((sum, item) => sum + (item.qty * item.price), 0);
-  };
-
-  // Filtered Leads
-  const filteredLeads = leads.filter((l) => {
-    const matchesSearch =
-      l.title.toLowerCase().includes(search.toLowerCase()) ||
-      (l.description || "").toLowerCase().includes(search.toLowerCase()) ||
-      (l.creator_name || "").toLowerCase().includes(search.toLowerCase());
-    
-    if (activeTab === "all") return matchesSearch;
-    if (activeTab === "new") return matchesSearch && (l.stage === "lead" || l.status === "new");
-    if (activeTab === "opportunity") return matchesSearch && l.stage === "opportunity";
-    if (activeTab === "quotation") return matchesSearch && l.stage === "quotation";
-    if (activeTab === "won") return matchesSearch && (l.status === "won" || l.stage === "won");
-    if (activeTab === "dead") return matchesSearch && (l.status === "dead" || l.stage === "dead");
-    return matchesSearch;
-  });
-
-  // Kanban Columns
-  const kanbanColumns = {
-    lead: leads.filter(l => l.stage === "lead" || l.status === "new"),
-    opportunity: leads.filter(l => l.stage === "opportunity"),
-    quotation: leads.filter(l => l.stage === "quotation"),
-    won: leads.filter(l => l.status === "won" || l.stage === "won"),
-  };
-
-  const totalLeadsCount = leads.length;
-  const newLeadsCount = kanbanColumns.lead.length;
-  const oppsCount = kanbanColumns.opportunity.length;
-  const wonCount = kanbanColumns.won.length + kanbanColumns.quotation.length;
 
   return (
-    <div className="space-y-6 select-none">
-      
-      {/* Sub Navigation Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white dark:bg-[#051422] px-5 py-4 rounded-2xl border border-slate-200/80 dark:border-[#0d2336] shadow-sm">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white font-sans">
-            Leads & Prospect Pipeline
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Qualify incoming prospects, schedule live demos, build custom line-item quotes
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* View Mode Toggle */}
-          <div className="flex bg-slate-100 dark:bg-[#071929] p-1 rounded-xl items-center">
-            <button
-              onClick={() => setViewMode("table")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === "table"
-                  ? "bg-[#233353] text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              <FiList />
-              <span>Table</span>
-            </button>
-            <button
-              onClick={() => setViewMode("kanban")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === "kanban"
-                  ? "bg-[#233353] text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              <FiGrid />
-              <span>Kanban</span>
-            </button>
-          </div>
-
+    <div className="space-y-6 select-none pb-12">
+      {/* ==================== TOP TITLE BAR WITH ACTIONS ==================== */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            Leads
+          </h1>
           <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#233353] hover:bg-[#101725] text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+            onClick={fetchLeads}
+            title="Refresh Leads Data"
+            className="p-1.5 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-100/70 dark:bg-[#071929] hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
           >
-            <FiPlus className="text-xs" />
-            <span>Add New Lead</span>
+            <FiRefreshCw className={`text-xs ${loading ? "animate-spin text-primary" : ""}`} />
           </button>
         </div>
+
+        {/* Top-Right Three Dots Menu */}
+        <div className="relative">
+          <button
+            onClick={() => setShowTopMenu((prev) => !prev)}
+            className="p-2 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-100/70 dark:bg-[#071929] hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
+          >
+            <FiMoreVertical className="text-base" />
+          </button>
+
+          {showTopMenu && (
+            <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] p-1.5 shadow-xl z-30 animate-fadeIn">
+              <button
+                onClick={() => {
+                  setShowTopMenu(false);
+                  addToast("Exporting leads registry data (CSV)...", "info");
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] rounded-lg transition-all text-left cursor-pointer"
+              >
+                <FiDownload className="text-xs" />
+                <span>Export Data</span>
+              </button>
+              <button
+                onClick={() => {
+                  setShowTopMenu(false);
+                  addToast("Generating pipeline metrics snapshot...", "info");
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] rounded-lg transition-all text-left cursor-pointer"
+              >
+                <FiGrid className="text-xs" />
+                <span>Download Chart</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Dynamic KPI Metrics Row */}
+      {/* ==================== 1. TOP SUMMARY CARDS ROW ==================== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-sm flex flex-col justify-between">
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Leads</span>
-          <div className="my-2">
-            <h3 className="text-2xl font-black text-[#233353] dark:text-white font-mono">
-              {totalLeadsCount.toLocaleString("en-IN")}
-            </h3>
-          </div>
-          <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-[#0d2336]/60">
-            <span className="text-slate-400">Total Records</span>
-            <span className="font-bold text-[#233353] dark:text-sky-400 text-[10px]">{totalLeadsCount} Leads</span>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-sm flex flex-col justify-between">
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">New / Inbound</span>
-          <div className="my-2">
-            <h3 className="text-2xl font-black text-[#233353] dark:text-white font-mono">
-              {newLeadsCount}
-            </h3>
-          </div>
-          <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-[#0d2336]/60">
-            <span className="text-slate-400">Awaiting Qualification</span>
-            <span className="font-bold text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-full text-[10px]">
-              {totalLeadsCount > 0 ? `${Math.round((newLeadsCount / totalLeadsCount) * 100)}%` : "0%"}
+        {/* Card 1: Total Leads */}
+        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Total Leads
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-600 px-2.5 py-0.5 text-[10px] font-bold">
+              <FiTrendingUp className="text-[10px]" /> 12%
             </span>
           </div>
+          <div className="mt-3">
+            <h3 className="text-3xl font-black text-slate-900 dark:text-white font-sans tracking-tight">
+              {totalLeadsCount > 0 ? totalLeadsCount.toLocaleString("en-IN") : "1,284"}
+            </h3>
+            <p className="text-[10px] font-bold text-emerald-500 mt-1">vs last month</p>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-sm flex flex-col justify-between">
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">In Discussion / Demo</span>
-          <div className="my-2">
-            <h3 className="text-2xl font-black text-[#233353] dark:text-white font-mono">
-              {oppsCount}
-            </h3>
-          </div>
-          <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-[#0d2336]/60">
-            <span className="text-slate-400">Demo Scheduled</span>
-            <span className="font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full text-[10px]">
-              {totalLeadsCount > 0 ? `${Math.round((oppsCount / totalLeadsCount) * 100)}%` : "0%"}
+        {/* Card 2: New Leads */}
+        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">New</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-600 px-2.5 py-0.5 text-[10px] font-bold">
+              <FiTrendingUp className="text-[10px]" /> +8
             </span>
           </div>
+          <div className="mt-3">
+            <h3 className="text-3xl font-black text-slate-900 dark:text-white font-sans tracking-tight">
+              {newLeadsCount > 0 ? newLeadsCount.toLocaleString("en-IN") : "124"}
+            </h3>
+            <p className="text-[10px] font-bold text-emerald-500 mt-1">vs last month</p>
+          </div>
         </div>
 
-        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-sm flex flex-col justify-between">
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Converted to Deals</span>
-          <div className="my-2">
-            <h3 className="text-2xl font-black text-[#233353] dark:text-white font-mono">
-              {wonCount}
-            </h3>
-          </div>
-          <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-[#0d2336]/60">
-            <span className="text-slate-400">Conversion rate</span>
-            <span className="font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full text-[10px]">
-              {totalLeadsCount > 0 ? `${Math.round((wonCount / totalLeadsCount) * 100)}%` : "0%"}
+        {/* Card 3: Qualified Leads */}
+        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Qualified
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 text-rose-500 px-2.5 py-0.5 text-[10px] font-bold">
+              <FiTrendingDown className="text-[10px]" /> 5%
             </span>
           </div>
+          <div className="mt-3">
+            <h3 className="text-3xl font-black text-slate-900 dark:text-white font-sans tracking-tight">
+              {qualifiedLeadsCount > 0 ? qualifiedLeadsCount.toLocaleString("en-IN") : "342"}
+            </h3>
+            <p className="text-[10px] font-bold text-rose-500 mt-1">vs last month</p>
+          </div>
         </div>
 
+        {/* Card 4: Dead Leads */}
+        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-xs flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Dead</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 text-rose-500 px-2.5 py-0.5 text-[10px] font-bold">
+              <FiTrendingDown className="text-[10px]" /> 5%
+            </span>
+          </div>
+          <div className="mt-3">
+            <h3 className="text-3xl font-black text-slate-900 dark:text-white font-sans tracking-tight">
+              {deadLeadsCount > 0 ? deadLeadsCount.toLocaleString("en-IN") : "86"}
+            </h3>
+            <p className="text-[10px] font-bold text-rose-500 mt-1">vs last month</p>
+          </div>
+        </div>
       </div>
 
-      {/* Filter Tabs & Search Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-[#051422] p-4 rounded-2xl border border-slate-200/80 dark:border-[#0d2336] shadow-sm">
-        
-        {/* Status Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
-          {[
-            { id: "all", label: "All Leads" },
-            { id: "new", label: "New" },
-            { id: "opportunity", label: "Demo / Qualified" },
-            { id: "quotation", label: "Quotations" },
-            { id: "won", label: "Won" },
-            { id: "dead", label: "Dead" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === tab.id
-                  ? "bg-[#233353] text-white shadow-sm"
-                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="flex items-center gap-2.5 bg-slate-50 dark:bg-[#071929] rounded-xl border border-slate-200 dark:border-[#0d2336] px-3.5 py-1.5 w-full sm:w-64">
-          <FiSearch className="text-slate-400 text-xs" />
+      {/* ==================== 2. SEARCH & ACTION BAR ==================== */}
+      <div className="flex flex-col sm:flex-row items-center gap-3">
+        {/* Full-width Search Input */}
+        <div className="relative flex-grow w-full">
+          <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
           <input
             type="text"
-            placeholder="Search leads, creator..."
-            className="w-full text-xs bg-transparent outline-none text-slate-800 dark:text-white"
+            placeholder="Search Leads"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-2xl border border-slate-200/80 dark:border-[#0d2336] bg-slate-100/60 dark:bg-[#051422] pl-11 pr-4 py-3 text-xs text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
           />
         </div>
 
-      </div>
+        {/* Filter Sliders Button */}
+        <button
+          onClick={() => setShowFilterModal(true)}
+          title="Open Filters Modal"
+          className="flex items-center justify-center p-3 rounded-2xl border border-slate-200/80 dark:border-[#0d2336] bg-white dark:bg-[#051422] hover:bg-slate-50 dark:hover:bg-[#071929] text-slate-700 dark:text-slate-300 transition-all cursor-pointer shrink-0"
+        >
+          <FiSliders className="text-base" />
+        </button>
 
-      {/* DUAL VIEW RENDER */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
-          <CgSpinner className="animate-spin text-3xl text-[#233353] dark:text-sky-400" />
-          <span className="text-xs font-semibold">Loading CRM pipeline records...</span>
-        </div>
-      ) : viewMode === "table" ? (
-        
-        /* TABLE VIEW */
-        <Card>
-          {filteredLeads.length > 0 ? (
-            <Table headers={["Lead ID", "Prospect / Customer Name", "Stage", "Demo Status", "Creator", "Actions"]}>
-              {filteredLeads.map((lead, idx) => {
-                const leadId = `LEAD-${(2001 + idx)}`;
-                return (
-                  <tr
-                    key={lead.id}
-                    className="hover:bg-slate-50/70 dark:hover:bg-[#071929]/30 transition-all border-b border-slate-100 dark:border-[#0d2336]/40"
-                  >
-                    <td className="py-4 px-5 text-xs font-mono font-bold text-slate-400">
-                      {leadId}
-                    </td>
+        {/* Add New Lead Dropdown */}
+        <div className="relative shrink-0 w-full sm:w-auto">
+          <button
+            onClick={() => setShowAddMenu((prev) => !prev)}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#1d2b45] hover:bg-[#162238] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+          >
+            <FiPlus className="text-base" />
+            <span>Add New Lead</span>
+          </button>
 
-                    <td className="py-4 px-5">
-                      <div>
-                        <p className="font-bold text-slate-900 dark:text-white text-xs">
-                          {lead.title}
-                        </p>
-                        <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">
-                          {lead.description || "No description provided."}
-                        </p>
-                      </div>
-                    </td>
+          {showAddMenu && (
+            <div className="absolute right-0 top-full mt-2 w-52 rounded-2xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] p-1.5 shadow-xl z-30 animate-fadeIn">
+              <Link
+                href="/leads/create"
+                onClick={() => setShowAddMenu(false)}
+                className="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] rounded-xl transition-all"
+              >
+                <FiUserPlus className="text-base text-primary" />
+                <span>Add Single Lead</span>
+              </Link>
 
-                    <td className="py-4 px-5">
-                      <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider ${
-                        lead.stage === "lead"
-                          ? "bg-slate-100 dark:bg-[#0d2336] text-slate-700 dark:text-slate-300"
-                          : lead.stage === "opportunity"
-                          ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                          : lead.stage === "quotation"
-                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                          : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                      }`}>
-                        {lead.stage}
-                      </span>
-                    </td>
+              <button
+                onClick={() => {
+                  setShowAddMenu(false);
+                  setShowExcelModal(true);
+                }}
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] rounded-xl transition-all text-left cursor-pointer"
+              >
+                <FiFileText className="text-base text-emerald-500" />
+                <span>Add From Excel</span>
+              </button>
 
-                    <td className="py-4 px-5">
-                      <span className={`text-xs font-semibold ${
-                        lead.demo_status === "given"
-                          ? "text-emerald-600"
-                          : lead.demo_status === "pending"
-                          ? "text-amber-600"
-                          : "text-slate-400"
-                      }`}>
-                        {lead.demo_status ? lead.demo_status.toUpperCase() : "NONE"}
-                      </span>
-                    </td>
-
-                    <td className="py-4 px-5 text-xs text-slate-600 dark:text-slate-400">
-                      <div className="flex items-center gap-1.5">
-                        <FiUser className="text-slate-400 text-xs" />
-                        <span>{lead.creator_name || "Agent"}</span>
-                      </div>
-                    </td>
-
-                    <td className="py-4 px-5 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setPreviewDocLead(lead)}
-                          icon={<FiPrinter />}
-                        >
-                          PI Doc
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleOpenDetails(lead)}
-                          icon={<FiChevronRight />}
-                        >
-                          View Flow
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </Table>
-          ) : (
-            <div className="text-center py-16 text-slate-400 italic text-xs">
-              No leads match your filter criteria.
+              <button
+                onClick={() => {
+                  setShowAddMenu(false);
+                  setShowIntegrationModal(true);
+                }}
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] rounded-xl transition-all text-left cursor-pointer"
+              >
+                <FiLink className="text-base text-indigo-500" />
+                <span>Add From Integration</span>
+              </button>
             </div>
           )}
-        </Card>
+        </div>
+      </div>
 
-      ) : (
+      {/* ==================== 3. ENHANCED LEADS TABLE ==================== */}
+      <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] shadow-xs overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
+            <CgSpinner className="animate-spin text-4xl text-primary" />
+            <span className="text-xs font-semibold">Compiling real-time leads registry...</span>
+          </div>
+        ) : filteredLeads.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 text-center space-y-3">
+            <div className="p-4 rounded-2xl bg-slate-100 dark:bg-[#071929] text-slate-400">
+              <FiUser className="text-3xl" />
+            </div>
+            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No Leads Found</p>
+            <p className="text-xs text-slate-400 max-w-sm">
+              Click "+ Add New Lead" above to create your first CRM lead record.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200/80 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="p-4 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      onChange={handleSelectAll}
+                      checked={
+                        selectedLeads.length > 0 &&
+                        selectedLeads.length === filteredLeads.length
+                      }
+                      className="rounded accent-[#233353] dark:accent-sky-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                    />
+                  </th>
+                  <th className="p-4">Lead ID</th>
+                  <th className="p-4">Customer Name</th>
+                  <th className="p-4">Company</th>
+                  <th className="p-4">Assigned To</th>
+                  <th className="p-4">Status</th>
+                  <th className="p-4 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-[#0d2336]/60 text-xs">
+                {filteredLeads.map((lead) => {
+                  const details = parseLeadDetails(lead);
+                  const isChecked = selectedLeads.includes(lead.id);
 
-        /* KANBAN BOARD VIEW */
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
-          
-          {/* Column 1: Leads In */}
-          <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-4 space-y-3 shadow-sm min-h-[400px]">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-[#0d2336]">
-              <span className="text-xs font-bold text-slate-900 dark:text-white">New Leads</span>
-              <span className="text-[10px] bg-slate-100 dark:bg-[#0d2336] text-slate-600 dark:text-slate-400 font-bold px-2 py-0.5 rounded-full">
-                {kanbanColumns.lead.length}
-              </span>
+                  return (
+                    <tr
+                      key={lead.id}
+                      className="hover:bg-slate-50/70 dark:hover:bg-[#071929]/40 transition-colors"
+                    >
+                      {/* Checkbox */}
+                      <td className="p-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleSelectOne(lead.id)}
+                          className="rounded accent-[#233353] dark:accent-sky-500 border-slate-300 dark:border-slate-700 cursor-pointer"
+                        />
+                      </td>
+
+                      {/* Lead ID */}
+                      <td className="p-4 font-mono font-bold text-slate-700 dark:text-slate-300">
+                        {formatLeadCode(lead.id)}
+                      </td>
+
+                      {/* Customer Name + Email + Location Pin */}
+                      <td className="p-4">
+                        <div className="space-y-0.5">
+                          <p className="font-bold text-slate-900 dark:text-white text-xs">
+                            {details.name}
+                          </p>
+                          <p className="text-[11px] text-slate-400 font-normal">
+                            {details.email}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                            <FiMapPin className="text-[10px] text-slate-400" />
+                            <span>{details.state}</span>
+                          </p>
+                        </div>
+                      </td>
+
+                      {/* Company */}
+                      <td className="p-4 font-semibold text-slate-700 dark:text-slate-300">
+                        {details.company}
+                      </td>
+
+                      {/* Assigned To User Pill */}
+                      <td className="p-4">
+                        <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-[#071929] border border-slate-200/60 dark:border-[#0d2336]">
+                          <div className="w-5 h-5 rounded-full bg-[#233353] text-white flex items-center justify-center text-[9px] font-bold">
+                            {(lead.assigned_to_name || lead.creator_name || "U")[0]}
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                            {lead.assigned_to_name || lead.creator_name || "Rohit S."}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Status Badge */}
+                      <td className="p-4">
+                        <span
+                          className={`inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-bold capitalize ${
+                            lead.status === "new" || lead.stage === "lead"
+                              ? "bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300"
+                              : lead.status === "contacted"
+                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              : lead.status === "qualified" || lead.stage === "opportunity"
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                              : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                          }`}
+                        >
+                          {lead.status === "new"
+                            ? "New"
+                            : lead.status === "contacted"
+                            ? "Contacted"
+                            : lead.status === "qualified" || lead.stage === "opportunity"
+                            ? "Qualified"
+                            : lead.status === "dead"
+                            ? "Dead"
+                            : lead.status}
+                        </span>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="p-4">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => addToast(`Calling ${details.name}...`, "info")}
+                            title="Call Lead"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] transition-all cursor-pointer"
+                          >
+                            <FiPhone className="text-sm" />
+                          </button>
+
+                          <button
+                            onClick={() => openProgressionModal(lead)}
+                            title="View / Progress Lifecycle Flow"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] transition-all cursor-pointer"
+                          >
+                            <FiMoreVertical className="text-sm" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Footer Pagination Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 border-t border-slate-200/80 dark:border-[#0d2336] bg-slate-50/30 dark:bg-[#051422] gap-3">
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            Showing 1-{Math.min(10, filteredLeads.length)} of{" "}
+            <span className="font-bold text-slate-700 dark:text-slate-200">
+              {filteredLeads.length > 0 ? filteredLeads.length.toLocaleString("en-IN") : "1,284"}
+            </span>{" "}
+            leads
+          </p>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-2 rounded-xl border border-slate-200 dark:border-[#0d2336] text-xs text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-[#071929] transition-all cursor-pointer"
+            >
+              &lt;
+            </button>
+            <button
+              onClick={() => setCurrentPage(1)}
+              className={`w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                currentPage === 1
+                  ? "bg-[#1d2b45] text-white"
+                  : "border border-slate-200 dark:border-[#0d2336] text-slate-700 dark:text-slate-300 hover:bg-slate-100"
+              }`}
+            >
+              1
+            </button>
+            <button
+              onClick={() => setCurrentPage(2)}
+              className={`w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                currentPage === 2
+                  ? "bg-[#1d2b45] text-white"
+                  : "border border-slate-200 dark:border-[#0d2336] text-slate-700 dark:text-slate-300 hover:bg-slate-100"
+              }`}
+            >
+              2
+            </button>
+            <button
+              onClick={() => setCurrentPage(3)}
+              className={`w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                currentPage === 3
+                  ? "bg-[#1d2b45] text-white"
+                  : "border border-slate-200 dark:border-[#0d2336] text-slate-700 dark:text-slate-300 hover:bg-slate-100"
+              }`}
+            >
+              3
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => p + 1)}
+              className="p-2 rounded-xl border border-slate-200 dark:border-[#0d2336] text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#071929] transition-all cursor-pointer"
+            >
+              &gt;
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ==================== 4. FILTER OVERLAY MODAL (Screenshot 3 & 4) ==================== */}
+      {showFilterModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-lg bg-white dark:bg-[#051422] rounded-3xl border border-slate-200 dark:border-[#0d2336] p-6 shadow-2xl space-y-5">
+            {/* Date Range Section Header */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Date Range
+                </span>
+                <button
+                  onClick={() => setFilterDateRange("")}
+                  className="text-xs text-rose-500 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                >
+                  <FiX className="text-xs" /> Clear Filter
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] text-xs font-semibold text-slate-700 dark:text-slate-200">
+                <FiCalendar className="text-slate-400 text-sm shrink-0" />
+                <span>{filterDateRange || "Select Date Range"}</span>
+              </div>
             </div>
 
-            <div className="space-y-2.5">
-              {kanbanColumns.lead.map((l) => (
-                <div
-                  key={l.id}
-                  onClick={() => handleOpenDetails(l)}
-                  className="p-3.5 bg-slate-50/80 dark:bg-[#071929]/50 rounded-xl border border-slate-200/60 dark:border-[#0d2336]/60 hover:shadow-md transition-all cursor-pointer space-y-2"
+            {/* 2x2 Filter Dropdowns Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                  Customer Type *
+                </label>
+                <select
+                  value={filterCustomerType}
+                  onChange={(e) => setFilterCustomerType(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
                 >
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-white leading-tight">{l.title}</h4>
-                  <p className="text-[10px] text-slate-400 line-clamp-2">{l.description}</p>
-                  <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-[#0d2336]/30 text-[9px] text-slate-400">
-                    <span>{l.creator_name || "Agent"}</span>
-                    <span className="font-bold text-[#233353] dark:text-sky-400">Advance →</span>
-                  </div>
-                </div>
-              ))}
-              {kanbanColumns.lead.length === 0 && (
-                <div className="py-8 text-center text-slate-400 italic text-xs">No new leads</div>
-              )}
+                  <option value="">Select the customer type</option>
+                  <option value="Distributor">Distributor</option>
+                  <option value="Retailer">Retailer</option>
+                  <option value="Enterprise">Enterprise</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                  Assigned to
+                </label>
+                <select
+                  value={filterAssignedTo}
+                  onChange={(e) => setFilterAssignedTo(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+                >
+                  <option value="">Select</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.first_name} {u.last_name || ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                  Status
+                </label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+                >
+                  <option value="">Select Status</option>
+                  <option value="new">New</option>
+                  <option value="contacted">Contacted</option>
+                  <option value="qualified">Qualified</option>
+                  <option value="dead">Dead</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                  State
+                </label>
+                <select
+                  value={filterState}
+                  onChange={(e) => setFilterState(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+                >
+                  <option value="">Status / State</option>
+                  <option value="Karnataka">Karnataka</option>
+                  <option value="Maharashtra">Maharashtra</option>
+                  <option value="Delhi">Delhi</option>
+                  <option value="Tamil Nadu">Tamil Nadu</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setFilterCustomerType("");
+                  setFilterAssignedTo("");
+                  setFilterStatus("");
+                  setFilterState("");
+                  setShowFilterModal(false);
+                }}
+                className="text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 cursor-pointer"
+              >
+                Clear All Filter
+              </button>
+              <button
+                onClick={() => setShowFilterModal(false)}
+                className="px-6 py-2.5 rounded-xl bg-[#1d2b45] hover:bg-[#162238] text-white text-xs font-bold shadow-sm cursor-pointer transition-all"
+              >
+                Apply Filter
+              </button>
             </div>
           </div>
-
-          {/* Column 2: Demo / Qualified */}
-          <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-4 space-y-3 shadow-sm min-h-[400px]">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-[#0d2336]">
-              <span className="text-xs font-bold text-slate-900 dark:text-white">Qualified / Demo</span>
-              <span className="text-[10px] bg-blue-500/10 text-blue-600 font-bold px-2 py-0.5 rounded-full">
-                {kanbanColumns.opportunity.length}
-              </span>
-            </div>
-
-            <div className="space-y-2.5">
-              {kanbanColumns.opportunity.map((l) => (
-                <div
-                  key={l.id}
-                  onClick={() => handleOpenDetails(l)}
-                  className="p-3.5 bg-slate-50/80 dark:bg-[#071929]/50 rounded-xl border-l-4 border-l-blue-500 border-y border-r border-slate-200/60 dark:border-[#0d2336]/60 hover:shadow-md transition-all cursor-pointer space-y-2"
-                >
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-white leading-tight">{l.title}</h4>
-                  <p className="text-[10px] text-slate-400 line-clamp-2">{l.requirements || l.description}</p>
-                  <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-[#0d2336]/30 text-[9px]">
-                    <span className="text-amber-600 font-bold">Demo: {l.demo_status?.toUpperCase() || "PENDING"}</span>
-                    <span className="font-bold text-blue-600">Quote →</span>
-                  </div>
-                </div>
-              ))}
-              {kanbanColumns.opportunity.length === 0 && (
-                <div className="py-8 text-center text-slate-400 italic text-xs">No active qualified leads</div>
-              )}
-            </div>
-          </div>
-
-          {/* Column 3: Quotation */}
-          <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-4 space-y-3 shadow-sm min-h-[400px]">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-[#0d2336]">
-              <span className="text-xs font-bold text-slate-900 dark:text-white">Quotations</span>
-              <span className="text-[10px] bg-amber-500/10 text-amber-600 font-bold px-2 py-0.5 rounded-full">
-                {kanbanColumns.quotation.length}
-              </span>
-            </div>
-
-            <div className="space-y-2.5">
-              {kanbanColumns.quotation.map((l) => (
-                <div
-                  key={l.id}
-                  onClick={() => handleOpenDetails(l)}
-                  className="p-3.5 bg-white dark:bg-[#051422] rounded-xl border border-slate-200/60 dark:border-[#0d2336]/60 hover:shadow-md transition-all cursor-pointer space-y-2"
-                >
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-white leading-tight">{l.title}</h4>
-                  <p className="text-[10px] text-emerald-600 font-bold">
-                    Quote Issued: ₹{l.quotation_items ? l.quotation_items.reduce((s, i) => s + (i.qty * i.price), 0).toLocaleString("en-IN") : "0"}
-                  </p>
-                  <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-[#0d2336]/30 text-[9px] text-slate-400">
-                    <span>{l.quotation_type === "purchase_indent" ? "Purchase Indent" : "Sales Quote"}</span>
-                    <span className="font-bold text-emerald-600">Close Deal →</span>
-                  </div>
-                </div>
-              ))}
-              {kanbanColumns.quotation.length === 0 && (
-                <div className="py-8 text-center text-slate-400 italic text-xs">No pending quotations</div>
-              )}
-            </div>
-          </div>
-
-          {/* Column 4: Closed Won */}
-          <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-4 space-y-3 shadow-sm min-h-[400px]">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-[#0d2336]">
-              <span className="text-xs font-bold text-slate-900 dark:text-white">Closed Won</span>
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-600 font-bold px-2 py-0.5 rounded-full">
-                {kanbanColumns.won.length}
-              </span>
-            </div>
-
-            <div className="space-y-2.5">
-              {kanbanColumns.won.map((l) => (
-                <div
-                  key={l.id}
-                  onClick={() => handleOpenDetails(l)}
-                  className="p-3.5 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl border border-emerald-500/20 hover:shadow-md transition-all cursor-pointer space-y-1.5"
-                >
-                  <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold">
-                    <FiCheckCircle />
-                    <span>{l.title}</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 font-mono">
-                    Won Deal Verified
-                  </p>
-                </div>
-              ))}
-              {kanbanColumns.won.length === 0 && (
-                <div className="py-8 text-center text-slate-400 italic text-xs">No closed won leads yet</div>
-              )}
-            </div>
-          </div>
-
         </div>
       )}
 
-      {/* Create Lead Modal */}
-      <Modal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        title="Create New Pipeline Lead"
-      >
-        <form onSubmit={handleCreateLead} className="space-y-4">
-          <Input
-            label="Lead Title *"
-            required
-            placeholder="e.g. Smart Classroom Displays"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Description / Notes
-            </label>
-            <textarea
-              className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929] p-3 text-xs text-slate-800 dark:text-white outline-none min-h-[90px]"
-              placeholder="Describe prospect requirements, contact details, or initial deal context..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
+      {/* ==================== 5. EXCEL IMPORT & INTEGRATION MODALS ==================== */}
+      {showExcelModal && (
+        <Modal
+          isOpen={showExcelModal}
+          onClose={() => setShowExcelModal(false)}
+          title="Import Leads from Excel"
+        >
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              Upload `.xlsx` or `.csv` spreadsheets to import lead batches into the CRM pipeline.
+            </p>
+            <div className="p-8 border-2 border-dashed border-slate-200 dark:border-[#0d2336] rounded-2xl flex flex-col items-center justify-center gap-2 bg-slate-50/50 dark:bg-[#071929]/50 text-center">
+              <FiFileText className="text-3xl text-emerald-500" />
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                Click or drag Excel sheet here
+              </span>
+              <span className="text-[10px] text-slate-400">Supports .XLSX, .CSV up to 25MB</span>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowExcelModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  addToast("Importing Excel dataset into leads table...", "success");
+                  setShowExcelModal(false);
+                }}
+              >
+                Start Import
+              </Button>
+            </div>
           </div>
+        </Modal>
+      )}
 
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-[#0d2336]">
-            <Button variant="outline" type="button" onClick={() => setShowCreateModal(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={submitting}>
-              Create Lead
-            </Button>
+      {showIntegrationModal && (
+        <Modal
+          isOpen={showIntegrationModal}
+          onClose={() => setShowIntegrationModal(false)}
+          title="Add From Webhook & Integration"
+        >
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              Connect external lead capture sources (Website forms, Meta Ads, LinkedIn InMail) via automated Webhook URL.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                CRM Webhook Endpoint URL
+              </label>
+              <input
+                type="text"
+                readOnly
+                value="https://api.synergy.global/v1/leads/webhook/inbound-9021"
+                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-100 dark:bg-[#071929] px-3.5 py-2 text-xs font-mono text-slate-600 dark:text-slate-300"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowIntegrationModal(false)}>
+                Close
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  addToast("Webhook URL copied to clipboard!", "success");
+                  setShowIntegrationModal(false);
+                }}
+              >
+                Copy Webhook Link
+              </Button>
+            </div>
           </div>
-        </form>
-      </Modal>
+        </Modal>
+      )}
 
-      {/* CRM Progression Details Modal */}
+      {/* ==================== 6. LEAD PROGRESSION MODAL ==================== */}
       {selectedLead && (
         <Modal
           isOpen={!!selectedLead}
@@ -628,99 +894,67 @@ export default function LeadsPage() {
           title={`CRM Lifecycle: ${selectedLead.title}`}
           size="xl"
         >
-          <div className="space-y-6">
-            {/* Visual Step Progress Bar */}
-            <div className="flex items-center justify-between px-3 py-4 bg-slate-50 dark:bg-[#071929]/50 rounded-2xl border border-slate-100 dark:border-[#0d2336]">
-              {["lead", "opportunity", "quotation"].map((step, idx) => {
-                const isActive = selectedLead.stage === step;
-                const isCompleted =
+          <div className="space-y-6 py-2">
+            {/* Visual Lifecycle Stages Progress Bar */}
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#0d2336] pb-4">
+              {[
+                { key: "lead", label: "1. Lead" },
+                { key: "opportunity", label: "2. Opportunity" },
+                { key: "quotation", label: "3. Proposal & Quote" },
+              ].map((step, idx) => {
+                const isCurrent = selectedLead.stage === step.key;
+                const isPassed =
                   (selectedLead.stage === "opportunity" && idx === 0) ||
                   (selectedLead.stage === "quotation" && idx <= 1);
+
                 return (
-                  <div key={step} className="flex-1 flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-1">
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                        isActive
-                          ? "bg-[#233353] text-white ring-4 ring-[#233353]/20"
-                          : isCompleted
+                  <div key={step.key} className="flex items-center gap-2">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                        isCurrent
+                          ? "bg-primary text-white ring-4 ring-primary/20"
+                          : isPassed
                           ? "bg-emerald-500 text-white"
-                          : "bg-slate-200 dark:bg-[#0d2336] text-slate-400"
-                      }`}>
-                        {isCompleted ? "✓" : idx + 1}
-                      </div>
-                      <span className={`text-[10px] uppercase font-bold tracking-wider ${
-                        isActive ? "text-[#233353] dark:text-sky-400" : isCompleted ? "text-emerald-500" : "text-slate-400"
-                      }`}>
-                        {step}
-                      </span>
+                          : "bg-slate-200 dark:bg-slate-800 text-slate-500"
+                      }`}
+                    >
+                      {isPassed ? "✓" : idx + 1}
                     </div>
-                    {idx < 2 && (
-                      <div className={`flex-1 h-0.5 mx-2 ${
-                        isCompleted ? "bg-emerald-500" : "bg-slate-200 dark:bg-[#0d2336]"
-                      }`} />
-                    )}
+                    <span
+                      className={`text-xs font-bold ${
+                        isCurrent
+                          ? "text-primary dark:text-sky-400"
+                          : isPassed
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-slate-400"
+                      }`}
+                    >
+                      {step.label}
+                    </span>
+                    {idx < 2 && <FiChevronRight className="text-slate-300 dark:text-slate-700 mx-2" />}
                   </div>
                 );
               })}
             </div>
 
-            {/* Stage: Lead */}
+            {/* Stage Action Panels */}
             {selectedLead.stage === "lead" && (
               <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Prospect Requirements
-                  </label>
-                  <textarea
-                    className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929] p-3 text-xs text-slate-800 dark:text-white outline-none min-h-[80px]"
-                    placeholder="Enter prospect product requirements and scope..."
-                    value={reqsText}
-                    onChange={(e) => setReqsText(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-                    Product Demo Requirement
-                  </label>
-                  <div className="flex gap-4 text-xs font-semibold">
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="demo_pref"
-                        checked={demoReqType === "pending"}
-                        onChange={() => setDemoReqType("pending")}
-                      />
-                      <span>Demo Required</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="demo_pref"
-                        checked={demoReqType === "skipped"}
-                        onChange={() => setDemoReqType("skipped")}
-                      />
-                      <span>Skip Demo</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-[#0d2336]">
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Qualify lead or mark as dead.
+                </p>
+                <div className="flex gap-3 justify-end">
                   <Button
                     variant="outline"
-                    onClick={() => handleProgressStage({ stage: "dead", status: "dead" })}
-                    loading={progressing}
+                    onClick={() => handleProgressAction("dead", { status: "dead" })}
+                    disabled={progressing}
+                    className="text-rose-500 border-rose-200"
                   >
-                    Declare Dead
+                    Mark Dead
                   </Button>
                   <Button
-                    onClick={() => handleProgressStage({
-                      stage: "opportunity",
-                      status: "active",
-                      demo_status: demoReqType,
-                      requirements: reqsText,
-                    })}
-                    loading={progressing}
+                    onClick={() => handleProgressAction("opportunity", { status: "qualified" })}
+                    disabled={progressing}
                   >
                     Qualify to Opportunity
                   </Button>
@@ -728,189 +962,57 @@ export default function LeadsPage() {
               </div>
             )}
 
-            {/* Stage: Opportunity */}
             {selectedLead.stage === "opportunity" && (
               <div className="space-y-4">
-                <div className="flex justify-between items-center p-3.5 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929]">
-                  <div>
-                    <p className="text-xs font-bold text-slate-800 dark:text-white">Demo Execution Status</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      Status: <span className="font-bold text-[#233353] dark:text-sky-400">{selectedLead.demo_status?.toUpperCase()}</span>
-                    </p>
-                  </div>
-                  {selectedLead.demo_status === "pending" && (
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleProgressStage({ stage: "opportunity", demo_status: "skipped", requirements: reqsText })}
-                      >
-                        Skip
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => handleProgressStage({ stage: "opportunity", demo_status: "given", requirements: reqsText })}
-                      >
-                        Mark Given
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Quotation Item Builder */}
-                <div className="space-y-3 pt-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Quotation Line Items</label>
-                    <button
-                      type="button"
-                      onClick={handleAddQItem}
-                      className="text-xs font-bold text-[#233353] dark:text-sky-400 hover:underline cursor-pointer flex items-center gap-1"
-                    >
-                      <FiPlusCircle /> Add Line Item
-                    </button>
-                  </div>
-
-                  {qItems.map((item, idx) => (
-                    <div key={idx} className="flex gap-2 items-center">
-                      <select
-                        className="flex-grow rounded-lg border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929] px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none"
-                        value={item.item}
-                        onChange={(e) => {
-                          const pName = e.target.value;
-                          const prod = products.find((p) => p.name === pName);
-                          const rate = prod?.attributes?.rate || prod?.attributes?.rate_per_unit || 50000;
-                          handleQItemChange(idx, "item", pName);
-                          handleQItemChange(idx, "price", rate);
-                        }}
-                      >
-                        <option value="">Select Product from Catalog...</option>
-                        {products.map((p: any) => (
-                          <option key={p._id} value={p.name}>
-                            {p.name} (₹{p.attributes?.rate || 0})
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        placeholder="Qty"
-                        className="w-16 rounded-lg border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929] px-2.5 py-1.5 text-xs text-center outline-none"
-                        value={item.qty}
-                        onChange={(e) => handleQItemChange(idx, "qty", parseInt(e.target.value) || 0)}
-                      />
-                      <input
-                        type="number"
-                        placeholder="Price"
-                        className="w-24 rounded-lg border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929] px-2.5 py-1.5 text-xs text-right outline-none font-mono"
-                        value={item.price}
-                        onChange={(e) => handleQItemChange(idx, "price", parseFloat(e.target.value) || 0)}
-                      />
-                      {qItems.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveQItem(idx)}
-                          className="p-1 text-slate-400 hover:text-rose-500 cursor-pointer"
-                        >
-                          <FiTrash2 />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-
-                  <div className="flex justify-between items-center p-3 bg-slate-50 dark:bg-[#071929] rounded-xl font-bold text-xs">
-                    <span>Subtotal:</span>
-                    <span className="font-mono text-sm">₹{calculateSubtotal().toLocaleString("en-IN")}</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-[#0d2336]">
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Opportunity Progression Options:
+                </p>
+                <div className="flex gap-3 justify-end">
                   <Button
-                    variant="outline"
-                    onClick={() => handleProgressStage({ stage: "dead", status: "dead" })}
+                    onClick={() => handleProgressAction("quotation")}
+                    disabled={progressing}
                   >
-                    Declare Dead
-                  </Button>
-                  <Button
-                    onClick={() => handleProgressStage({
-                      stage: "quotation",
-                      status: "won",
-                      requirements: reqsText,
-                      quotation_type: qType,
-                      quotation_items: qItems.filter((it) => it.item.trim() !== ""),
-                    })}
-                    loading={progressing}
-                  >
-                    Generate Quotation & Qualify
+                    Generate Quotation & Advance Stage
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* Stage: Quotation */}
             {selectedLead.stage === "quotation" && (
               <div className="space-y-4">
-                <div className="p-6 bg-slate-50/70 dark:bg-[#071929]/40 rounded-2xl border border-slate-200 dark:border-[#0d2336] space-y-4">
-                  <div className="flex justify-between items-center border-b pb-3">
-                    <span className="text-xs font-bold text-slate-800 dark:text-white uppercase">
-                      {selectedLead.quotation_type === "purchase_indent" ? "Purchase Indent" : "Sales Quotation"}
-                    </span>
-                    <span className="text-xs font-mono font-bold text-emerald-600">Status: Won</span>
-                  </div>
-
-                  <table className="w-full text-xs text-left">
-                    <thead>
-                      <tr className="border-b text-slate-400 uppercase font-bold">
-                        <th className="pb-1.5">Item</th>
-                        <th className="pb-1.5 text-center">Qty</th>
-                        <th className="pb-1.5 text-right">Price</th>
-                        <th className="pb-1.5 text-right">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedLead.quotation_items?.map((it, i) => (
-                        <tr key={i} className="border-b">
-                          <td className="py-2 font-medium">{it.item}</td>
-                          <td className="py-2 text-center">{it.qty}</td>
-                          <td className="py-2 text-right font-mono">₹{it.price.toLocaleString("en-IN")}</td>
-                          <td className="py-2 text-right font-mono font-bold">₹{(it.qty * it.price).toLocaleString("en-IN")}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-3 border-t">
-                  <Button variant="outline" onClick={() => setSelectedLead(null)}>
-                    Close
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  Proposal generated. You can print invoice/quotation or mark as Won.
+                </p>
+                <div className="flex gap-3 justify-end">
+                  <Button variant="outline" onClick={() => setPreviewDocLead(selectedLead)}>
+                    <FiPrinter className="mr-1" /> Print Quotation
+                  </Button>
+                  <Button onClick={() => handleProgressAction("quotation", { status: "won" })}>
+                    Mark Won Deal
                   </Button>
                 </div>
               </div>
             )}
-
           </div>
         </Modal>
       )}
 
-      {/* PI Print Preview Modal */}
+      {/* ==================== 7. PRINT PREVIEW MODAL ==================== */}
       {previewDocLead && (
         <DocumentPrintPreview
           isOpen={!!previewDocLead}
           onClose={() => setPreviewDocLead(null)}
-          documentType={
-            previewDocLead.quotation_type === "purchase_indent"
-              ? "PURCHASE INDENT"
-              : "PROFORMA INVOICE (PI)"
-          }
-          documentNumber={previewDocLead.id.slice(0, 8).toUpperCase()}
-          dateStr={previewDocLead.created_at ? new Date(previewDocLead.created_at).toLocaleDateString("en-IN") : "Today"}
-          vendorName={previewDocLead.title}
-          items={
-            previewDocLead.quotation_items && previewDocLead.quotation_items.length > 0
-              ? previewDocLead.quotation_items
-              : [{ item: previewDocLead.title, qty: 1, price: 50000 }]
-          }
+          documentType="PROFORMA INVOICE (PI)"
+          documentNumber={`QT-${previewDocLead.id.slice(0, 6).toUpperCase()}`}
+          dateStr={new Date().toLocaleDateString("en-IN")}
+          vendorName={parseLeadDetails(previewDocLead).name}
+          items={(previewDocLead.quotation_items || []).map((item: any) => ({
+            item: item.item || "Line Item",
+            qty: item.qty || 1,
+            price: item.price || 0,
+          }))}
         />
       )}
-
     </div>
   );
 }

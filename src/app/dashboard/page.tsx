@@ -1,15 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useAuthStore } from "@/features/auth/store/auth.store";
 import { getLeadsApi, Lead } from "@/features/workflows/api/workflows.api";
 import { getInventoryItemsApi, InventoryItem, getProductTypesApi } from "@/features/inventory/api/inventory.api";
 import { useUIStore } from "@/lib/store/ui.store";
 import {
-  FiTrendingUp,
   FiCheckCircle,
-  FiActivity,
-  FiBox,
   FiGrid,
   FiDownload,
   FiRefreshCw
@@ -19,10 +15,8 @@ import { CgSpinner } from "react-icons/cg";
 const MONTH_NAMES = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
 export default function Dashboard() {
-  const user = useAuthStore((state) => state.user);
   const { addToast } = useUIStore();
 
-  const [activeDashboard, setActiveDashboard] = useState<"sales" | "crm" | "inventory">("sales");
   const [loading, setLoading] = useState(true);
   const [activeMonthIdx, setActiveMonthIdx] = useState<number>(new Date().getMonth());
 
@@ -63,8 +57,6 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  const isSuper = Boolean(user?.is_super_admin);
 
   // Dynamic Metrics Calculation from Real Data
   const totalLeadsCount = dbLeads.length;
@@ -184,33 +176,6 @@ export default function Dashboard() {
           >
             <FiRefreshCw className="text-xs" />
           </button>
-
-          {/* Switcher Tab for Super Admins */}
-          {isSuper && (
-            <div className="flex bg-slate-100 dark:bg-[#071929] p-1 rounded-xl items-center ml-1">
-              {[
-                { id: "sales", label: "Sales Board", icon: FiTrendingUp },
-                { id: "crm", label: "CRM Pipeline", icon: FiActivity },
-                { id: "inventory", label: "Inventory Stock", icon: FiBox }
-              ].map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveDashboard(tab.id as "sales" | "crm" | "inventory")}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      activeDashboard === tab.id
-                        ? "bg-[#233353] text-white shadow-sm"
-                        : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-                    }`}
-                  >
-                    <Icon className="text-xs" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </div>
       </div>
 

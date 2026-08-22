@@ -549,7 +549,7 @@ export default function ProductTypesPage() {
                         Defined Dynamic Fields ({templateFields.length})
                       </h4>
                       <span className="text-[10px] bg-primary-light/35 dark:bg-primary-light/5 text-primary px-2 py-0.5 rounded-full font-bold">
-                        Persisted in MongoDB
+                        Active Schema
                       </span>
                     </div>
                     
@@ -742,17 +742,17 @@ export default function ProductTypesPage() {
                   </div>
 
                   <div className="space-y-4 max-h-[360px] overflow-y-auto pr-1">
-                    {/* Mock Static inputs */}
+                    {/* Static inputs preview */}
                     <div className="space-y-1 opacity-45 select-none pointer-events-none">
                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Product Name *</span>
                       <div className="w-full bg-slate-100 dark:bg-[#071929]/70 border border-slate-200/40 rounded-xl py-2 px-3.5 text-xs text-slate-400 font-medium">
-                        ViewSonic 75 Inch Smart Screen
+                        Item Name
                       </div>
                     </div>
                     <div className="space-y-1 opacity-45 select-none pointer-events-none">
                       <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Serial Number *</span>
                       <div className="w-full bg-slate-100 dark:bg-[#071929]/70 border border-slate-200/40 rounded-xl py-2 px-3.5 text-xs text-slate-400 font-mono">
-                        VS-75-99823
+                        SN-00000
                       </div>
                     </div>
 
