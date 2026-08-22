@@ -68,7 +68,7 @@ export default function CustomersPage() {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceCustomer, setInvoiceCustomer] = useState<Customer | null>(null);
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([
-    { description: "Product Line Item", qty: 1, price: 50000, gstRate: 18 }
+    { description: "", qty: 1, price: 0, gstRate: 18 }
   ]);
   const [invoiceNumber, setInvoiceNumber] = useState("");
 
@@ -317,7 +317,7 @@ export default function CustomersPage() {
             </h3>
           </div>
           <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-[#0d2336]/60">
-            <span className="text-slate-400">Registered in database</span>
+            <span className="text-slate-400">Registered Accounts</span>
             <span className="font-bold text-[#233353] dark:text-sky-400 text-[10px]">{customers.length} Records</span>
           </div>
         </div>

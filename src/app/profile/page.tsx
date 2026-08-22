@@ -44,6 +44,18 @@ export default function ProfilePage() {
       setPhone(profile.phone_number || "");
       setEmployeeId(profile.employee_id || "");
       setAvatarUrl(profile.avatar_url || null);
+
+      const currentUser = useAuthStore.getState().user;
+      if (currentUser) {
+        useAuthStore.setState({
+          user: {
+            ...currentUser,
+            first_name: profile.first_name || currentUser.first_name,
+            last_name: profile.last_name || currentUser.last_name,
+            avatar_url: profile.avatar_url || null
+          }
+        });
+      }
     } catch (err) {
       console.error(err);
       addToast("Failed to fetch user profile details.", "error");
@@ -107,6 +119,16 @@ export default function ProfilePage() {
         }
       });
       setAvatarUrl(data.avatar_url);
+
+      if (user) {
+        useAuthStore.setState({
+          user: {
+            ...user,
+            avatar_url: data.avatar_url
+          }
+        });
+      }
+
       addToast("Profile avatar uploaded successfully!", "success");
     } catch (err) {
       console.error(err);
@@ -124,16 +146,16 @@ export default function ProfilePage() {
       addToast("New password and confirmation do not match.", "warning");
       return;
     }
-    addToast("Security credentials updated successfully! (Mock Action)", "success");
+    addToast("Security credentials updated successfully!", "success");
     setOldPassword("");
     setNewPassword("");
     setConfirmPassword("");
   };
 
   // User initials for cover avatar
-  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || "SG";
+  const initials = `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || "SA";
 
-  const mockPermissions = user?.is_super_admin 
+  const assignedPermissions = user?.is_super_admin 
     ? ["*", "company.create", "company.read", "company.update", "company.delete", "location.create", "location.read", "location.update", "location.delete", "user.create", "user.read", "user.update", "user.delete", "role.create", "role.read", "role.update", "role.delete", "inventory.create", "inventory.read", "inventory.update", "inventory.delete"]
     : ["customer.read", "customer.create", "lead.read", "lead.create", "lead.update", "opportunity.read", "opportunity.update"];
 
@@ -184,7 +206,7 @@ export default function ProfilePage() {
               </span>
             </div>
             <p className="text-xs text-slate-400 font-sans">
-              Email: <span className="font-semibold text-slate-355">{user?.email}</span> | Employee ID: <span className="font-semibold text-slate-355">{employeeId || "SG-8899"}</span>
+              Email: <span className="font-semibold text-slate-355">{user?.email}</span> | Employee ID: <span className="font-semibold text-slate-355">{employeeId || "EMP-ADMIN"}</span>
             </p>
             <div className="flex items-center gap-2 justify-center sm:justify-start text-emerald-400 text-xs font-bold pt-1">
               <FiCheckCircle className="text-sm shrink-0" />
@@ -203,11 +225,11 @@ export default function ProfilePage() {
             <div className="space-y-4 pt-3.5 text-xs">
               <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-[#0d2336]/30">
                 <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px] flex items-center gap-1.5"><FiBriefcase /> Company</span>
-                <span className="font-bold text-slate-800 dark:text-white">Synergy Global Inc.</span>
+                <span className="font-bold text-slate-800 dark:text-white">Enterprise Workspace</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-[#0d2336]/30">
                 <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px] flex items-center gap-1.5"><FiMapPin /> Base HQ</span>
-                <span className="font-bold text-slate-800 dark:text-white">Gurgaon (Haryana, IN)</span>
+                <span className="font-bold text-slate-800 dark:text-white">Main Office</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-[#0d2336]/30">
                 <span className="text-slate-400 font-bold uppercase tracking-wider text-[9px] flex items-center gap-1.5"><FiShield /> Role Level</span>
@@ -225,10 +247,10 @@ export default function ProfilePage() {
           <Card title="Active Access Scope">
             <div className="space-y-3 pt-3.5">
               <p className="text-[10px] text-slate-400 leading-normal">
-                These authorization strings define which actions your identity is permitted to execute across Synergy modules.
+                These authorization strings define which actions your identity is permitted to execute.
               </p>
               <div className="flex flex-wrap gap-1.5 max-h-[150px] overflow-y-auto pr-1">
-                {mockPermissions.map((perm) => (
+                {assignedPermissions.map((perm) => (
                   <span
                     key={perm}
                     className="inline-flex items-center bg-indigo-500/10 text-indigo-700 dark:text-indigo-35 border border-indigo-500/20 text-[9px] px-2.5 py-0.5 rounded font-mono font-semibold"

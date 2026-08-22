@@ -115,7 +115,7 @@ export default function SearchableMultiSelect({
                         type="checkbox"
                         checked={isChecked}
                         onChange={() => handleToggle(opt.id)}
-                        className="rounded text-primary border-slate-200 dark:border-[#0d2336] focus:ring-primary"
+                        className="rounded accent-primary text-primary border-slate-200 dark:border-[#0d2336] focus:ring-primary cursor-pointer"
                       />
                       <span className="truncate">{opt.name}</span>
                     </label>
