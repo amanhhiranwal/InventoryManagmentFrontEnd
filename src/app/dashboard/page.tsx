@@ -1190,115 +1190,161 @@ export default function Dashboard() {
      PIPELINE CHART DOWNLOAD
   ========================================================== */
 
-  const downloadPipelineChart = useCallback(() => {
-    const width = 700;
-    const height = 620;
-    const center = width / 2;
+ /* ==========================================================
+   PIPELINE CHART DOWNLOAD
+========================================================== */
 
-    const stageHeight = 105;
+const downloadPipelineChart = useCallback(() => {
+  const width = 600;
+  const height = 470;
 
-    const topWidths = [560, 450, 340, 230, 120];
+  const center = width / 2;
 
-    const bottomWidths = [450, 340, 230, 120, 70];
+  /*
+   * Keep the downloaded funnel visually consistent
+   * with the funnel shown in the dashboard.
+   */
+  const funnelWidth = 500;
+  const stageHeight = 58;
 
-    const colors = ["#243654", "#30486e", "#42639b", "#6687c0", "#20c66b"];
+  const topWidths = [500, 420, 340, 260, 180];
+  const bottomWidths = [420, 340, 260, 180, 100];
 
-    const segments = pipeline
-      .map((stage, index) => {
-        const topY = index * stageHeight;
+  const colors = [
+    "#26395B",
+    "#304A78",
+    "#42639B",
+    "#6687C0",
+    "#20C66B",
+  ];
 
-        const bottomY = topY + stageHeight;
+  const funnelTop = 70;
 
-        const topHalf = topWidths[index] / 2;
+  const segments = pipeline
+    .map((stage, index) => {
+      const topY = funnelTop + index * stageHeight;
+      const bottomY = topY + stageHeight;
 
-        const bottomHalf = bottomWidths[index] / 2;
+      const topHalf = topWidths[index] / 2;
+      const bottomHalf = bottomWidths[index] / 2;
 
-        const fill = colors[index];
+      const points = [
+        `${center - topHalf},${topY}`,
+        `${center + topHalf},${topY}`,
+        `${center + bottomHalf},${bottomY}`,
+        `${center - bottomHalf},${bottomY}`,
+      ].join(" ");
 
-        return `
-                <polygon
-                  points="
-                    ${center - topHalf},${topY}
-                    ${center + topHalf},${topY}
-                    ${center + bottomHalf},${bottomY}
-                    ${center - bottomHalf},${bottomY}
-                  "
-                  fill="${fill}"
-                />
+      return `
+        <polygon
+          points="${points}"
+          fill="${colors[index]}"
+        />
 
-                <text
-                  x="${center}"
-                  y="${topY + 43}"
-                  text-anchor="middle"
-                  font-size="16"
-                  font-weight="600"
-                  fill="white"
-                >
-                  ${stage.label}
-                </text>
-
-                <text
-                  x="${center}"
-                  y="${topY + 70}"
-                  text-anchor="middle"
-                  font-size="22"
-                  font-weight="700"
-                  fill="white"
-                >
-                  ${formatCurrency(stage.revenue)}
-                </text>
-
-                <text
-                  x="${center}"
-                  y="${topY + 91}"
-                  text-anchor="middle"
-                  font-size="11"
-                  fill="white"
-                  opacity="0.82"
-                >
-                  ${stage.count} Deals
-                </text>
-              `;
-      })
-      .join("");
-
-    const svg = `
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="${width}"
-          height="${height}"
-          viewBox="0 0 ${width} ${height}"
+        <text
+          x="${center}"
+          y="${topY + 22}"
+          text-anchor="middle"
+          dominant-baseline="middle"
+          font-size="12"
+          font-weight="500"
+          fill="#ffffff"
+          font-family="Arial, Helvetica, sans-serif"
         >
-          <rect
-            width="100%"
-            height="100%"
-            fill="white"
-          />
+          ${stage.label} (${stage.count} Deals)
+        </text>
 
-          <text
-            x="${center}"
-            y="34"
-            text-anchor="middle"
-            font-size="22"
-            font-weight="700"
-            fill="#18294a"
-          >
-            Sales Pipeline
-          </text>
-
-          <g transform="translate(0, 55)">
-            ${segments}
-          </g>
-        </svg>
+        <text
+          x="${center}"
+          y="${topY + 42}"
+          text-anchor="middle"
+          dominant-baseline="middle"
+          font-size="17"
+          font-weight="700"
+          fill="#ffffff"
+          font-family="Arial, Helvetica, sans-serif"
+        >
+          ${formatCurrency(stage.revenue)}
+        </text>
       `;
+    })
+    .join("");
 
-    downloadSvg(
-      `sales-pipeline-${new Date().toISOString().slice(0, 10)}.svg`,
-      svg,
-    );
+  const legendY = funnelTop + pipeline.length * stageHeight + 35;
 
-    addToast("Pipeline chart downloaded.", "success");
-  }, [pipeline, addToast]);
+  const svg = `
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="${width}"
+      height="${height}"
+      viewBox="0 0 ${width} ${height}"
+    >
+      <rect
+        width="100%"
+        height="100%"
+        fill="white"
+      />
+
+      <!-- TITLE -->
+      <text
+        x="${center}"
+        y="32"
+        text-anchor="middle"
+        font-size="22"
+        font-weight="700"
+        fill="#18294a"
+        font-family="Arial, Helvetica, sans-serif"
+      >
+        Sales Pipeline
+      </text>
+
+      <!-- FUNNEL -->
+      ${segments}
+
+      <!-- LEGEND -->
+      <circle
+        cx="${center - 62}"
+        cy="${legendY}"
+        r="5"
+        fill="#42639B"
+      />
+
+      <text
+        x="${center - 52}"
+        y="${legendY + 4}"
+        font-size="11"
+        fill="#475569"
+        font-family="Arial, Helvetica, sans-serif"
+      >
+        Active Stages
+      </text>
+
+      <circle
+        cx="${center + 55}"
+        cy="${legendY}"
+        r="5"
+        fill="#20C66B"
+      />
+
+      <text
+        x="${center + 65}"
+        y="${legendY + 4}"
+        font-size="11"
+        fill="#475569"
+        font-family="Arial, Helvetica, sans-serif"
+      >
+        Conversion Success
+      </text>
+    </svg>
+  `;
+
+  downloadSvg(
+    `sales-pipeline-${new Date().toISOString().slice(0, 10)}.svg`,
+    svg,
+  );
+
+  addToast("Pipeline chart downloaded.", "success");
+}, [pipeline, addToast]);
 
   /* ==========================================================
      REGION CHART DOWNLOAD
