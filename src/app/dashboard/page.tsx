@@ -426,6 +426,10 @@ export default function Dashboard() {
 
   const [showAllOrders, setShowAllOrders] = useState(false);
 
+  const [hoveredPipelineIndex, setHoveredPipelineIndex] = useState<number | null>(
+  null, );
+
+
   const chartRef = useRef<SVGSVGElement | null>(null);
 
   /* ==========================================================
@@ -1080,7 +1084,7 @@ export default function Dashboard() {
         ];
       }),
     ]);
-  }, [exportRows, recentOrders]);
+  }, [exportRows, displayedOrders]);
 
   /* ==========================================================
      REVENUE CHART DOWNLOAD
@@ -1717,7 +1721,7 @@ export default function Dashboard() {
     );
 
     addToast("Sales activity chart downloaded.", "success");
-  }, [recentOrders, addToast]);
+  }, [displayedOrders, addToast]);
 
   /* ==========================================================
      RECENT ORDERS CHART DOWNLOAD
@@ -1730,7 +1734,7 @@ export default function Dashboard() {
 
     const height = 90 + Math.max(recentOrders.length, 1) * rowHeight;
 
-    const rows = recentOrders
+    const rows = displayedOrders
       .map((lead, index) => {
         const y = 65 + index * rowHeight;
 
@@ -2264,121 +2268,132 @@ export default function Dashboard() {
         </div>
 
         {/* ====================================================
-            SALES PIPELINE
-        ==================================================== */}
-        {/* ====================================================
     SALES PIPELINE
 ==================================================== */}
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
-          {/* HEADER */}
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
-              Sales Pipeline
-            </h3>
+<div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+  {/* HEADER */}
+  <div className="flex items-center justify-between">
+    <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
+      Sales Pipeline
+    </h3>
 
-            <DashboardMenu
-              menu="pipeline"
-              openMenu={openMenu}
-              setOpenMenu={setOpenMenu}
-              onExport={exportPipelineData}
-              onDownloadChart={downloadPipelineChart}
-            />
-          </div>
+    <DashboardMenu
+      menu="pipeline"
+      openMenu={openMenu}
+      setOpenMenu={setOpenMenu}
+      onExport={exportPipelineData}
+      onDownloadChart={downloadPipelineChart}
+    />
+  </div>
 
-          {/* FUNNEL */}
-          <div className="mt-5 flex justify-center">
-            <div className="w-full max-w-[330px]">
-              <svg
-                viewBox="0 0 330 320"
-                className="block h-auto w-full"
-                preserveAspectRatio="xMidYMid meet"
-              >
-                {pipeline.map((stage, index) => {
-                  const center = 165;
-                  const stageHeight = 58;
+  {/* FUNNEL */}
+  <div
+    className="mt-5 flex justify-center"
+    onMouseLeave={() => setHoveredPipelineIndex(null)}
+  >
+    <div className="w-full max-w-[330px]">
+      <svg
+        viewBox="0 0 330 320"
+        className="block h-auto w-full overflow-visible"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {pipeline.map((stage, index) => {
+          const center = 165;
+          const stageHeight = 58;
 
-                  const topY = index * stageHeight;
+          const topY = index * stageHeight;
+          const bottomY = topY + stageHeight;
 
-                  const bottomY = topY + stageHeight;
+          const topWidths = [300, 252, 204, 156, 108];
+          const bottomWidths = [252, 204, 156, 108, 60];
 
-                  /*
-                   * Each stage connects exactly
-                   * to the next stage.
-                   */
-                  const topWidths = [300, 252, 204, 156, 108];
+          const colors = [
+            "#26395B",
+            "#304A78",
+            "#42639B",
+            "#6687C0",
+            "#20C66B",
+          ];
 
-                  const bottomWidths = [252, 204, 156, 108, 60];
+          const topHalf = topWidths[index] / 2;
+          const bottomHalf = bottomWidths[index] / 2;
 
-                  const topHalf = topWidths[index] / 2;
+          const points = [
+            `${center - topHalf},${topY}`,
+            `${center + topHalf},${topY}`,
+            `${center + bottomHalf},${bottomY}`,
+            `${center - bottomHalf},${bottomY}`,
+          ].join(" ");
 
-                  const bottomHalf = bottomWidths[index] / 2;
+          const isHovered = hoveredPipelineIndex === index;
 
-                  const colors = [
-                    "#26395B",
-                    "#304A78",
-                    "#42639B",
-                    "#6687C0",
-                    "#20C66B",
-                  ];
+          return (
+            <g
+              key={stage.key}
+              className="cursor-pointer"
+              onMouseEnter={() => setHoveredPipelineIndex(index)}
+            >
+              {/* Funnel segment */}
+              <polygon
+                points={points}
+                fill={colors[index]}
+                opacity={
+                  hoveredPipelineIndex === null || isHovered ? 1 : 0.92
+                }
+                className="transition-opacity duration-150"
+              />
 
-                  const points = [
-                    `${center - topHalf},${topY}`,
-                    `${center + topHalf},${topY}`,
-                    `${center + bottomHalf},${bottomY}`,
-                    `${center - bottomHalf},${bottomY}`,
-                  ].join(" ");
+              {/* Show information ONLY for hovered stage */}
+              {isHovered && (
+                <>
+                  <text
+                    x={center}
+                    y={topY + 22}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#ffffff"
+                    fontSize="10"
+                    fontWeight="500"
+                    pointerEvents="none"
+                  >
+                    {stage.label} ({stage.count} Deals)
+                  </text>
 
-                  return (
-                    <g key={stage.key}>
-                      {/* Funnel segment */}
-                      <polygon points={points} fill={colors[index]} />
+                  <text
+                    x={center}
+                    y={topY + 42}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill="#ffffff"
+                    fontSize="14"
+                    fontWeight="700"
+                    pointerEvents="none"
+                  >
+                    {formatCurrency(stage.revenue)}
+                  </text>
+                </>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  </div>
 
-                      {/* Stage label */}
-                      <text
-                        x={center}
-                        y={topY + 22}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fill="#ffffff"
-                        fontSize="10"
-                        fontWeight="500"
-                      >
-                        {stage.label} ({stage.count} Deals)
-                      </text>
+  {/* LEGEND */}
+  <div className="mt-4 flex items-center justify-center gap-5 text-[11px] text-slate-500">
+    <span className="flex items-center gap-1.5">
+      <span className="h-2.5 w-2.5 rounded-full bg-[#42639B]" />
+      Active Stages
+    </span>
 
-                      {/* Revenue */}
-                      <text
-                        x={center}
-                        y={topY + 42}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fill="#ffffff"
-                        fontSize="14"
-                        fontWeight="700"
-                      >
-                        {formatCurrency(stage.revenue)}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
-          </div>
-
-          {/* LEGEND */}
-          <div className="mt-4 flex items-center justify-center gap-5 text-[11px] text-slate-500">
-            <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#42639B]" />
-              Active Stages
-            </span>
-
-            <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#20C66B]" />
-              Conversion Success
-            </span>
-          </div>
-        </div>
+    <span className="flex items-center gap-1.5">
+      <span className="h-2.5 w-2.5 rounded-full bg-[#20C66B]" />
+      Conversion Success
+    </span>
+  </div>
+</div>
 
         {/* REGIONAL */}
 
@@ -2445,9 +2460,7 @@ export default function Dashboard() {
                 Sales Team Hierarchy
               </h3>
 
-              <p className="mt-1 text-xs text-slate-400">
-                Current sales team performance
-              </p>
+      
             </div>
 
             <DashboardMenu
