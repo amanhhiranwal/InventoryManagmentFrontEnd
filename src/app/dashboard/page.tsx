@@ -2564,10 +2564,6 @@ export default function Dashboard() {
               <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
                 Sales Activity
               </h3>
-
-              <p className="mt-1 text-xs text-slate-400">
-                Latest pipeline activity
-              </p>
             </div>
 
             <DashboardMenu
