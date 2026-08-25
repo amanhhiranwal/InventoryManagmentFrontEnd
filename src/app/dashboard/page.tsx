@@ -10,6 +10,8 @@ import {
   type SetStateAction,
 } from "react";
 
+import Link from "next/link";
+
 import { FiDownload, FiEye, FiMoreVertical, FiRefreshCw } from "react-icons/fi";
 
 import { getLeadsApi, Lead } from "@/features/workflows/api/workflows.api";
@@ -421,6 +423,8 @@ export default function Dashboard() {
   );
 
   const [openMenu, setOpenMenu] = useState<MenuType>(null);
+
+  const [showAllOrders, setShowAllOrders] = useState(false);
 
   const chartRef = useRef<SVGSVGElement | null>(null);
 
@@ -846,10 +850,9 @@ export default function Dashboard() {
   }, [dbLeads]);
 
   /* ==========================================================
-     RECENT ORDERS
-  ========================================================== */
-
-  const recentOrders = useMemo(() => {
+   ALL ORDERS
+========================================================== */
+  const allOrders = useMemo(() => {
     return [...dbLeads]
       .filter(
         (lead) =>
@@ -858,9 +861,20 @@ export default function Dashboard() {
       .sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      )
-      .slice(0, 5);
+      );
   }, [dbLeads]);
+
+  /* ==========================================================
+   RECENT ORDERS
+========================================================== */
+  const recentOrders = useMemo(() => {
+    return allOrders.slice(0, 5);
+  }, [allOrders]);
+
+  /* ==========================================================
+   DISPLAYED ORDERS
+========================================================== */
+  const displayedOrders = showAllOrders ? allOrders : recentOrders;
 
   /* ==========================================================
      REVENUE CHART POINTS
@@ -1043,7 +1057,7 @@ export default function Dashboard() {
     exportRows(`recent-orders-${new Date().toISOString().slice(0, 10)}.csv`, [
       ["Order ID", "Customer", "Product", "Region", "Value", "Status"],
 
-      ...recentOrders.map((lead) => {
+      ...displayedOrders.map((lead) => {
         const date = getLeadDate(lead);
 
         const year = date?.getFullYear() || new Date().getFullYear();
@@ -1190,52 +1204,46 @@ export default function Dashboard() {
      PIPELINE CHART DOWNLOAD
   ========================================================== */
 
- /* ==========================================================
+  /* ==========================================================
    PIPELINE CHART DOWNLOAD
 ========================================================== */
 
-const downloadPipelineChart = useCallback(() => {
-  const width = 600;
-  const height = 470;
+  const downloadPipelineChart = useCallback(() => {
+    const width = 600;
+    const height = 470;
 
-  const center = width / 2;
+    const center = width / 2;
 
-  /*
-   * Keep the downloaded funnel visually consistent
-   * with the funnel shown in the dashboard.
-   */
-  const funnelWidth = 500;
-  const stageHeight = 58;
+    /*
+     * Keep the downloaded funnel visually consistent
+     * with the funnel shown in the dashboard.
+     */
+    const funnelWidth = 500;
+    const stageHeight = 58;
 
-  const topWidths = [500, 420, 340, 260, 180];
-  const bottomWidths = [420, 340, 260, 180, 100];
+    const topWidths = [500, 420, 340, 260, 180];
+    const bottomWidths = [420, 340, 260, 180, 100];
 
-  const colors = [
-    "#26395B",
-    "#304A78",
-    "#42639B",
-    "#6687C0",
-    "#20C66B",
-  ];
+    const colors = ["#26395B", "#304A78", "#42639B", "#6687C0", "#20C66B"];
 
-  const funnelTop = 70;
+    const funnelTop = 70;
 
-  const segments = pipeline
-    .map((stage, index) => {
-      const topY = funnelTop + index * stageHeight;
-      const bottomY = topY + stageHeight;
+    const segments = pipeline
+      .map((stage, index) => {
+        const topY = funnelTop + index * stageHeight;
+        const bottomY = topY + stageHeight;
 
-      const topHalf = topWidths[index] / 2;
-      const bottomHalf = bottomWidths[index] / 2;
+        const topHalf = topWidths[index] / 2;
+        const bottomHalf = bottomWidths[index] / 2;
 
-      const points = [
-        `${center - topHalf},${topY}`,
-        `${center + topHalf},${topY}`,
-        `${center + bottomHalf},${bottomY}`,
-        `${center - bottomHalf},${bottomY}`,
-      ].join(" ");
+        const points = [
+          `${center - topHalf},${topY}`,
+          `${center + topHalf},${topY}`,
+          `${center + bottomHalf},${bottomY}`,
+          `${center - bottomHalf},${bottomY}`,
+        ].join(" ");
 
-      return `
+        return `
         <polygon
           points="${points}"
           fill="${colors[index]}"
@@ -1267,12 +1275,12 @@ const downloadPipelineChart = useCallback(() => {
           ${formatCurrency(stage.revenue)}
         </text>
       `;
-    })
-    .join("");
+      })
+      .join("");
 
-  const legendY = funnelTop + pipeline.length * stageHeight + 35;
+    const legendY = funnelTop + pipeline.length * stageHeight + 35;
 
-  const svg = `
+    const svg = `
     <svg
       xmlns="http://www.w3.org/2000/svg"
       width="${width}"
@@ -1338,13 +1346,13 @@ const downloadPipelineChart = useCallback(() => {
     </svg>
   `;
 
-  downloadSvg(
-    `sales-pipeline-${new Date().toISOString().slice(0, 10)}.svg`,
-    svg,
-  );
+    downloadSvg(
+      `sales-pipeline-${new Date().toISOString().slice(0, 10)}.svg`,
+      svg,
+    );
 
-  addToast("Pipeline chart downloaded.", "success");
-}, [pipeline, addToast]);
+    addToast("Pipeline chart downloaded.", "success");
+  }, [pipeline, addToast]);
 
   /* ==========================================================
      REGION CHART DOWNLOAD
@@ -2594,32 +2602,48 @@ const downloadPipelineChart = useCallback(() => {
       </section>
 
       {/* ======================================================
-          RECENT ORDERS
+        RECENT ORDERS
       ====================================================== */}
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+        {/* HEADER */}
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 dark:border-[#0d2336]">
           <div>
             <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
-              Recent Orders
+              {showAllOrders ? "All Orders" : "Recent Orders"}
             </h3>
 
-            <p className="mt-1 text-xs text-slate-400">
-              Latest quotations and closed sales
-            </p>
+            {showAllOrders && (
+              <p className="mt-1 text-xs text-slate-400">
+                Showing all {allOrders.length} orders
+              </p>
+            )}
           </div>
 
-          {/* NO VIEW ALL — DOWNLOAD CHART INSTEAD */}
+          <div className="flex items-center gap-4">
+            {/* VIEW ALL / SHOW RECENT */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowAllOrders((current) => !current);
+              }}
+              className="text-xs font-semibold text-[#38588f] transition-colors hover:text-[#233353] dark:text-[#6f8fc4] dark:hover:text-white"
+            >
+              {showAllOrders ? "Show Recent Orders" : "View All Orders"}
+            </button>
 
-          <DashboardMenu
-            menu="orders"
-            openMenu={openMenu}
-            setOpenMenu={setOpenMenu}
-            onExport={exportOrdersData}
-            onDownloadChart={downloadOrdersChart}
-          />
+            {/* EXPORT + DOWNLOAD CHART */}
+            <DashboardMenu
+              menu="orders"
+              openMenu={openMenu}
+              setOpenMenu={setOpenMenu}
+              onExport={exportOrdersData}
+              onDownloadChart={downloadOrdersChart}
+            />
+          </div>
         </div>
 
+        {/* TABLE */}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[950px] text-left">
             <thead>
@@ -2641,8 +2665,8 @@ const downloadPipelineChart = useCallback(() => {
             </thead>
 
             <tbody>
-              {recentOrders.length > 0 ? (
-                recentOrders.map((lead) => {
+              {displayedOrders.length > 0 ? (
+                displayedOrders.map((lead) => {
                   const date = getLeadDate(lead);
 
                   const year = date?.getFullYear() || new Date().getFullYear();
@@ -2662,27 +2686,32 @@ const downloadPipelineChart = useCallback(() => {
                       key={lead.id}
                       className="border-b border-slate-100 last:border-0 dark:border-[#0d2336]"
                     >
+                      {/* ORDER ID */}
                       <td className="px-5 py-5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                        #ORD-
-                        {year}-{shortId}
+                        #ORD-{year}-{shortId}
                       </td>
 
+                      {/* CUSTOMER */}
                       <td className="px-5 py-5 text-xs font-medium text-[#38588f]">
                         {getCustomerName(lead)}
                       </td>
 
+                      {/* PRODUCT */}
                       <td className="px-5 py-5 text-xs text-slate-500">
                         {getProductName(lead)}
                       </td>
 
+                      {/* REGION */}
                       <td className="px-5 py-5 text-xs text-slate-500">
                         {getRegionLabel(lead.state || lead.region)}
                       </td>
 
+                      {/* CONTRACT VALUE */}
                       <td className="px-5 py-5 text-xs font-bold text-slate-700 dark:text-slate-300">
                         {formatCurrency(value)}
                       </td>
 
+                      {/* STATUS */}
                       <td className="px-5 py-5">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-[10px] font-bold ${
@@ -2697,6 +2726,7 @@ const downloadPipelineChart = useCallback(() => {
                         </span>
                       </td>
 
+                      {/* ACTION */}
                       <td className="px-5 py-5 text-right">
                         <button
                           type="button"
@@ -2728,6 +2758,21 @@ const downloadPipelineChart = useCallback(() => {
             </tbody>
           </table>
         </div>
+
+        {/* SHOW RECENT FOOTER
+        {showAllOrders && (
+          <div className="flex items-center justify-center border-t border-slate-100 px-5 py-4 dark:border-[#0d2336]">
+            <button
+              type="button"
+              onClick={() => {
+                setShowAllOrders(false);
+              }}
+              className="text-xs font-semibold text-[#38588f] transition-colors hover:text-[#233353] dark:text-[#6f8fc4] dark:hover:text-white"
+            >
+              Show Recent Orders
+            </button>
+          </div>
+        )} */}
       </section>
     </div>
   );
