@@ -36,6 +36,7 @@ import {
   FiX,
   FiDownload,
   FiSliders,
+  FiRefreshCw,
 } from "react-icons/fi";
 
 import { CgSpinner } from "react-icons/cg";
@@ -324,6 +325,14 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // --------------------------------------------------
+  // Page refresh
+  // --------------------------------------------------
+
+  const handleRefreshCustomers = async () => {
+    await fetchCustomers();
   };
 
   // --------------------------------------------------
@@ -1017,48 +1026,124 @@ ${convertDesc.trim()}`,
       }}
     >
       {/* ============================================================
-          PAGE HEADER
+               PAGE HEADER
       ============================================================ */}
 
-      {/* ============================================================
-    PAGE HEADER
-============================================================ */}
-
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">
+        {/* Page title + refresh */}
+
+        <div className="flex items-center gap-2">
+          <h1
+            className="
+        text-xl
+        sm:text-2xl
+        font-bold
+        text-slate-900
+        dark:text-white
+        tracking-tight
+      "
+          >
             Customers
           </h1>
 
-          {/* <p className="text-xs text-slate-400 mt-1">
-            Manage customer contacts and accounts
-          </p> */}
+          <button
+            type="button"
+            onClick={handleRefreshCustomers}
+            disabled={loading}
+            title="Refresh customers"
+            aria-label="Refresh customers"
+            className="
+        w-7 h-7
+        rounded-lg
+        border
+        border-slate-200
+        dark:border-[#0d2336]
+        bg-white
+        dark:bg-[#051422]
+        text-slate-500
+        dark:text-slate-300
+        flex
+        items-center
+        justify-center
+        hover:bg-slate-50
+        dark:hover:bg-[#071929]
+        hover:text-[#233353]
+        dark:hover:text-white
+        transition-all
+        disabled:opacity-50
+        disabled:cursor-not-allowed
+      "
+          >
+            <FiRefreshCw
+              className={`text-sm ${
+                loading ? "animate-spin text-[#233353]" : ""
+              }`}
+            />
+          </button>
         </div>
 
-        {/* Export / Download */}
-        <div
-          className="relative flex items-center gap-2"
-          onClick={(e) => e.stopPropagation()}
-        >
+        {/* More actions */}
+
+        <div className="relative" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
             onClick={() => setExportMenuOpen((prev) => !prev)}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-              exportMenuOpen
-                ? "bg-[#233353] text-white"
-                : "bg-white dark:bg-[#051422] text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#071929]"
-            }`}
+            className="
+        w-10 h-10
+        rounded-xl
+        flex
+        items-center
+        justify-center
+        bg-white
+        dark:bg-[#051422]
+        border
+        border-slate-200
+        dark:border-[#0d2336]
+        text-slate-600
+        dark:text-slate-300
+        hover:bg-slate-50
+        dark:hover:bg-[#071929]
+        transition-colors
+      "
             title="More Actions"
           >
             <FiMoreVertical className="text-lg" />
           </button>
 
           {exportMenuOpen && (
-            <div className="absolute right-0 top-12 z-50 w-48 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#071929] shadow-xl overflow-hidden">
+            <div
+              className="
+          absolute
+          right-0
+          top-12
+          z-50
+          w-48
+          rounded-xl
+          border
+          border-slate-200
+          dark:border-[#0d2336]
+          bg-white
+          dark:bg-[#071929]
+          shadow-xl
+          overflow-hidden
+        "
+            >
               <button
                 type="button"
                 onClick={handleExportData}
-                className="w-full px-4 py-3 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032] flex items-center gap-3"
+                className="
+            w-full
+            px-4 py-3
+            text-left
+            text-sm
+            text-slate-700
+            dark:text-slate-200
+            hover:bg-slate-50
+            dark:hover:bg-[#0b2032]
+            flex
+            items-center
+            gap-3
+          "
               >
                 <FiDownload className="text-slate-500" />
 
@@ -1068,7 +1153,19 @@ ${convertDesc.trim()}`,
               <button
                 type="button"
                 onClick={handleDownloadChart}
-                className="w-full px-4 py-3 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032] flex items-center gap-3"
+                className="
+            w-full
+            px-4 py-3
+            text-left
+            text-sm
+            text-slate-700
+            dark:text-slate-200
+            hover:bg-slate-50
+            dark:hover:bg-[#0b2032]
+            flex
+            items-center
+            gap-3
+          "
               >
                 <FiDownload className="text-slate-500" />
 
@@ -1080,8 +1177,8 @@ ${convertDesc.trim()}`,
       </div>
 
       {/* ============================================================
-    SEARCH + FILTER
-============================================================ */}
+        SEARCH + FILTER
+     ============================================================ */}
 
       <div className="flex items-center gap-3">
         {/* Search */}
