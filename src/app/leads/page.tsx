@@ -2631,85 +2631,81 @@ function LeadFormPage({
         <div className="space-y-4">
           <FormSection icon={<FiInfo />} title="Customer Information">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-  <div className="md:col-span-2">
-    <FormSelect
-      label="Customer Type"
-      required
-      value={form.customerType}
-      onChange={(value) =>
-        onChange("customerType", value)
-      }
-      options={CUSTOMER_TYPES}
-    />
-  </div>
+              <div className="md:col-span-2">
+                <FormSelect
+                  label="Customer Type"
+                  required
+                  value={form.customerType}
+                  onChange={(value) => onChange("customerType", value)}
+                  options={CUSTOMER_TYPES}
+                />
+              </div>
 
-  <FormInput
-    label="Organization Name"
-    required
-    value={form.organizationName}
-    onChange={(value) =>
-      onChange(
-        "organizationName",
-        value,
-      )
-    }
-  />
+              <FormInput
+                label="Organization Name"
+                required
+                value={form.organizationName}
+                onChange={(value) => onChange("organizationName", value)}
+              />
 
-  <FormInput
-    label="Organization Website"
-    required
-    value={form.website}
-    placeholder="www.company.com"
-    onChange={(value) =>
-      onChange(
-        "website",
-        value,
-      )
-    }
-  />
-</div>
+              <FormInput
+                label="Organization Website"
+                required
+                value={form.website}
+                placeholder="www.company.com"
+                onChange={(value) => onChange("website", value)}
+              />
+            </div>
           </FormSection>
-
+          
           <FormSection icon={<FiMapPin />} title="Organization Details">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormInput
-                label="Address"
-                required
-                value={form.address}
-                placeholder="Street Address, Building, Suite"
-                onChange={(value) => onChange("address", value)}
-              />
+            <div className="space-y-4">
+              {/* First row: Address + City */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <FormInput
+                  label="Address"
+                  required
+                  value={form.address}
+                  placeholder="Street Address, Building, Suite"
+                  onChange={(value) => onChange("address", value)}
+                />
 
-              <FormInput
-                label="City"
-                required
-                value={form.city}
-                onChange={(value) => onChange("city", value)}
-              />
+                <FormInput
+                  label="City"
+                  required
+                  value={form.city}
+                  placeholder="Enter city"
+                  onChange={(value) => onChange("city", value)}
+                />
+              </div>
 
-              <FormSelect
-                label="State / Province"
-                required
-                value={form.state}
-                onChange={(value) => onChange("state", value)}
-                options={STATES}
-                allowCustom
-              />
+              {/* Second row: State + PIN + Country */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <FormSelect
+                  label="State / Province"
+                  required
+                  value={form.state}
+                  onChange={(value) => onChange("state", value)}
+                  options={STATES}
+                  allowCustom
+                />
 
-              <FormInput
-                label="PIN / ZIP Code"
-                required
-                value={form.zipCode}
-                onChange={(value) => onChange("zipCode", value)}
-              />
+                <FormInput
+                  label="PIN / ZIP Code"
+                  required
+                  value={form.zipCode}
+                  placeholder="Enter PIN / ZIP code"
+                  onChange={(value) => onChange("zipCode", value)}
+                />
 
-              <FormSelect
-                label="Country"
-                required
-                value={form.country}
-                onChange={(value) => onChange("country", value)}
-                options={COUNTRIES}
-              />
+                <FormSelect
+                  label="Country"
+                  required
+                  value={form.country}
+                  onChange={(value) => onChange("country", value)}
+                  options={COUNTRIES}
+                />
+              </div>
             </div>
           </FormSection>
 
@@ -2899,26 +2895,34 @@ function LeadFormPage({
 
           <div
             className="
-    flex
-    items-center
-    justify-center
-    gap-2
-    rounded-2xl
-    border
-    border-slate-200
-    bg-white
-    p-3
-    dark:border-[#0d2336]
-    dark:bg-[#051422]
-  "
+            grid
+            grid-cols-2
+            gap-3
+            rounded-2xl
+            border
+            border-slate-200
+            bg-white
+            p-4
+            dark:border-[#0d2336]
+            dark:bg-[#051422]
+          "
           >
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="w-full justify-center"
+            >
               Cancel
             </Button>
 
-            <Button type="submit" disabled={saving}>
+            <Button
+              type="submit"
+              disabled={saving}
+              className="w-full justify-center"
+            >
               {saving ? (
-                <span className="flex items-center gap-2">
+                <span className="flex items-center justify-center gap-2">
                   <CgSpinner className="animate-spin" />
                   Saving...
                 </span>
