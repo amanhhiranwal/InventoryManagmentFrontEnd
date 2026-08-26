@@ -1,1018 +1,4271 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import api from "@/lib/axios";
-import { useUIStore } from "@/lib/store/ui.store";
 import {
-  getLeadsApi,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+
+import * as XLSX from "xlsx";
+
+import { useUIStore } from "@/lib/store/ui.store";
+
+import {
   createLeadApi,
+  getLeadsApi,
   progressLeadApi,
-  assignLeadApi,
+  updateLeadApi,
   Lead,
-  ProgressLeadPayload,
 } from "@/features/workflows/api/workflows.api";
+
 import { getUsersApi, User } from "@/features/users/api/users.api";
-import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
-import Input from "@/components/ui/Input";
+
 import Modal from "@/components/ui/Modal";
-import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
+import Button from "@/components/ui/Button";
+import Input from "@/components/ui/Input";
+
 import {
   FiPlus,
-  FiUser,
-  FiCheckCircle,
-  FiChevronRight,
-  FiTrash2,
-  FiPrinter,
-  FiSearch,
-  FiGrid,
-  FiList,
-  FiUserCheck,
-  FiSliders,
-  FiMoreVertical,
-  FiPhone,
   FiRefreshCw,
-  FiCalendar,
-  FiMapPin,
+  FiMoreVertical,
+  FiSearch,
+  FiSliders,
+  FiDownload,
+  FiGrid,
+  FiPhone,
   FiUserPlus,
   FiFileText,
   FiLink,
-  FiDownload,
+  FiCalendar,
+  FiMapPin,
+  FiMail,
+  FiMessageSquare,
+  FiEdit3,
+  FiCheckCircle,
+  FiXCircle,
+  FiChevronLeft,
+  FiChevronRight,
+  FiUploadCloud,
+  FiPaperclip,
+  FiUser,
+  FiBriefcase,
+  FiShield,
+  FiInfo,
+  FiActivity,
+  FiArrowUpRight,
   FiTrendingUp,
   FiTrendingDown,
-  FiX
+  FiX,
+  FiChevronDown,
+  FiDatabase,
 } from "react-icons/fi";
+
 import { CgSpinner } from "react-icons/cg";
 
-interface QuoteItem {
-  item: string;
-  qty: number;
-  price: number;
+/* ============================================================================
+   TYPES
+============================================================================ */
+
+interface LeadDetails {
+  customerType: string;
+  contactName: string;
+  organizationName: string;
+  website: string;
+
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  country: string;
+
+  gstNumber: string;
+  panNumber: string;
+  coiNumber: string;
+
+  designation: string;
+  mobileNumber: string;
+  email: string;
+
+  leadSource: string;
+  remarks: string;
+  attachments: string[];
 }
 
+interface LeadFormState extends LeadDetails {
+  assignedToId: string;
+}
+
+interface LeadFilters {
+  dateFrom: string;
+  dateTo: string;
+  customerType: string;
+  assignedTo: string;
+  status: string;
+  state: string;
+}
+
+interface IntegrationLeadState {
+  source: string;
+  contactName: string;
+  organizationName: string;
+  email: string;
+  mobileNumber: string;
+  website: string;
+  remarks: string;
+  assignedToId: string;
+}
+
+/* ============================================================================
+   CONSTANTS
+============================================================================ */
+
+const PAGE_SIZE = 10;
+
+const EMPTY_FORM: LeadFormState = {
+  customerType: "",
+  contactName: "",
+  organizationName: "",
+  website: "",
+
+  address: "",
+  city: "",
+  state: "",
+  zipCode: "",
+  country: "India",
+
+  gstNumber: "",
+  panNumber: "",
+  coiNumber: "",
+
+  designation: "",
+  mobileNumber: "",
+  email: "",
+
+  leadSource: "",
+  remarks: "",
+  attachments: [],
+
+  assignedToId: "",
+};
+
+const EMPTY_FILTERS: LeadFilters = {
+  dateFrom: "",
+  dateTo: "",
+  customerType: "",
+  assignedTo: "",
+  status: "all",
+  state: "",
+};
+
+const CUSTOMER_TYPES = [
+  "Distributor",
+  "OEM",
+  "End Customer",
+  "Institution",
+  "Corporate",
+];
+
+const STATES = [
+  "Andhra Pradesh",
+  "Delhi",
+  "Gujarat",
+  "Haryana",
+  "Karnataka",
+  "Kerala",
+  "Madhya Pradesh",
+  "Maharashtra",
+  "Punjab",
+  "Rajasthan",
+  "Tamil Nadu",
+  "Telangana",
+  "Uttar Pradesh",
+  "West Bengal",
+];
+
+const LEAD_SOURCES = ["Marketing", "Cold Calling", "In-bound"];
+
+const COUNTRIES = ["India", "United States", "China", "Malaysia", "Indonesia"];
+
+/* ============================================================================
+   HELPERS
+============================================================================ */
+
+function parseLeadDescription(description?: string): LeadDetails {
+  const result: LeadDetails = {
+    customerType: "",
+    contactName: "",
+    organizationName: "",
+    website: "",
+
+    address: "",
+    city: "",
+    state: "",
+    zipCode: "",
+    country: "India",
+
+    gstNumber: "",
+    panNumber: "",
+    coiNumber: "",
+
+    designation: "",
+    mobileNumber: "",
+    email: "",
+
+    leadSource: "",
+    remarks: "",
+    attachments: [],
+  };
+
+  if (!description) {
+    return result;
+  }
+
+  if (description.startsWith("CRM_META:")) {
+    try {
+      const parsed = JSON.parse(
+        description.replace(/^CRM_META:/, ""),
+      ) as Partial<LeadDetails>;
+
+      return {
+        ...result,
+        ...parsed,
+        attachments: Array.isArray(parsed.attachments)
+          ? parsed.attachments
+          : [],
+      };
+    } catch {
+      // Continue to legacy parser.
+    }
+  }
+
+  description.split("|").forEach((part) => {
+    const value = part.trim();
+
+    if (value.startsWith("Contact Name:")) {
+      result.contactName = value.replace("Contact Name:", "").trim();
+    }
+
+    if (value.startsWith("Email:")) {
+      result.email = value.replace("Email:", "").trim();
+    }
+
+    if (value.startsWith("Organization:")) {
+      result.organizationName = value.replace("Organization:", "").trim();
+    }
+
+    if (value.startsWith("Type:")) {
+      result.customerType = value.replace("Type:", "").trim();
+    }
+
+    if (value.startsWith("Address:")) {
+      const address = value.replace("Address:", "").trim();
+      const pieces = address.split(",").map((item) => item.trim());
+
+      result.address = pieces[0] || "";
+      result.city = pieces[1] || "";
+      result.state = pieces[2] || "";
+
+      const last = pieces.slice(3).join(" ");
+      const pinMatch = last.match(/\b\d{5,6}\b/);
+
+      if (pinMatch) {
+        result.zipCode = pinMatch[0];
+      }
+    }
+
+    if (value.startsWith("GST:")) {
+      result.gstNumber = value.replace("GST:", "").trim();
+    }
+
+    if (value.startsWith("PAN:")) {
+      result.panNumber = value.replace("PAN:", "").trim();
+    }
+
+    if (value.startsWith("COI:")) {
+      result.coiNumber = value.replace("COI:", "").trim();
+    }
+
+    if (value.startsWith("Lead Source:")) {
+      result.leadSource = value.replace("Lead Source:", "").trim();
+    }
+  });
+
+  return result;
+}
+
+function serializeLeadDetails(details: LeadDetails) {
+  return `CRM_META:${JSON.stringify(details)}`;
+}
+
+function getLeadDisplayName(lead: Lead) {
+  const details = parseLeadDescription(lead.description);
+
+  return (
+    details.contactName ||
+    lead.title?.split("(")[0]?.trim() ||
+    lead.title ||
+    "Unnamed Lead"
+  );
+}
+
+function getLeadCompany(lead: Lead) {
+  const details = parseLeadDescription(lead.description);
+
+  return details.organizationName || lead.title?.match(/\((.*?)\)/)?.[1] || "—";
+}
+
+function getLeadState(lead: Lead) {
+  return parseLeadDescription(lead.description).state || "—";
+}
+
+function getLeadCustomerType(lead: Lead) {
+  return parseLeadDescription(lead.description).customerType || "—";
+}
+
+function formatDate(value?: string) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatLeadId(id: string) {
+  return `#LD-${id.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+}
+
+function getUserName(user: User) {
+  return `${user.first_name || ""} ${user.last_name || ""}`.trim();
+}
+
+function getInitials(value?: string) {
+  if (!value) return "U";
+
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function isLeadDead(lead: Lead) {
+  return lead.status === "dead" || lead.stage === "dead";
+}
+
+function isLeadQualified(lead: Lead) {
+  return (
+    lead.status === "qualified" ||
+    lead.stage === "opportunity" ||
+    lead.stage === "quotation"
+  );
+}
+
+function isLeadNew(lead: Lead) {
+  return lead.status === "new" || lead.stage === "lead";
+}
+
+function formatDateInput(value: string) {
+  if (!value) return "";
+
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return date.toLocaleDateString("en-IN");
+}
+
+/* ============================================================================
+   MAIN PAGE
+============================================================================ */
+
 export default function LeadsPage() {
-  const router = useRouter();
   const { addToast } = useUIStore();
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
   const [search, setSearch] = useState("");
-  const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
 
-  // Top Right Export Dropdown State
   const [showTopMenu, setShowTopMenu] = useState(false);
-
-  // Add Lead Button Dropdown State
   const [showAddMenu, setShowAddMenu] = useState(false);
 
-  // Filter Modal Overlay State
-  const [showFilterModal, setShowFilterModal] = useState(false);
-  const [filterDateRange, setFilterDateRange] = useState("08/08/2026 - 20/08/2026");
-  const [filterCustomerType, setFilterCustomerType] = useState("");
-  const [filterAssignedTo, setFilterAssignedTo] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterState, setFilterState] = useState("");
+  const [showFilter, setShowFilter] = useState(false);
 
-  // Lead Reassignment Modal States
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [leadToAssign, setLeadToAssign] = useState<Lead | null>(null);
-  const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
-  const [assigning, setAssigning] = useState(false);
+  /*
+   * Active filters are only changed after Apply Filter.
+   */
+  const [filters, setFilters] = useState<LeadFilters>(EMPTY_FILTERS);
+  const [draftFilters, setDraftFilters] = useState<LeadFilters>(EMPTY_FILTERS);
 
-  // Quick Single Lead Modal (Fallback)
-  const [showQuickCreateModal, setShowQuickCreateModal] = useState(false);
-  const [quickTitle, setQuickTitle] = useState("");
-  const [quickDesc, setQuickDesc] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  // Bulk Excel & Integration Modals
   const [showExcelModal, setShowExcelModal] = useState(false);
   const [showIntegrationModal, setShowIntegrationModal] = useState(false);
 
-  // Lead progression modal states
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [progressing, setProgressing] = useState(false);
-  const [previewDocLead, setPreviewDocLead] = useState<Lead | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [detailsLead, setDetailsLead] = useState<Lead | null>(null);
 
-  // Step variables inside progression modal
-  const [reqsText, setReqsText] = useState("");
-  const [products, setProducts] = useState<any[]>([]);
-  const [demoReqType, setDemoReqType] = useState<"pending" | "skipped">("pending");
-  const [qType, setQType] = useState<"quotation" | "purchase_indent">("quotation");
-  const [qItems, setQItems] = useState<QuoteItem[]>([{ item: "", qty: 1, price: 0 }]);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+
+  /*
+   * Create/Edit page mode.
+   */
+  const [pageMode, setPageMode] = useState<"list" | "create" | "edit">("list");
+
+  const [form, setForm] = useState<LeadFormState>(EMPTY_FORM);
+
+  const [rowMenuLeadId, setRowMenuLeadId] = useState<string | null>(null);
+
+  /*
+   * Pagination.
+   */
+  const [currentPage, setCurrentPage] = useState(1);
+
+  /*
+   * CSV / Excel import.
+   */
+  const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+
+  const excelInputRef = useRef<HTMLInputElement | null>(null);
+  const filterRef = useRef<HTMLDivElement | null>(null);
+  const topMenuRef = useRef<HTMLDivElement | null>(null);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
+
+  /*
+   * Integration.
+   */
+  const [selectedIntegration, setSelectedIntegration] = useState<string>("");
+
+  const [integrationLead, setIntegrationLead] = useState<IntegrationLeadState>({
+    source: "",
+    contactName: "",
+    organizationName: "",
+    email: "",
+    mobileNumber: "",
+    website: "",
+    remarks: "",
+    assignedToId: "",
+  });
+
+  /* --------------------------------------------------------------------------
+     FETCH
+  -------------------------------------------------------------------------- */
 
   const fetchLeads = useCallback(async () => {
     try {
       setLoading(true);
+
       const data = await getLeadsApi();
+
       setLeads(data || []);
-    } catch (err: unknown) {
-      console.error(err);
-      addToast("Failed to fetch leads records.", "error");
-      setLeads([]);
+    } catch (error) {
+      console.error(error);
+      addToast("Failed to load leads.", "error");
     } finally {
       setLoading(false);
     }
   }, [addToast]);
 
-  const fetchUsersList = useCallback(async () => {
+  const fetchUsers = useCallback(async () => {
     try {
-      const res = await getUsersApi();
-      setUsers(res.data || []);
-    } catch (err) {
-      console.error("Failed to load sales team users:", err);
-    }
-  }, []);
+      const response = await getUsersApi(1, 100);
 
-  const fetchProducts = useCallback(async () => {
-    try {
-      const res = await api.get("/api/v1/inventory/items", { skipErrorToast: true });
-      if (res.data?.success) {
-        setProducts(res.data.data || []);
-      }
-    } catch (err) {
-      console.error(err);
+      setUsers(response.data || []);
+    } catch (error) {
+      console.error(error);
     }
   }, []);
 
   useEffect(() => {
     fetchLeads();
-    fetchUsersList();
-    fetchProducts();
-  }, [fetchLeads, fetchUsersList, fetchProducts]);
+    fetchUsers();
+  }, [fetchLeads, fetchUsers]);
 
-  // Dynamic KPI Metrics Calculations
-  const totalLeadsCount = leads.length;
-  const newLeadsCount = leads.filter((l) => l.status === "new" || l.stage === "lead").length;
-  const qualifiedLeadsCount = leads.filter(
-    (l) => l.stage === "opportunity" || l.stage === "quotation" || l.status === "qualified"
-  ).length;
-  const deadLeadsCount = leads.filter((l) => l.status === "dead" || l.stage === "dead").length;
+  /* --------------------------------------------------------------------------
+     CLOSE MENUS WHEN CLICKING OUTSIDE
+  -------------------------------------------------------------------------- */
 
-  // Search & Filters filtering logic
-  const filteredLeads = leads.filter((l) => {
-    const searchLower = search.toLowerCase();
-    const matchesSearch =
-      !search ||
-      l.title.toLowerCase().includes(searchLower) ||
-      (l.description && l.description.toLowerCase().includes(searchLower)) ||
-      (l.assigned_to_name && l.assigned_to_name.toLowerCase().includes(searchLower));
+  useEffect(() => {
+    function handleDocumentClick(event: MouseEvent) {
+      const target = event.target as Node;
 
-    const matchesStatus = !filterStatus || l.status === filterStatus || l.stage === filterStatus;
-    const matchesAssigned = !filterAssignedTo || l.assigned_to_id === filterAssignedTo;
+      if (filterRef.current && !filterRef.current.contains(target)) {
+        setShowFilter(false);
+      }
 
-    return matchesSearch && matchesStatus && matchesAssigned;
-  });
+      if (topMenuRef.current && !topMenuRef.current.contains(target)) {
+        setShowTopMenu(false);
+      }
 
-  // Table Selection Handlers
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.checked) {
-      setSelectedLeads(filteredLeads.map((l) => l.id));
+      if (addMenuRef.current && !addMenuRef.current.contains(target)) {
+        setShowAddMenu(false);
+      }
+
+      setRowMenuLeadId(null);
+    }
+
+    document.addEventListener("mousedown", handleDocumentClick);
+
+    return () => {
+      document.removeEventListener("mousedown", handleDocumentClick);
+    };
+  }, []);
+
+  /* --------------------------------------------------------------------------
+     KPI
+  -------------------------------------------------------------------------- */
+
+  const totalLeads = leads.length;
+
+  const newLeads = leads.filter(isLeadNew).length;
+
+  const qualifiedLeads = leads.filter(isLeadQualified).length;
+
+  const deadLeads = leads.filter(isLeadDead).length;
+
+  /* --------------------------------------------------------------------------
+     FILTERING
+  -------------------------------------------------------------------------- */
+
+  const filteredLeads = useMemo(() => {
+    const query = search.toLowerCase().trim();
+
+    return leads.filter((lead) => {
+      const details = parseLeadDescription(lead.description);
+
+      const searchableText = [
+        lead.title,
+        getLeadDisplayName(lead),
+        details.organizationName,
+        details.email,
+        details.mobileNumber,
+        details.website,
+        details.address,
+        details.city,
+        details.state,
+        details.customerType,
+        details.leadSource,
+        lead.assigned_to_name,
+        lead.creator_name,
+        lead.status,
+        lead.stage,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const matchesSearch = !query || searchableText.includes(query);
+
+      const matchesCustomerType =
+        !filters.customerType || details.customerType === filters.customerType;
+
+      const matchesAssigned =
+        !filters.assignedTo || lead.assigned_to_id === filters.assignedTo;
+
+      const matchesState = !filters.state || details.state === filters.state;
+
+      const matchesStatus =
+        filters.status === "all" ||
+        (filters.status === "active" && !isLeadDead(lead)) ||
+        (filters.status === "inactive" && isLeadDead(lead));
+
+      const created = new Date(lead.created_at);
+
+      const matchesDateFrom =
+        !filters.dateFrom ||
+        created >= new Date(`${filters.dateFrom}T00:00:00`);
+
+      const matchesDateTo =
+        !filters.dateTo || created <= new Date(`${filters.dateTo}T23:59:59`);
+
+      return (
+        matchesSearch &&
+        matchesCustomerType &&
+        matchesAssigned &&
+        matchesState &&
+        matchesStatus &&
+        matchesDateFrom &&
+        matchesDateTo
+      );
+    });
+  }, [leads, search, filters]);
+
+  /*
+   * Always go back to page 1 when search/filter changes.
+   */
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filters]);
+
+  /* --------------------------------------------------------------------------
+     PAGINATION
+  -------------------------------------------------------------------------- */
+
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
+
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedLeads = useMemo(() => {
+    const start = (safeCurrentPage - 1) * PAGE_SIZE;
+
+    return filteredLeads.slice(start, start + PAGE_SIZE);
+  }, [filteredLeads, safeCurrentPage]);
+
+  const paginationPages = useMemo(() => {
+    if (totalPages <= 5) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const pages: number[] = [];
+
+    if (safeCurrentPage <= 3) {
+      pages.push(1, 2, 3, 4, 5);
+    } else if (safeCurrentPage >= totalPages - 2) {
+      pages.push(
+        totalPages - 4,
+        totalPages - 3,
+        totalPages - 2,
+        totalPages - 1,
+        totalPages,
+      );
     } else {
-      setSelectedLeads([]);
+      pages.push(
+        safeCurrentPage - 2,
+        safeCurrentPage - 1,
+        safeCurrentPage,
+        safeCurrentPage + 1,
+        safeCurrentPage + 2,
+      );
     }
-  };
 
-  const handleSelectOne = (id: string) => {
-    setSelectedLeads((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
-  };
+    return pages;
+  }, [safeCurrentPage, totalPages]);
 
-  const handleQuickCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickTitle.trim()) return;
-    try {
-      setSubmitting(true);
-      await createLeadApi({
-        title: quickTitle.trim(),
-        description: quickDesc.trim() || undefined,
-      });
-      addToast("New lead registered successfully!", "success");
-      setQuickTitle("");
-      setQuickDesc("");
-      setShowQuickCreateModal(false);
-      fetchLeads();
-    } catch (err) {
-      console.error(err);
-      addToast("Failed to register lead.", "error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  /* --------------------------------------------------------------------------
+     FORM
+  -------------------------------------------------------------------------- */
 
-  const handleAssignSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!leadToAssign || !selectedAssigneeId) return;
-
-    try {
-      setAssigning(true);
-      await assignLeadApi(leadToAssign.id, selectedAssigneeId);
-      addToast("Lead reassigned successfully!", "success");
-      setShowAssignModal(false);
-      setLeadToAssign(null);
-      fetchLeads();
-    } catch (err) {
-      console.error(err);
-      addToast("Failed to reassign lead.", "error");
-    } finally {
-      setAssigning(false);
-    }
-  };
-
-  const openProgressionModal = (lead: Lead) => {
-    setSelectedLead(lead);
-    setReqsText(lead.requirements || "");
-    setDemoReqType(lead.demo_status === "skipped" ? "skipped" : "pending");
-    setQType((lead.quotation_type as any) || "quotation");
-    setQItems(
-      lead.quotation_items && lead.quotation_items.length > 0
-        ? lead.quotation_items
-        : [{ item: "", qty: 1, price: 0 }]
-    );
-  };
-
-  const handleProgressAction = async (
-    targetStage: string,
-    extraData?: Partial<ProgressLeadPayload>
+  const updateForm = <K extends keyof LeadFormState>(
+    field: K,
+    value: LeadFormState[K],
   ) => {
-    if (!selectedLead) return;
+    setForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+  };
+
+  const resetForm = () => {
+    setForm({
+      ...EMPTY_FORM,
+      assignedToId: users[0]?.id || "",
+    });
+  };
+
+  const openCreatePage = () => {
+    resetForm();
+
+    setPageMode("create");
+
+    setShowAddMenu(false);
+    setShowTopMenu(false);
+  };
+
+  const openEditPage = (lead: Lead) => {
+    const details = parseLeadDescription(lead.description);
+
+    setEditingLead(lead);
+
+    setForm({
+      ...details,
+      assignedToId: lead.assigned_to_id || "",
+    });
+
+    setPageMode("edit");
+
+    setShowDetailsModal(false);
+    setRowMenuLeadId(null);
+  };
+
+  const closeLeadForm = () => {
+    setPageMode("list");
+    setEditingLead(null);
+    resetForm();
+  };
+
+  /* --------------------------------------------------------------------------
+     FORM VALIDATION
+  -------------------------------------------------------------------------- */
+
+  const validateLeadForm = () => {
+    const requiredFields: Array<[keyof LeadFormState, string]> = [
+      ["customerType", "Customer Type"],
+      ["organizationName", "Organization Name"],
+      ["website", "Organization Website"],
+      ["address", "Address"],
+      ["city", "City"],
+      ["state", "State / Province"],
+      ["zipCode", "PIN / ZIP Code"],
+      ["country", "Country"],
+      ["contactName", "Full Name"],
+      ["designation", "Designation"],
+      ["mobileNumber", "Mobile Number"],
+      ["email", "Email Address"],
+      ["leadSource", "Lead Source"],
+      ["assignedToId", "Assigned To"],
+    ];
+
+    for (const [field, label] of requiredFields) {
+      if (!String(form[field] || "").trim()) {
+        addToast(`${label} is required.`, "warning");
+        return false;
+      }
+    }
+
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      addToast("Enter a valid email address.", "warning");
+      return false;
+    }
+
+    const phone = form.mobileNumber.replace(/\D/g, "");
+
+    if (phone.length < 10) {
+      addToast("Enter a valid mobile number.", "warning");
+
+      return false;
+    }
+
+    return true;
+  };
+
+  /* --------------------------------------------------------------------------
+     CREATE
+  -------------------------------------------------------------------------- */
+
+  const handleCreateLead = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!validateLeadForm()) return;
+
     try {
-      setProgressing(true);
-      const payload: ProgressLeadPayload = {
-        stage: targetStage,
-        ...extraData,
+      setSaving(true);
+
+      const details: LeadDetails = {
+        customerType: form.customerType,
+        contactName: form.contactName.trim(),
+        organizationName: form.organizationName.trim(),
+        website: form.website.trim(),
+
+        address: form.address.trim(),
+        city: form.city.trim(),
+        state: form.state.trim(),
+        zipCode: form.zipCode.trim(),
+        country: form.country,
+
+        gstNumber: form.gstNumber.trim(),
+        panNumber: form.panNumber.trim(),
+        coiNumber: form.coiNumber.trim(),
+
+        designation: form.designation.trim(),
+        mobileNumber: form.mobileNumber.trim(),
+        email: form.email.trim(),
+
+        leadSource: form.leadSource,
+        remarks: form.remarks.trim(),
+        attachments: form.attachments,
       };
-      await progressLeadApi(selectedLead.id, payload);
-      addToast(`Lead advanced to ${targetStage} stage successfully!`, "success");
-      setSelectedLead(null);
-      fetchLeads();
-    } catch (err) {
-      console.error(err);
-      addToast("Failed to progress lead stage.", "error");
-    } finally {
-      setProgressing(false);
-    }
-  };
 
-  const formatLeadCode = (id: string) => {
-    const shortId = id.replace(/-/g, "").slice(0, 4).toUpperCase();
-    return `#LD-${shortId}`;
-  };
-
-  const parseLeadDetails = (lead: Lead) => {
-    let name = lead.title;
-    let email = "contact@client.com";
-    let state = "India";
-    let company = "Enterprise Client";
-
-    if (lead.description && lead.description.includes("Contact Name:")) {
-      const parts = lead.description.split("|");
-      parts.forEach((p) => {
-        const trimmed = p.trim();
-        if (trimmed.startsWith("Contact Name:")) name = trimmed.replace("Contact Name:", "").trim();
-        if (trimmed.startsWith("Email:")) email = trimmed.replace("Email:", "").trim();
-        if (trimmed.startsWith("Organization:")) company = trimmed.replace("Organization:", "").trim();
-        if (trimmed.startsWith("Address:")) {
-          const addrParts = trimmed.replace("Address:", "").split(",");
-          if (addrParts.length >= 3) state = addrParts[2].trim();
-        }
+      await createLeadApi({
+        title: `${details.contactName} (${details.organizationName})`,
+        description: serializeLeadDetails(details),
+        status: "new",
+        assigned_to_id: form.assignedToId || undefined,
       });
+
+      addToast("New lead created successfully.", "success");
+
+      closeLeadForm();
+
+      await fetchLeads();
+    } catch (error) {
+      console.error(error);
+
+      addToast("Failed to create lead.", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* --------------------------------------------------------------------------
+     UPDATE
+  -------------------------------------------------------------------------- */
+
+  const handleUpdateLead = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!editingLead) return;
+
+    if (!validateLeadForm()) return;
+
+    try {
+      setSaving(true);
+
+      const details: LeadDetails = {
+        customerType: form.customerType,
+        contactName: form.contactName.trim(),
+        organizationName: form.organizationName.trim(),
+        website: form.website.trim(),
+
+        address: form.address.trim(),
+        city: form.city.trim(),
+        state: form.state.trim(),
+        zipCode: form.zipCode.trim(),
+        country: form.country,
+
+        gstNumber: form.gstNumber.trim(),
+        panNumber: form.panNumber.trim(),
+        coiNumber: form.coiNumber.trim(),
+
+        designation: form.designation.trim(),
+        mobileNumber: form.mobileNumber.trim(),
+        email: form.email.trim(),
+
+        leadSource: form.leadSource,
+        remarks: form.remarks.trim(),
+        attachments: form.attachments,
+      };
+
+      const updated = await updateLeadApi(editingLead.id, {
+        title: `${details.contactName} (${details.organizationName})`,
+        description: serializeLeadDetails(details),
+        assigned_to_id: form.assignedToId || undefined,
+      });
+
+      const refreshedLead = {
+        ...editingLead,
+        ...updated,
+      };
+
+      setLeads((previous) =>
+        previous.map((lead) =>
+          lead.id === editingLead.id ? refreshedLead : lead,
+        ),
+      );
+
+      addToast("Lead updated successfully.", "success");
+
+      closeLeadForm();
+
+      setDetailsLead(refreshedLead);
+      setShowDetailsModal(true);
+    } catch (error) {
+      console.error(error);
+
+      addToast("Failed to update lead.", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* --------------------------------------------------------------------------
+     LEAD ACTIONS
+  -------------------------------------------------------------------------- */
+
+  const markLeadDead = async (lead: Lead) => {
+    try {
+      await progressLeadApi(lead.id, {
+        stage: "dead",
+        status: "dead",
+      });
+
+      addToast("Lead marked as dead.", "success");
+
+      setRowMenuLeadId(null);
+      setShowDetailsModal(false);
+
+      await fetchLeads();
+    } catch (error) {
+      console.error(error);
+
+      addToast("Failed to mark lead as dead.", "error");
+    }
+  };
+
+  const convertToOpportunity = async (lead: Lead) => {
+    try {
+      await progressLeadApi(lead.id, {
+        stage: "opportunity",
+        status: "qualified",
+      });
+
+      addToast("Lead converted to opportunity.", "success");
+
+      setRowMenuLeadId(null);
+      setShowDetailsModal(false);
+
+      await fetchLeads();
+    } catch (error) {
+      console.error(error);
+
+      addToast("Failed to convert lead.", "error");
+    }
+  };
+
+  const openLeadDetails = (lead: Lead) => {
+    setDetailsLead(lead);
+    setShowDetailsModal(true);
+    setRowMenuLeadId(null);
+  };
+
+  /* --------------------------------------------------------------------------
+     FILTERS
+  -------------------------------------------------------------------------- */
+
+  const openFilters = () => {
+    setDraftFilters(filters);
+    setShowFilter(true);
+  };
+
+  const applyFilters = () => {
+    let next = {
+      ...draftFilters,
+    };
+
+    if (next.dateFrom && next.dateTo && next.dateFrom > next.dateTo) {
+      const from = next.dateFrom;
+
+      next.dateFrom = next.dateTo;
+      next.dateTo = from;
     }
 
-    return { name, email, state, company };
+    setFilters(next);
+    setCurrentPage(1);
+    setShowFilter(false);
   };
+
+  const clearFilters = () => {
+    setDraftFilters(EMPTY_FILTERS);
+    setFilters(EMPTY_FILTERS);
+    setCurrentPage(1);
+    setShowFilter(false);
+  };
+
+  const hasActiveFilters =
+    Boolean(filters.dateFrom) ||
+    Boolean(filters.dateTo) ||
+    Boolean(filters.customerType) ||
+    Boolean(filters.assignedTo) ||
+    filters.status !== "all" ||
+    Boolean(filters.state);
+
+  const availableStates = Array.from(
+    new Set([
+      ...STATES,
+      ...leads
+        .map((lead) => parseLeadDescription(lead.description).state)
+        .filter(Boolean),
+    ]),
+  );
+
+  /* --------------------------------------------------------------------------
+     EXPORT
+  -------------------------------------------------------------------------- */
+
+  const exportCSV = () => {
+    if (!filteredLeads.length) {
+      addToast("No leads available for export.", "warning");
+
+      return;
+    }
+
+    const header = [
+      "Lead ID",
+      "Customer Name",
+      "Organization",
+      "Customer Type",
+      "Website",
+      "Email",
+      "Mobile",
+      "Address",
+      "City",
+      "State",
+      "PIN / ZIP",
+      "Country",
+      "GST",
+      "PAN",
+      "COI",
+      "Designation",
+      "Lead Source",
+      "Assigned To",
+      "Status",
+      "Stage",
+      "Created At",
+    ];
+
+    const rows = filteredLeads.map((lead) => {
+      const details = parseLeadDescription(lead.description);
+
+      return [
+        formatLeadId(lead.id),
+        details.contactName,
+        details.organizationName,
+        details.customerType,
+        details.website,
+        details.email,
+        details.mobileNumber,
+        details.address,
+        details.city,
+        details.state,
+        details.zipCode,
+        details.country,
+        details.gstNumber,
+        details.panNumber,
+        details.coiNumber,
+        details.designation,
+        details.leadSource,
+        lead.assigned_to_name || "",
+        lead.status,
+        lead.stage,
+        formatDate(lead.created_at),
+      ];
+    });
+
+    const csv = [header, ...rows]
+      .map((row) =>
+        row
+          .map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`)
+          .join(","),
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(url);
+
+    setShowTopMenu(false);
+
+    addToast("Leads exported successfully.", "success");
+  };
+
+  /* --------------------------------------------------------------------------
+     KPI CHART
+  -------------------------------------------------------------------------- */
+
+  const downloadChart = () => {
+    const canvas = document.createElement("canvas");
+
+    canvas.width = 1200;
+    canvas.height = 600;
+
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) return;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "bold 32px Arial";
+
+    ctx.fillText("Leads Pipeline", 60, 70);
+
+    const values = [
+      {
+        label: "Total Leads",
+        value: totalLeads,
+      },
+      {
+        label: "New",
+        value: newLeads,
+      },
+      {
+        label: "Qualified",
+        value: qualifiedLeads,
+      },
+      {
+        label: "Dead",
+        value: deadLeads,
+      },
+    ];
+
+    const max = Math.max(...values.map((item) => item.value), 1);
+
+    const chartBottom = 500;
+    const chartTop = 130;
+    const barWidth = 150;
+    const gap = 100;
+
+    values.forEach((item, index) => {
+      const x = 100 + index * (barWidth + gap);
+
+      const height = (item.value / max) * (chartBottom - chartTop);
+
+      ctx.fillStyle = "#1d2b45";
+
+      ctx.fillRect(x, chartBottom - height, barWidth, height);
+
+      ctx.fillStyle = "#0f172a";
+
+      ctx.font = "bold 20px Arial";
+
+      ctx.fillText(
+        item.value.toLocaleString("en-IN"),
+        x + 35,
+        chartBottom - height - 15,
+      );
+
+      ctx.font = "16px Arial";
+
+      ctx.fillText(item.label, x + 20, chartBottom + 35);
+    });
+
+    const link = document.createElement("a");
+
+    link.download = "leads-pipeline-chart.png";
+
+    link.href = canvas.toDataURL("image/png");
+
+    link.click();
+
+    setShowTopMenu(false);
+
+    addToast("Chart downloaded.", "success");
+  };
+
+  /* --------------------------------------------------------------------------
+     FILE IMPORT
+  -------------------------------------------------------------------------- */
+
+  const acceptImportFile = (file: File) => {
+    const extension = file.name.split(".").pop()?.toLowerCase();
+
+    const allowed = ["csv", "xlsx", "xls"];
+
+    if (!extension || !allowed.includes(extension)) {
+      addToast("Please upload a CSV, XLSX or XLS file.", "warning");
+
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      addToast("Maximum file size is 10MB.", "warning");
+
+      return;
+    }
+
+    setExcelFile(file);
+  };
+
+  const handleExcelFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    acceptImportFile(file);
+  };
+
+  const handleFileDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    setIsDraggingFile(false);
+
+    const file = event.dataTransfer.files?.[0];
+
+    if (file) {
+      acceptImportFile(file);
+    }
+  };
+
+  const downloadSampleCSV = () => {
+    const sample = [
+      [
+        "Full Name",
+        "Designation",
+        "Email",
+        "Mobile",
+        "Organization Name",
+        "Organization Website",
+        "Customer Type",
+        "Address",
+        "City",
+        "State",
+        "PIN / ZIP Code",
+        "Country",
+        "GST Number",
+        "PAN Number",
+        "COI",
+        "Lead Source",
+        "Assigned To",
+        "Remarks",
+      ],
+      [
+        "Rahul Sharma",
+        "Procurement Manager",
+        "rahul@example.com",
+        "9876543210",
+        "Example Technologies",
+        "www.example.com",
+        "Corporate",
+        "MG Road",
+        "Bengaluru",
+        "Karnataka",
+        "560001",
+        "India",
+        "29ABCDE1234F1Z5",
+        "ABCDE1234F",
+        "COI-001",
+        "Website",
+        "",
+        "Sample imported lead",
+      ],
+    ];
+
+    const csv = sample
+      .map((row) =>
+        row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","),
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "sample-leads-import.csv";
+
+    link.click();
+
+    URL.revokeObjectURL(url);
+  };
+
+  const importExcel = async () => {
+    if (!excelFile) {
+      addToast("Select a file first.", "warning");
+
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const buffer = await excelFile.arrayBuffer();
+
+      const workbook = XLSX.read(buffer, {
+        type: "array",
+      });
+
+      const sheetName = workbook.SheetNames[0];
+
+      if (!sheetName) {
+        throw new Error("Workbook contains no sheets.");
+      }
+
+      const sheet = workbook.Sheets[sheetName];
+
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+        defval: "",
+        raw: false,
+      });
+
+      if (!rows.length) {
+        throw new Error("File contains no records.");
+      }
+
+      let imported = 0;
+
+      for (const rawRow of rows) {
+        const row: Record<string, string> = {};
+
+        Object.entries(rawRow).forEach(([key, value]) => {
+          row[key.toLowerCase().trim()] = String(value ?? "").trim();
+        });
+
+        const get = (...keys: string[]) => {
+          for (const key of keys) {
+            if (row[key]) {
+              return row[key];
+            }
+          }
+
+          return "";
+        };
+
+        const contactName = get(
+          "full name",
+          "customer name",
+          "name",
+          "contact name",
+        );
+
+        const organizationName = get(
+          "organization name",
+          "company",
+          "organization",
+        );
+
+        if (!contactName) {
+          continue;
+        }
+
+        const importedDetails: LeadDetails = {
+          customerType: get("customer type"),
+
+          contactName,
+
+          organizationName,
+
+          website: get("website", "organization website"),
+
+          address: get("address"),
+
+          city: get("city"),
+
+          state: get("state"),
+
+          zipCode: get("pin / zip code", "pin", "zip", "zip code"),
+
+          country: get("country") || "India",
+
+          gstNumber: get("gst number", "gst"),
+
+          panNumber: get("pan number", "pan"),
+
+          coiNumber: get("coi", "coi number"),
+
+          designation: get("designation"),
+
+          mobileNumber: get("mobile", "mobile number", "phone", "phone number"),
+
+          email: get("email"),
+
+          leadSource: get("lead source"),
+
+          remarks: get("remarks"),
+
+          attachments: [],
+        };
+
+        const assignedName = get("assigned to");
+
+        const matchingUser = users.find(
+          (user) =>
+            getUserName(user).toLowerCase().trim() ===
+            assignedName.toLowerCase().trim(),
+        );
+
+        await createLeadApi({
+          title: `${contactName}${
+            organizationName ? ` (${organizationName})` : ""
+          }`,
+
+          description: serializeLeadDetails(importedDetails),
+
+          status: "new",
+
+          assigned_to_id: matchingUser?.id || undefined,
+        });
+
+        imported++;
+      }
+
+      addToast(`${imported} lead(s) imported successfully.`, "success");
+
+      setExcelFile(null);
+      setShowExcelModal(false);
+
+      if (excelInputRef.current) {
+        excelInputRef.current.value = "";
+      }
+
+      await fetchLeads();
+    } catch (error) {
+      console.error(error);
+
+      addToast("Failed to import the file.", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* --------------------------------------------------------------------------
+     ATTACHMENTS
+  -------------------------------------------------------------------------- */
+
+  const addAttachment = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+
+    if (!files.length) return;
+
+    const validFiles = files.filter((file) => file.size <= 10 * 1024 * 1024);
+
+    if (validFiles.length !== files.length) {
+      addToast("Files above 10MB were ignored.", "warning");
+    }
+
+    setForm((previous) => ({
+      ...previous,
+
+      attachments: [
+        ...previous.attachments,
+        ...validFiles.map((file) => file.name),
+      ],
+    }));
+
+    event.target.value = "";
+  };
+
+  /* --------------------------------------------------------------------------
+     INTEGRATION
+  -------------------------------------------------------------------------- */
+
+  const openIntegration = (source: string) => {
+    setSelectedIntegration(source);
+
+    setIntegrationLead({
+      source,
+      contactName: "",
+      organizationName: "",
+      email: "",
+      mobileNumber: "",
+      website: "",
+      remarks: "",
+      assignedToId: users[0]?.id || "",
+    });
+  };
+
+  const updateIntegrationLead = <K extends keyof IntegrationLeadState>(
+    field: K,
+    value: IntegrationLeadState[K],
+  ) => {
+    setIntegrationLead((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+  };
+
+  const importIntegrationLead = async () => {
+    if (!integrationLead.contactName.trim()) {
+      addToast("Full Name is required.", "warning");
+
+      return;
+    }
+
+    if (!integrationLead.organizationName.trim()) {
+      addToast("Organization Name is required.", "warning");
+
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const details: LeadDetails = {
+        ...EMPTY_FORM,
+
+        customerType: "End Customer",
+
+        contactName: integrationLead.contactName.trim(),
+
+        organizationName: integrationLead.organizationName.trim(),
+
+        website: integrationLead.website.trim(),
+
+        email: integrationLead.email.trim(),
+
+        mobileNumber: integrationLead.mobileNumber.trim(),
+
+        leadSource: integrationLead.source,
+
+        remarks: integrationLead.remarks.trim(),
+
+        attachments: [],
+      };
+
+      await createLeadApi({
+        title: `${details.contactName} (${details.organizationName})`,
+        description: serializeLeadDetails(details),
+        status: "new",
+        assigned_to_id: integrationLead.assignedToId || undefined,
+      });
+
+      addToast("Integration lead added successfully.", "success");
+
+      setShowIntegrationModal(false);
+      setSelectedIntegration("");
+
+      await fetchLeads();
+    } catch (error) {
+      console.error(error);
+
+      addToast("Failed to add integration lead.", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ==========================================================================
+     CREATE / EDIT PAGE
+  ========================================================================== */
+
+  if (pageMode === "create" || pageMode === "edit") {
+    return (
+      <LeadFormPage
+        title={pageMode === "create" ? "New Lead" : "Edit Lead"}
+        form={form}
+        users={users}
+        saving={saving}
+        onChange={updateForm}
+        onSubmit={pageMode === "create" ? handleCreateLead : handleUpdateLead}
+        onAttachment={addAttachment}
+        onClose={closeLeadForm}
+      />
+    );
+  }
+
+  /* ==========================================================================
+     LIST PAGE
+  ========================================================================== */
 
   return (
-    <div className="space-y-6 select-none pb-12">
-      {/* ==================== TOP TITLE BAR WITH ACTIONS ==================== */}
+    <div
+      className="
+        min-h-full
+        space-y-5
+        pb-8
+        select-none
+      "
+    >
+      {/* HEADER */}
+
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+        <div className="flex items-center gap-3">
+          <h1
+            className="
+              text-2xl
+              font-extrabold
+              tracking-tight
+              text-slate-900
+              dark:text-white
+            "
+          >
             Leads
           </h1>
+
           <button
+            type="button"
+            title="Refresh Leads"
             onClick={fetchLeads}
-            title="Refresh Leads Data"
-            className="p-1.5 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-100/70 dark:bg-[#071929] hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
+            className="
+              rounded-xl
+              border
+              border-slate-200
+              bg-slate-100/70
+              p-2
+              text-slate-500
+              transition
+              hover:bg-slate-200
+              dark:border-[#0d2336]
+              dark:bg-[#071929]
+              dark:text-slate-300
+            "
           >
-            <FiRefreshCw className={`text-xs ${loading ? "animate-spin text-primary" : ""}`} />
+            <FiRefreshCw className={loading ? "animate-spin" : ""} />
           </button>
         </div>
 
-        {/* Top-Right Three Dots Menu */}
-        <div className="relative">
+        <div ref={topMenuRef} className="relative">
           <button
-            onClick={() => setShowTopMenu((prev) => !prev)}
-            className="p-2 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-100/70 dark:bg-[#071929] hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
+            type="button"
+            onClick={() => setShowTopMenu((previous) => !previous)}
+            className="
+              rounded-xl
+              border
+              border-slate-200
+              bg-white
+              p-2
+              text-slate-600
+              shadow-sm
+              hover:bg-slate-50
+              dark:border-[#0d2336]
+              dark:bg-[#051422]
+              dark:text-slate-300
+            "
           >
-            <FiMoreVertical className="text-base" />
+            <FiMoreVertical />
           </button>
 
           {showTopMenu && (
-            <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] p-1.5 shadow-xl z-30 animate-fadeIn">
-              <button
-                onClick={() => {
-                  setShowTopMenu(false);
-                  addToast("Exporting leads registry data (CSV)...", "info");
-                }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] rounded-lg transition-all text-left cursor-pointer"
-              >
-                <FiDownload className="text-xs" />
-                <span>Export Data</span>
-              </button>
-              <button
-                onClick={() => {
-                  setShowTopMenu(false);
-                  addToast("Generating pipeline metrics snapshot...", "info");
-                }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] rounded-lg transition-all text-left cursor-pointer"
-              >
-                <FiGrid className="text-xs" />
-                <span>Download Chart</span>
-              </button>
-            </div>
+            <DropdownMenu>
+              <DropdownButton icon={<FiDownload />} onClick={exportCSV}>
+                Export Data
+              </DropdownButton>
+
+              <DropdownButton icon={<FiGrid />} onClick={downloadChart}>
+                Download Chart
+              </DropdownButton>
+            </DropdownMenu>
           )}
         </div>
       </div>
 
-      {/* ==================== 1. TOP SUMMARY CARDS ROW ==================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Leads */}
-        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Total Leads
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-600 px-2.5 py-0.5 text-[10px] font-bold">
-              <FiTrendingUp className="text-[10px]" /> 12%
-            </span>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-3xl font-black text-slate-900 dark:text-white font-sans tracking-tight">
-              {totalLeadsCount > 0 ? totalLeadsCount.toLocaleString("en-IN") : "1,284"}
-            </h3>
-            <p className="text-[10px] font-bold text-emerald-500 mt-1">vs last month</p>
-          </div>
-        </div>
+      {/* KPI */}
 
-        {/* Card 2: New Leads */}
-        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">New</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-600 px-2.5 py-0.5 text-[10px] font-bold">
-              <FiTrendingUp className="text-[10px]" /> +8
-            </span>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-3xl font-black text-slate-900 dark:text-white font-sans tracking-tight">
-              {newLeadsCount > 0 ? newLeadsCount.toLocaleString("en-IN") : "124"}
-            </h3>
-            <p className="text-[10px] font-bold text-emerald-500 mt-1">vs last month</p>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          label="Total Leads"
+          value={totalLeads}
+          percentage="+12%"
+          positive
+          icon={<FiTrendingUp />}
+        />
 
-        {/* Card 3: Qualified Leads */}
-        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Qualified
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 text-rose-500 px-2.5 py-0.5 text-[10px] font-bold">
-              <FiTrendingDown className="text-[10px]" /> 5%
-            </span>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-3xl font-black text-slate-900 dark:text-white font-sans tracking-tight">
-              {qualifiedLeadsCount > 0 ? qualifiedLeadsCount.toLocaleString("en-IN") : "342"}
-            </h3>
-            <p className="text-[10px] font-bold text-rose-500 mt-1">vs last month</p>
-          </div>
-        </div>
+        <KpiCard
+          label="New"
+          value={newLeads}
+          percentage="+8"
+          positive
+          icon={<FiTrendingUp />}
+        />
 
-        {/* Card 4: Dead Leads */}
-        <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-5 shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Dead</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 text-rose-500 px-2.5 py-0.5 text-[10px] font-bold">
-              <FiTrendingDown className="text-[10px]" /> 5%
-            </span>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-3xl font-black text-slate-900 dark:text-white font-sans tracking-tight">
-              {deadLeadsCount > 0 ? deadLeadsCount.toLocaleString("en-IN") : "86"}
-            </h3>
-            <p className="text-[10px] font-bold text-rose-500 mt-1">vs last month</p>
-          </div>
-        </div>
+        <KpiCard
+          label="Qualified"
+          value={qualifiedLeads}
+          percentage="-5%"
+          positive={false}
+          icon={<FiTrendingDown />}
+        />
+
+        <KpiCard
+          label="Dead"
+          value={deadLeads}
+          percentage="-5%"
+          positive={false}
+          icon={<FiTrendingDown />}
+        />
       </div>
 
-      {/* ==================== 2. SEARCH & ACTION BAR ==================== */}
-      <div className="flex flex-col sm:flex-row items-center gap-3">
-        {/* Full-width Search Input */}
-        <div className="relative flex-grow w-full">
-          <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-base" />
+      {/* SEARCH + FILTER + ADD */}
+
+      <div className="flex flex-col gap-3 lg:flex-row">
+        <div className="relative flex-1">
+          <FiSearch
+            className="
+              absolute
+              left-4
+              top-1/2
+              -translate-y-1/2
+              text-slate-400
+            "
+          />
+
           <input
-            type="text"
-            placeholder="Search Leads"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-2xl border border-slate-200/80 dark:border-[#0d2336] bg-slate-100/60 dark:bg-[#051422] pl-11 pr-4 py-3 text-xs text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Field Text"
+            className="
+              h-12
+              w-full
+              rounded-xl
+              border
+              border-slate-200
+              bg-white
+              pl-11
+              pr-4
+              text-sm
+              text-slate-800
+              outline-none
+              transition
+              focus:border-primary
+              focus:ring-2
+              focus:ring-primary/10
+              dark:border-[#0d2336]
+              dark:bg-[#051422]
+              dark:text-white
+            "
           />
         </div>
 
-        {/* Filter Sliders Button */}
-        <button
-          onClick={() => setShowFilterModal(true)}
-          title="Open Filters Modal"
-          className="flex items-center justify-center p-3 rounded-2xl border border-slate-200/80 dark:border-[#0d2336] bg-white dark:bg-[#051422] hover:bg-slate-50 dark:hover:bg-[#071929] text-slate-700 dark:text-slate-300 transition-all cursor-pointer shrink-0"
-        >
-          <FiSliders className="text-base" />
-        </button>
+        {/* FILTER POPOVER */}
 
-        {/* Add New Lead Dropdown */}
-        <div className="relative shrink-0 w-full sm:w-auto">
+        <div
+          ref={filterRef}
+          className="relative"
+          onClick={(event) => event.stopPropagation()}
+        >
           <button
-            onClick={() => setShowAddMenu((prev) => !prev)}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#1d2b45] hover:bg-[#162238] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+            type="button"
+            onClick={openFilters}
+            className="
+              flex
+              h-12
+              items-center
+              justify-center
+              gap-2
+              rounded-xl
+              border
+              border-slate-200
+              bg-white
+              px-4
+              text-xs
+              font-bold
+              text-slate-700
+              shadow-sm
+              hover:bg-slate-50
+              dark:border-[#0d2336]
+              dark:bg-[#051422]
+              dark:text-slate-200
+            "
           >
-            <FiPlus className="text-base" />
-            <span>Add New Lead</span>
+            <FiSliders />
+            Filter
+            {hasActiveFilters && (
+              <span
+                className="
+                  flex
+                  h-5
+                  min-w-5
+                  items-center
+                  justify-center
+                  rounded-full
+                  bg-[#1d2b45]
+                  px-1.5
+                  text-[9px]
+                  text-white
+                "
+              >
+                {
+                  [
+                    filters.dateFrom || filters.dateTo,
+                    filters.customerType,
+                    filters.assignedTo,
+                    filters.status !== "all" ? filters.status : "",
+                    filters.state,
+                  ].filter(Boolean).length
+                }
+              </span>
+            )}
+          </button>
+
+          {showFilter && (
+            <FilterPopover
+              filters={draftFilters}
+              users={users}
+              states={availableStates}
+              onChange={(field, value) =>
+                setDraftFilters((previous) => ({
+                  ...previous,
+                  [field]: value,
+                }))
+              }
+              onApply={applyFilters}
+              onClear={clearFilters}
+            />
+          )}
+        </div>
+
+        {/* ADD */}
+
+        <div
+          ref={addMenuRef}
+          className="relative"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => setShowAddMenu((previous) => !previous)}
+            className="
+              flex
+              h-12
+              w-full
+              items-center
+              justify-center
+              gap-2
+              rounded-xl
+              bg-[#1d2b45]
+              px-5
+              text-xs
+              font-bold
+              text-white
+              shadow-sm
+              hover:bg-[#162238]
+              lg:w-auto
+            "
+          >
+            <FiPlus />
+            Add New Lead
           </button>
 
           {showAddMenu && (
-            <div className="absolute right-0 top-full mt-2 w-52 rounded-2xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] p-1.5 shadow-xl z-30 animate-fadeIn">
-              <Link
-                href="/leads/create"
-                onClick={() => setShowAddMenu(false)}
-                className="flex items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] rounded-xl transition-all"
+            <DropdownMenu className="w-64">
+              <DropdownButton
+                icon={<FiUserPlus className="text-primary" />}
+                onClick={openCreatePage}
               >
-                <FiUserPlus className="text-base text-primary" />
-                <span>Add Single Lead</span>
-              </Link>
+                Add Single Lead
+              </DropdownButton>
 
-              <button
+              <DropdownButton
+                icon={<FiFileText className="text-emerald-500" />}
                 onClick={() => {
                   setShowAddMenu(false);
                   setShowExcelModal(true);
                 }}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] rounded-xl transition-all text-left cursor-pointer"
               >
-                <FiFileText className="text-base text-emerald-500" />
-                <span>Add From Excel</span>
-              </button>
+                Add From Excel
+              </DropdownButton>
 
-              <button
+              <DropdownButton
+                icon={<FiLink className="text-indigo-500" />}
                 onClick={() => {
                   setShowAddMenu(false);
+                  setSelectedIntegration("");
                   setShowIntegrationModal(true);
                 }}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] rounded-xl transition-all text-left cursor-pointer"
               >
-                <FiLink className="text-base text-indigo-500" />
-                <span>Add From Integration</span>
-              </button>
-            </div>
+                Add From Integration
+              </DropdownButton>
+            </DropdownMenu>
           )}
         </div>
       </div>
 
-      {/* ==================== 3. ENHANCED LEADS TABLE ==================== */}
-      <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] shadow-xs overflow-hidden">
+      {/* ACTIVE FILTER SUMMARY */}
+
+      {hasActiveFilters && (
+        <div
+          className="
+            flex
+            flex-wrap
+            items-center
+            gap-2
+            rounded-xl
+            border
+            border-slate-200
+            bg-white
+            px-4
+            py-3
+            dark:border-[#0d2336]
+            dark:bg-[#051422]
+          "
+        >
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Active Filters
+          </span>
+
+          {filters.dateFrom || filters.dateTo ? (
+            <FilterChip
+              label={`Date: ${formatDateInput(filters.dateFrom) || "Any"} - ${
+                formatDateInput(filters.dateTo) || "Any"
+              }`}
+            />
+          ) : null}
+
+          {filters.customerType && <FilterChip label={filters.customerType} />}
+
+          {filters.assignedTo && (
+            <FilterChip
+              label={
+                users.find((user) => user.id === filters.assignedTo)
+                  ? getUserName(
+                      users.find((user) => user.id === filters.assignedTo)!,
+                    )
+                  : "Assigned"
+              }
+            />
+          )}
+
+          {filters.status !== "all" && (
+            <FilterChip
+              label={filters.status === "inactive" ? "Inactive" : "Active"}
+            />
+          )}
+
+          {filters.state && <FilterChip label={filters.state} />}
+
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="
+              ml-auto
+              flex
+              items-center
+              gap-1
+              text-[10px]
+              font-bold
+              text-rose-500
+            "
+          >
+            <FiX />
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* TABLE */}
+
+      <div
+        className="
+          overflow-hidden
+          rounded-2xl
+          border
+          border-slate-200/80
+          bg-white
+          shadow-sm
+          dark:border-[#0d2336]
+          dark:bg-[#051422]
+        "
+      >
         {loading ? (
-          <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
+          <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 text-slate-400">
             <CgSpinner className="animate-spin text-4xl text-primary" />
-            <span className="text-xs font-semibold">Compiling real-time leads registry...</span>
+
+            <span className="text-xs font-semibold">Loading leads...</span>
           </div>
         ) : filteredLeads.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-center space-y-3">
-            <div className="p-4 rounded-2xl bg-slate-100 dark:bg-[#071929] text-slate-400">
-              <FiUser className="text-3xl" />
-            </div>
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">No Leads Found</p>
-            <p className="text-xs text-slate-400 max-w-sm">
-              Click "+ Add New Lead" above to create your first CRM lead record.
-            </p>
-          </div>
+          <EmptyLeads />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200/80 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="p-4 w-10 text-center">
-                    <input
-                      type="checkbox"
-                      onChange={handleSelectAll}
-                      checked={
-                        selectedLeads.length > 0 &&
-                        selectedLeads.length === filteredLeads.length
-                      }
-                      className="rounded accent-[#233353] dark:accent-sky-500 border-slate-300 dark:border-slate-700 cursor-pointer"
-                    />
-                  </th>
-                  <th className="p-4">Lead ID</th>
-                  <th className="p-4">Customer Name</th>
-                  <th className="p-4">Company</th>
-                  <th className="p-4">Assigned To</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-[#0d2336]/60 text-xs">
-                {filteredLeads.map((lead) => {
-                  const details = parseLeadDetails(lead);
-                  const isChecked = selectedLeads.includes(lead.id);
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1150px] border-collapse text-left">
+                <thead>
+                  <tr
+                    className="
+                      border-b
+                      border-slate-200
+                      bg-slate-50/70
+                      text-[10px]
+                      font-bold
+                      uppercase
+                      tracking-wider
+                      text-slate-400
+                      dark:border-[#0d2336]
+                      dark:bg-[#071929]/60
+                    "
+                  >
+                    <th className="w-12 px-4 py-4">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                    </th>
 
-                  return (
-                    <tr
-                      key={lead.id}
-                      className="hover:bg-slate-50/70 dark:hover:bg-[#071929]/40 transition-colors"
-                    >
-                      {/* Checkbox */}
-                      <td className="p-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => handleSelectOne(lead.id)}
-                          className="rounded accent-[#233353] dark:accent-sky-500 border-slate-300 dark:border-slate-700 cursor-pointer"
-                        />
-                      </td>
+                    <th className="px-4 py-4">
+                      <TableHeader label="Lead ID" />
+                    </th>
 
-                      {/* Lead ID */}
-                      <td className="p-4 font-mono font-bold text-slate-700 dark:text-slate-300">
-                        {formatLeadCode(lead.id)}
-                      </td>
+                    <th className="px-4 py-4">
+                      <TableHeader label="Customer Name" />
+                    </th>
 
-                      {/* Customer Name + Email + Location Pin */}
-                      <td className="p-4">
-                        <div className="space-y-0.5">
-                          <p className="font-bold text-slate-900 dark:text-white text-xs">
-                            {details.name}
-                          </p>
-                          <p className="text-[11px] text-slate-400 font-normal">
-                            {details.email}
-                          </p>
-                          <p className="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
-                            <FiMapPin className="text-[10px] text-slate-400" />
-                            <span>{details.state}</span>
-                          </p>
-                        </div>
-                      </td>
+                    <th className="px-4 py-4">
+                      <TableHeader label="Company" />
+                    </th>
 
-                      {/* Company */}
-                      <td className="p-4 font-semibold text-slate-700 dark:text-slate-300">
-                        {details.company}
-                      </td>
+                    <th className="px-4 py-4">
+                      <TableHeader label="Assigned To" />
+                    </th>
 
-                      {/* Assigned To User Pill */}
-                      <td className="p-4">
-                        <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-[#071929] border border-slate-200/60 dark:border-[#0d2336]">
-                          <div className="w-5 h-5 rounded-full bg-[#233353] text-white flex items-center justify-center text-[9px] font-bold">
-                            {(lead.assigned_to_name || lead.creator_name || "U")[0]}
-                          </div>
-                          <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                            {lead.assigned_to_name || lead.creator_name || "Rohit S."}
+                    <th className="px-4 py-4">
+                      <TableHeader label="Status" />
+                    </th>
+
+                    <th className="px-4 py-4">
+                      <TableHeader label="Created" />
+                    </th>
+
+                    <th className="px-4 py-4 text-center">Actions</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100 dark:divide-[#0d2336]/70">
+                  {paginatedLeads.map((lead) => {
+                    const details = parseLeadDescription(lead.description);
+
+                    return (
+                      <tr
+                        key={lead.id}
+                        className="
+                            transition
+                            hover:bg-slate-50
+                            dark:hover:bg-[#071929]/50
+                          "
+                      >
+                        <td className="px-4 py-4">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                            {formatLeadId(lead.id)}
                           </span>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Status Badge */}
-                      <td className="p-4">
-                        <span
-                          className={`inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-bold capitalize ${
-                            lead.status === "new" || lead.stage === "lead"
-                              ? "bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300"
-                              : lead.status === "contacted"
-                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                              : lead.status === "qualified" || lead.stage === "opportunity"
-                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                              : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                          }`}
-                        >
-                          {lead.status === "new"
-                            ? "New"
-                            : lead.status === "contacted"
-                            ? "Contacted"
-                            : lead.status === "qualified" || lead.stage === "opportunity"
-                            ? "Qualified"
-                            : lead.status === "dead"
-                            ? "Dead"
-                            : lead.status}
-                        </span>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="p-4">
-                        <div className="flex items-center justify-center gap-1.5">
+                        <td className="px-4 py-4">
                           <button
-                            onClick={() => addToast(`Calling ${details.name}...`, "info")}
-                            title="Call Lead"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] transition-all cursor-pointer"
+                            type="button"
+                            onClick={() => openLeadDetails(lead)}
+                            className="text-left"
                           >
-                            <FiPhone className="text-sm" />
-                          </button>
+                            <p className="text-xs font-bold text-slate-900 hover:text-primary dark:text-white">
+                              {getLeadDisplayName(lead)}
+                            </p>
 
-                          <button
-                            onClick={() => openProgressionModal(lead)}
-                            title="View / Progress Lifecycle Flow"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#071929] transition-all cursor-pointer"
-                          >
-                            <FiMoreVertical className="text-sm" />
+                            <p className="mt-1 text-[10px] text-slate-400">
+                              {details.email || "No email"}
+                            </p>
+
+                            {details.state && (
+                              <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-400">
+                                <FiMapPin />
+                                {details.state}
+                              </p>
+                            )}
                           </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            {getLeadCompany(lead)}
+                          </p>
+
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            {getLeadCustomerType(lead)}
+                          </p>
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-[#0d2336] dark:bg-[#071929]">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#233353] text-[9px] font-bold text-white">
+                              {getInitials(
+                                lead.assigned_to_name || lead.creator_name,
+                              )}
+                            </span>
+
+                            <span className="max-w-[130px] truncate text-[10px] font-semibold text-slate-700 dark:text-slate-200">
+                              {lead.assigned_to_name ||
+                                lead.creator_name ||
+                                "Unassigned"}
+                            </span>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <StatusBadge
+                            status={lead.status}
+                            stage={lead.stage}
+                          />
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <span className="text-[10px] font-medium text-slate-400">
+                            {formatDate(lead.created_at)}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <div
+                            className="flex items-center justify-center gap-1"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              title="Lead Details"
+                              onClick={() => openLeadDetails(lead)}
+                              className="
+                                  rounded-lg
+                                  p-2
+                                  text-slate-400
+                                  hover:bg-slate-100
+                                  hover:text-slate-700
+                                  dark:hover:bg-[#071929]
+                                  dark:hover:text-white
+                                "
+                            >
+                              <FiPhone />
+                            </button>
+
+                            <div className="relative">
+                              <button
+                                type="button"
+                                title="More Actions"
+                                onClick={() =>
+                                  setRowMenuLeadId((previous) =>
+                                    previous === lead.id ? null : lead.id,
+                                  )
+                                }
+                                className="
+                                    rounded-lg
+                                    p-2
+                                    text-slate-400
+                                    hover:bg-slate-100
+                                    hover:text-slate-700
+                                    dark:hover:bg-[#071929]
+                                    dark:hover:text-white
+                                  "
+                              >
+                                <FiMoreVertical />
+                              </button>
+
+                              {rowMenuLeadId === lead.id && (
+                                <div
+                                  className="
+                                      absolute
+                                      right-0
+                                      top-full
+                                      z-40
+                                      mt-1
+                                      w-52
+                                      rounded-xl
+                                      border
+                                      border-slate-200
+                                      bg-white
+                                      p-1
+                                      shadow-xl
+                                      dark:border-[#0d2336]
+                                      dark:bg-[#051422]
+                                    "
+                                >
+                                  <RowAction
+                                    icon={<FiEdit3 />}
+                                    onClick={() => openEditPage(lead)}
+                                  >
+                                    Edit
+                                  </RowAction>
+
+                                  <RowAction
+                                    icon={<FiXCircle />}
+                                    danger
+                                    onClick={() => markLeadDead(lead)}
+                                  >
+                                    Mark as Dead
+                                  </RowAction>
+
+                                  <RowAction
+                                    icon={<FiArrowUpRight />}
+                                    success
+                                    onClick={() => convertToOpportunity(lead)}
+                                  >
+                                    Convert to Opportunity
+                                  </RowAction>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* PAGINATION */}
+
+            <div
+              className="
+                flex
+                flex-col
+                gap-4
+                border-t
+                border-slate-200
+                bg-slate-50/40
+                px-5
+                py-4
+                sm:flex-row
+                sm:items-center
+                sm:justify-between
+                dark:border-[#0d2336]
+                dark:bg-[#051422]
+              "
+            >
+              <p className="text-xs text-slate-500">
+                Showing{" "}
+                <span className="font-bold text-slate-700 dark:text-slate-200">
+                  {filteredLeads.length === 0
+                    ? 0
+                    : (safeCurrentPage - 1) * PAGE_SIZE + 1}
+                </span>
+                -
+                <span className="font-bold text-slate-700 dark:text-slate-200">
+                  {Math.min(safeCurrentPage * PAGE_SIZE, filteredLeads.length)}
+                </span>{" "}
+                of{" "}
+                <span className="font-bold text-slate-700 dark:text-slate-200">
+                  {filteredLeads.length}
+                </span>{" "}
+                leads
+              </p>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={safeCurrentPage === 1}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
+                  className="
+                    flex
+                    h-8
+                    w-8
+                    items-center
+                    justify-center
+                    rounded-lg
+                    text-slate-500
+                    transition
+                    hover:bg-white
+                    disabled:cursor-not-allowed
+                    disabled:opacity-30
+                    dark:hover:bg-[#071929]
+                  "
+                >
+                  <FiChevronLeft />
+                </button>
+
+                {paginationPages.map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`
+                        flex
+                        h-8
+                        min-w-8
+                        items-center
+                        justify-center
+                        rounded-lg
+                        px-2
+                        text-xs
+                        font-bold
+                        transition
+                        ${
+                          safeCurrentPage === page
+                            ? "bg-[#1d2b45] text-white"
+                            : "text-slate-500 hover:bg-white dark:hover:bg-[#071929]"
+                        }
+                      `}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  disabled={safeCurrentPage === totalPages}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                  className="
+                    flex
+                    h-8
+                    w-8
+                    items-center
+                    justify-center
+                    rounded-lg
+                    text-slate-500
+                    transition
+                    hover:bg-white
+                    disabled:cursor-not-allowed
+                    disabled:opacity-30
+                    dark:hover:bg-[#071929]
+                  "
+                >
+                  <FiChevronRight />
+                </button>
+              </div>
+            </div>
+          </>
         )}
+      </div>
 
-        {/* Footer Pagination Bar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 border-t border-slate-200/80 dark:border-[#0d2336] bg-slate-50/30 dark:bg-[#051422] gap-3">
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-            Showing 1-{Math.min(10, filteredLeads.length)} of{" "}
-            <span className="font-bold text-slate-700 dark:text-slate-200">
-              {filteredLeads.length > 0 ? filteredLeads.length.toLocaleString("en-IN") : "1,284"}
-            </span>{" "}
-            leads
-          </p>
+      {/* ======================================================================
+          EXCEL IMPORT
+      ====================================================================== */}
 
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="p-2 rounded-xl border border-slate-200 dark:border-[#0d2336] text-xs text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-[#071929] transition-all cursor-pointer"
-            >
-              &lt;
-            </button>
-            <button
-              onClick={() => setCurrentPage(1)}
-              className={`w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                currentPage === 1
-                  ? "bg-[#1d2b45] text-white"
-                  : "border border-slate-200 dark:border-[#0d2336] text-slate-700 dark:text-slate-300 hover:bg-slate-100"
-              }`}
-            >
-              1
-            </button>
-            <button
-              onClick={() => setCurrentPage(2)}
-              className={`w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                currentPage === 2
-                  ? "bg-[#1d2b45] text-white"
-                  : "border border-slate-200 dark:border-[#0d2336] text-slate-700 dark:text-slate-300 hover:bg-slate-100"
-              }`}
-            >
-              2
-            </button>
-            <button
-              onClick={() => setCurrentPage(3)}
-              className={`w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                currentPage === 3
-                  ? "bg-[#1d2b45] text-white"
-                  : "border border-slate-200 dark:border-[#0d2336] text-slate-700 dark:text-slate-300 hover:bg-slate-100"
-              }`}
-            >
-              3
-            </button>
-            <button
-              onClick={() => setCurrentPage((p) => p + 1)}
-              className="p-2 rounded-xl border border-slate-200 dark:border-[#0d2336] text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#071929] transition-all cursor-pointer"
-            >
-              &gt;
-            </button>
-          </div>
+      {showExcelModal && (
+        <ExcelImportModal
+          file={excelFile}
+          saving={saving}
+          dragging={isDraggingFile}
+          inputRef={excelInputRef}
+          onClose={() => {
+            if (!saving) {
+              setShowExcelModal(false);
+              setExcelFile(null);
+            }
+          }}
+          onFile={handleExcelFile}
+          onDrop={handleFileDrop}
+          onDragEnter={() => setIsDraggingFile(true)}
+          onDragLeave={() => setIsDraggingFile(false)}
+          onDownloadSample={downloadSampleCSV}
+          onImport={importExcel}
+        />
+      )}
+
+      {/* ======================================================================
+          INTEGRATION
+      ====================================================================== */}
+
+      {showIntegrationModal && (
+        <IntegrationModal
+          selectedSource={selectedIntegration}
+          integrationLead={integrationLead}
+          users={users}
+          saving={saving}
+          onClose={() => {
+            if (!saving) {
+              setShowIntegrationModal(false);
+
+              setSelectedIntegration("");
+            }
+          }}
+          onSelectSource={openIntegration}
+          onChange={updateIntegrationLead}
+          onSubmit={importIntegrationLead}
+        />
+      )}
+
+      {/* ======================================================================
+          DETAILS
+      ====================================================================== */}
+
+      {detailsLead && (
+        <LeadDetailsModal
+          lead={detailsLead}
+          isOpen={showDetailsModal}
+          onClose={() => setShowDetailsModal(false)}
+          onEdit={() => openEditPage(detailsLead)}
+          onMarkDead={() => markLeadDead(detailsLead)}
+          onConvert={() => convertToOpportunity(detailsLead)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ============================================================================
+   FILTER POPOVER
+============================================================================ */
+
+function FilterPopover({
+  filters,
+  users,
+  states,
+  onChange,
+  onApply,
+  onClear,
+}: {
+  filters: LeadFilters;
+  users: User[];
+  states: string[];
+  onChange: <K extends keyof LeadFilters>(
+    field: K,
+    value: LeadFilters[K],
+  ) => void;
+  onApply: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      className="
+        absolute
+        right-0
+        top-full
+        z-50
+        mt-3
+        w-[520px]
+        max-w-[calc(100vw-32px)]
+        rounded-2xl
+        border
+        border-slate-200
+        bg-white
+        p-5
+        shadow-2xl
+        dark:border-[#0d2336]
+        dark:bg-[#051422]
+      "
+      onClick={(event) => event.stopPropagation()}
+    >
+      {/* DATE RANGE */}
+
+      <div className="mb-5">
+        <div className="mb-2 flex items-center justify-between">
+          <label className="text-xs font-semibold text-slate-500">
+            Date Range
+          </label>
+
+          <button
+            type="button"
+            onClick={() => {
+              onChange("dateFrom", "");
+
+              onChange("dateTo", "");
+            }}
+            className="
+              flex
+              items-center
+              gap-1
+              text-[10px]
+              font-bold
+              text-rose-400
+              hover:text-rose-500
+            "
+          >
+            <FiX />
+            Clear Filter
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <DateFilterInput
+            value={filters.dateFrom}
+            onChange={(value) => onChange("dateFrom", value)}
+          />
+
+          <DateFilterInput
+            value={filters.dateTo}
+            onChange={(value) => onChange("dateTo", value)}
+          />
         </div>
       </div>
 
-      {/* ==================== 4. FILTER OVERLAY MODAL (Screenshot 3 & 4) ==================== */}
-      {showFilterModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fadeIn">
-          <div className="w-full max-w-lg bg-white dark:bg-[#051422] rounded-3xl border border-slate-200 dark:border-[#0d2336] p-6 shadow-2xl space-y-5">
-            {/* Date Range Section Header */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
+      {/* FILTER GRID */}
+
+      <div className="grid grid-cols-2 gap-4">
+        <FilterField label="Customer Type">
+          <SelectInput
+            value={filters.customerType}
+            onChange={(value) => onChange("customerType", value)}
+            placeholder="All Customer Types"
+            options={CUSTOMER_TYPES}
+          />
+        </FilterField>
+
+        <FilterField label="Assigned To">
+          <SelectInput
+            value={filters.assignedTo}
+            onChange={(value) => onChange("assignedTo", value)}
+            placeholder="All Users"
+            options={users.map((user) => ({
+              value: user.id,
+              label: getUserName(user),
+            }))}
+          />
+        </FilterField>
+
+        <FilterField label="Status">
+          <SelectInput
+            value={filters.status}
+            onChange={(value) => onChange("status", value)}
+            placeholder="All"
+            options={[
+              {
+                value: "all",
+                label: "All",
+              },
+              {
+                value: "active",
+                label: "Active",
+              },
+              {
+                value: "inactive",
+                label: "Inactive",
+              },
+            ]}
+          />
+        </FilterField>
+
+        <FilterField label="State">
+          <SelectInput
+            value={filters.state}
+            onChange={(value) => onChange("state", value)}
+            placeholder="All"
+            options={states}
+          />
+        </FilterField>
+      </div>
+
+      {/* ACTIONS */}
+
+      <div className="mt-5 flex items-center justify-end gap-4 border-t border-slate-100 pt-4 dark:border-[#0d2336]">
+        <button
+          type="button"
+          onClick={onClear}
+          className="
+            text-xs
+            font-bold
+            text-slate-500
+            hover:text-slate-900
+            dark:hover:text-white
+          "
+        >
+          Clear All Filter
+        </button>
+
+        <Button onClick={onApply}>Apply Filter</Button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+   NEW LEAD PAGE
+============================================================================ */
+
+function LeadFormPage({
+  title,
+  form,
+  users,
+  saving,
+  onChange,
+  onSubmit,
+  onAttachment,
+  onClose,
+}: {
+  title: string;
+  form: LeadFormState;
+  users: User[];
+  saving: boolean;
+  onChange: <K extends keyof LeadFormState>(
+    field: K,
+    value: LeadFormState[K],
+  ) => void;
+  onSubmit: (event: FormEvent) => void;
+  onAttachment: (event: ChangeEvent<HTMLInputElement>) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="min-h-full pb-8">
+      {/* PAGE HEADER */}
+
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+            {title}
+          </h1>
+
+          <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
+            <button
+              type="button"
+              onClick={onClose}
+              className="hover:text-primary"
+            >
+              Leads
+            </button>
+
+            <span>›</span>
+
+            <span>{title === "Edit Lead" ? "Edit" : "New"}</span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="
+            rounded-xl
+            border
+            border-slate-200
+            bg-white
+            p-2
+            text-slate-500
+            hover:bg-slate-50
+            dark:border-[#0d2336]
+            dark:bg-[#051422]
+            dark:text-slate-300
+          "
+        >
+          <FiX />
+        </button>
+      </div>
+
+      <form
+        onSubmit={onSubmit}
+        className="
+    grid
+    grid-cols-1
+    gap-4
+    xl:grid-cols-[minmax(0,1fr)_360px]
+  "
+      >
+        {/* LEFT */}
+
+        <div className="space-y-4">
+          <FormSection icon={<FiInfo />} title="Customer Information">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <FormSelect
+                  label="Customer Type"
+                  required
+                  value={form.customerType}
+                  onChange={(value) => onChange("customerType", value)}
+                  options={CUSTOMER_TYPES}
+                />
+              </div>
+
+              <FormInput
+                label="Organization Name"
+                required
+                value={form.organizationName}
+                onChange={(value) => onChange("organizationName", value)}
+              />
+
+              <FormInput
+                label="Organization Website"
+                required
+                value={form.website}
+                placeholder="www.company.com"
+                onChange={(value) => onChange("website", value)}
+              />
+            </div>
+          </FormSection>
+          
+          <FormSection icon={<FiMapPin />} title="Organization Details">
+            <div className="space-y-4">
+              {/* First row: Address + City */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <FormInput
+                  label="Address"
+                  required
+                  value={form.address}
+                  placeholder="Street Address, Building, Suite"
+                  onChange={(value) => onChange("address", value)}
+                />
+
+                <FormInput
+                  label="City"
+                  required
+                  value={form.city}
+                  placeholder="Enter city"
+                  onChange={(value) => onChange("city", value)}
+                />
+              </div>
+
+              {/* Second row: State + PIN + Country */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <FormSelect
+                  label="State / Province"
+                  required
+                  value={form.state}
+                  onChange={(value) => onChange("state", value)}
+                  options={STATES}
+                  allowCustom
+                />
+
+                <FormInput
+                  label="PIN / ZIP Code"
+                  required
+                  value={form.zipCode}
+                  placeholder="Enter PIN / ZIP code"
+                  onChange={(value) => onChange("zipCode", value)}
+                />
+
+                <FormSelect
+                  label="Country"
+                  required
+                  value={form.country}
+                  onChange={(value) => onChange("country", value)}
+                  options={COUNTRIES}
+                />
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection icon={<FiShield />} title="Registration & Compliance">
+            <div className="space-y-4">
+              <DocumentField
+                label="GST Number"
+                value={form.gstNumber}
+                onChange={(value) => onChange("gstNumber", value)}
+                onFile={onAttachment}
+              />
+
+              <DocumentField
+                label="PAN Number"
+                value={form.panNumber}
+                onChange={(value) => onChange("panNumber", value)}
+                onFile={onAttachment}
+              />
+
+              <DocumentField
+                label="COI (Certificate of Incorporation)"
+                value={form.coiNumber}
+                onChange={(value) => onChange("coiNumber", value)}
+                onFile={onAttachment}
+              />
+            </div>
+          </FormSection>
+
+          <FormSection icon={<FiUser />} title="Primary Contact">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <FormInput
+                label="Full Name"
+                required
+                value={form.contactName}
+                onChange={(value) => onChange("contactName", value)}
+              />
+
+              <FormInput
+                label="Designation"
+                required
+                value={form.designation}
+                placeholder="e.g. Procurement Manager"
+                onChange={(value) => onChange("designation", value)}
+              />
+
+              <FormInput
+                label="Mobile Number"
+                required
+                value={form.mobileNumber}
+                placeholder="XXXXXXXXXX"
+                onChange={(value) => onChange("mobileNumber", value)}
+              />
+
+              <FormInput
+                label="Email Address"
+                required
+                type="email"
+                value={form.email}
+                onChange={(value) => onChange("email", value)}
+              />
+            </div>
+          </FormSection>
+        </div>
+
+        {/* RIGHT */}
+
+        <div className="space-y-4">
+          <FormSection icon={<FiBriefcase />} title="Sales Information">
+            <div className="space-y-4">
+              <FormSelect
+                label="Lead Source"
+                required
+                value={form.leadSource}
+                onChange={(value) => onChange("leadSource", value)}
+                options={LEAD_SOURCES}
+              />
+
+              <UserSelect
+                label="Assigned To"
+                required
+                value={form.assignedToId}
+                users={users}
+                onChange={(value) => onChange("assignedToId", value)}
+              />
+            </div>
+          </FormSection>
+
+          <FormSection icon={<FiFileText />} title="Requirements & Files">
+            <div className="space-y-5">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+                  Remarks
+                </label>
+
+                <textarea
+                  rows={6}
+                  value={form.remarks}
+                  onChange={(event) => onChange("remarks", event.target.value)}
+                  placeholder="Enter specific hardware requirements or customization requests..."
+                  className="
+                    w-full
+                    resize-none
+                    rounded-xl
+                    border
+                    border-slate-200
+                    bg-slate-50/70
+                    p-3
+                    text-xs
+                    text-slate-800
+                    outline-none
+                    transition
+                    focus:border-primary
+                    focus:ring-2
+                    focus:ring-primary/20
+                    dark:border-[#0d2336]
+                    dark:bg-[#071929]
+                    dark:text-white
+                  "
+                />
+              </div>
+
+              <label
+                className="
+                  flex
+                  min-h-[150px]
+                  cursor-pointer
+                  flex-col
+                  items-center
+                  justify-center
+                  rounded-2xl
+                  border-2
+                  border-dashed
+                  border-slate-200
+                  p-5
+                  text-center
+                  hover:bg-slate-50
+                  dark:border-[#0d2336]
+                  dark:hover:bg-[#071929]
+                "
+              >
+                <FiPaperclip className="mb-3 text-2xl text-slate-400" />
+
                 <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                  Date Range
+                  Drop files or click to upload
                 </span>
-                <button
-                  onClick={() => setFilterDateRange("")}
-                  className="text-xs text-rose-500 font-bold hover:underline cursor-pointer flex items-center gap-1"
-                >
-                  <FiX className="text-xs" /> Clear Filter
-                </button>
-              </div>
 
-              <div className="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] text-xs font-semibold text-slate-700 dark:text-slate-200">
-                <FiCalendar className="text-slate-400 text-sm shrink-0" />
-                <span>{filterDateRange || "Select Date Range"}</span>
-              </div>
-            </div>
+                <span className="mt-1 text-[10px] text-slate-400">
+                  PDF, DOC, XLS up to 10MB
+                </span>
 
-            {/* 2x2 Filter Dropdowns Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-                  Customer Type *
-                </label>
-                <select
-                  value={filterCustomerType}
-                  onChange={(e) => setFilterCustomerType(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
-                >
-                  <option value="">Select the customer type</option>
-                  <option value="Distributor">Distributor</option>
-                  <option value="Retailer">Retailer</option>
-                  <option value="Enterprise">Enterprise</option>
-                </select>
-              </div>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={onAttachment}
+                />
+              </label>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-                  Assigned to
-                </label>
-                <select
-                  value={filterAssignedTo}
-                  onChange={(e) => setFilterAssignedTo(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
-                >
-                  <option value="">Select</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.first_name} {u.last_name || ""}
-                    </option>
+              {form.attachments.length > 0 && (
+                <div className="space-y-2">
+                  {form.attachments.map((attachment, index) => (
+                    <div
+                      key={`${attachment}-${index}`}
+                      className="
+                          flex
+                          items-center
+                          gap-2
+                          rounded-lg
+                          bg-slate-50
+                          px-3
+                          py-2
+                          text-[10px]
+                          font-semibold
+                          text-slate-500
+                          dark:bg-[#071929]
+                        "
+                    >
+                      <FiCheckCircle className="text-emerald-500" />
+
+                      <span className="truncate">{attachment}</span>
+                    </div>
                   ))}
-                </select>
-              </div>
+                </div>
+              )}
+            </div>
+          </FormSection>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-                  Status
-                </label>
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
-                >
-                  <option value="">Select Status</option>
-                  <option value="new">New</option>
-                  <option value="contacted">Contacted</option>
-                  <option value="qualified">Qualified</option>
-                  <option value="dead">Dead</option>
-                </select>
-              </div>
+          <div
+            className="
+            grid
+            grid-cols-2
+            gap-3
+            rounded-2xl
+            border
+            border-slate-200
+            bg-white
+            p-4
+            dark:border-[#0d2336]
+            dark:bg-[#051422]
+          "
+          >
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="w-full justify-center"
+            >
+              Cancel
+            </Button>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-                  State
-                </label>
-                <select
-                  value={filterState}
-                  onChange={(e) => setFilterState(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
-                >
-                  <option value="">Status / State</option>
-                  <option value="Karnataka">Karnataka</option>
-                  <option value="Maharashtra">Maharashtra</option>
-                  <option value="Delhi">Delhi</option>
-                  <option value="Tamil Nadu">Tamil Nadu</option>
-                </select>
-              </div>
+            <Button
+              type="submit"
+              disabled={saving}
+              className="w-full justify-center"
+            >
+              {saving ? (
+                <span className="flex items-center justify-center gap-2">
+                  <CgSpinner className="animate-spin" />
+                  Saving...
+                </span>
+              ) : (
+                "Save Lead"
+              )}
+            </Button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/* ============================================================================
+   EXCEL IMPORT MODAL
+============================================================================ */
+
+function ExcelImportModal({
+  file,
+  saving,
+  dragging,
+  inputRef,
+  onClose,
+  onFile,
+  onDrop,
+  onDragEnter,
+  onDragLeave,
+  onDownloadSample,
+  onImport,
+}: {
+  file: File | null;
+  saving: boolean;
+  dragging: boolean;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onClose: () => void;
+  onFile: (event: ChangeEvent<HTMLInputElement>) => void;
+  onDrop: (event: DragEvent<HTMLDivElement>) => void;
+  onDragEnter: () => void;
+  onDragLeave: () => void;
+  onDownloadSample: () => void;
+  onImport: () => void;
+}) {
+  return (
+    <Modal isOpen onClose={onClose} title="Upload a CSV File">
+      <div className="space-y-5">
+        <div
+          onClick={() => inputRef.current?.click()}
+          onDrop={onDrop}
+          onDragOver={(event) => event.preventDefault()}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            onDragEnter();
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            onDragLeave();
+          }}
+          className={`
+            cursor-pointer
+            rounded-2xl
+            border-2
+            border-dashed
+            p-10
+            text-center
+            transition
+            ${
+              dragging
+                ? "border-primary bg-primary/5"
+                : "border-slate-300 bg-white hover:bg-slate-50"
+            }
+            dark:border-[#0d2336]
+            dark:bg-[#051422]
+          `}
+        >
+          <FiUploadCloud className="mx-auto text-3xl text-slate-400" />
+
+          <p className="mt-4 text-sm text-slate-600 dark:text-slate-200">
+            Drag and drop your file here, or{" "}
+            <span className="font-bold text-blue-500">Browse</span>
+          </p>
+
+          <p className="mt-2 text-[10px] text-slate-400">
+            Supported formats: .xlsx, .xls, .csv • Max file size: 10 MB
+          </p>
+
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            className="hidden"
+            onChange={onFile}
+          />
+        </div>
+
+        {file && (
+          <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+            <div className="flex min-w-0 items-center gap-2">
+              <FiCheckCircle className="shrink-0 text-emerald-500" />
+
+              <span className="truncate text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                {file.name}
+              </span>
             </div>
 
-            {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => {
-                  setFilterCustomerType("");
-                  setFilterAssignedTo("");
-                  setFilterStatus("");
-                  setFilterState("");
-                  setShowFilterModal(false);
-                }}
-                className="text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 cursor-pointer"
-              >
-                Clear All Filter
-              </button>
-              <button
-                onClick={() => setShowFilterModal(false)}
-                className="px-6 py-2.5 rounded-xl bg-[#1d2b45] hover:bg-[#162238] text-white text-xs font-bold shadow-sm cursor-pointer transition-all"
-              >
-                Apply Filter
-              </button>
+            <button
+              type="button"
+              onClick={() => {
+                inputRef.current!.value = "";
+              }}
+              className="text-slate-400 hover:text-rose-500"
+            >
+              <FiX />
+            </button>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={onDownloadSample}
+          className="text-xs font-semibold text-slate-600 underline underline-offset-2 hover:text-primary dark:text-slate-300"
+        >
+          Download a sample CSV file
+        </button>
+
+        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4 dark:border-[#0d2336]">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+
+          <Button type="button" disabled={!file || saving} onClick={onImport}>
+            {saving ? (
+              <span className="flex items-center gap-2">
+                <CgSpinner className="animate-spin" />
+                Importing...
+              </span>
+            ) : (
+              "Import Leads"
+            )}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================================
+   INTEGRATION MODAL
+============================================================================ */
+
+function IntegrationModal({
+  selectedSource,
+  integrationLead,
+  users,
+  saving,
+  onClose,
+  onSelectSource,
+  onChange,
+  onSubmit,
+}: {
+  selectedSource: string;
+  integrationLead: IntegrationLeadState;
+  users: User[];
+  saving: boolean;
+  onClose: () => void;
+  onSelectSource: (source: string) => void;
+  onChange: <K extends keyof IntegrationLeadState>(
+    field: K,
+    value: IntegrationLeadState[K],
+  ) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <Modal isOpen onClose={onClose} title="Add From Integration" size="xl">
+      {!selectedSource ? (
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white">
+              Select Lead Source
+            </h3>
+
+            <p className="mt-1 text-xs text-slate-400">
+              Select an integration to enter and create the lead details.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <IntegrationCard
+              icon={<FiLink />}
+              title="Website Forms"
+              description="Capture leads from your website."
+              onClick={() => onSelectSource("Website")}
+            />
+
+            <IntegrationCard
+              icon={<FiDatabase />}
+              title="Meta / Social"
+              description="Receive social campaign leads."
+              onClick={() => onSelectSource("Meta Ads")}
+            />
+
+            <IntegrationCard
+              icon={<FiMail />}
+              title="Email"
+              description="Convert inbound enquiries."
+              onClick={() => onSelectSource("Email")}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-[#0d2336]">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Integration Source
+              </p>
+
+              <h3 className="mt-1 text-base font-bold text-slate-800 dark:text-white">
+                {selectedSource}
+              </h3>
             </div>
+
+            <button
+              type="button"
+              onClick={() => onSelectSource("")}
+              className="text-xs font-bold text-primary"
+            >
+              Change Source
+            </button>
+          </div>
+
+          <FormSection icon={<FiUser />} title="Lead Details">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <FormInput
+                label="Full Name"
+                required
+                value={integrationLead.contactName}
+                onChange={(value) => onChange("contactName", value)}
+              />
+
+              <FormInput
+                label="Organization Name"
+                required
+                value={integrationLead.organizationName}
+                onChange={(value) => onChange("organizationName", value)}
+              />
+
+              <FormInput
+                label="Email Address"
+                type="email"
+                value={integrationLead.email}
+                onChange={(value) => onChange("email", value)}
+              />
+
+              <FormInput
+                label="Mobile Number"
+                value={integrationLead.mobileNumber}
+                onChange={(value) => onChange("mobileNumber", value)}
+              />
+
+              <FormInput
+                label="Organization Website"
+                value={integrationLead.website}
+                onChange={(value) => onChange("website", value)}
+              />
+
+              <UserSelect
+                label="Assigned To"
+                value={integrationLead.assignedToId}
+                users={users}
+                onChange={(value) => onChange("assignedToId", value)}
+              />
+            </div>
+          </FormSection>
+
+          <FormSection icon={<FiFileText />} title="Requirements & Files">
+            <textarea
+              rows={5}
+              value={integrationLead.remarks}
+              onChange={(event) => onChange("remarks", event.target.value)}
+              placeholder="Enter lead requirements..."
+              className="
+                w-full
+                resize-none
+                rounded-xl
+                border
+                border-slate-200
+                bg-slate-50/70
+                p-3
+                text-xs
+                outline-none
+                focus:ring-2
+                focus:ring-primary/20
+                dark:border-[#0d2336]
+                dark:bg-[#071929]
+                dark:text-white
+              "
+            />
+          </FormSection>
+
+          <div className="flex justify-end gap-3 border-t border-slate-100 pt-5 dark:border-[#0d2336]">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+
+            <Button disabled={saving} onClick={onSubmit}>
+              {saving ? (
+                <span className="flex items-center gap-2">
+                  <CgSpinner className="animate-spin" />
+                  Saving...
+                </span>
+              ) : (
+                "Add Lead"
+              )}
+            </Button>
           </div>
         </div>
       )}
+    </Modal>
+  );
+}
 
-      {/* ==================== 5. EXCEL IMPORT & INTEGRATION MODALS ==================== */}
-      {showExcelModal && (
-        <Modal
-          isOpen={showExcelModal}
-          onClose={() => setShowExcelModal(false)}
-          title="Import Leads from Excel"
-        >
-          <div className="space-y-4 py-2">
-            <p className="text-xs text-slate-600 dark:text-slate-300">
-              Upload `.xlsx` or `.csv` spreadsheets to import lead batches into the CRM pipeline.
-            </p>
-            <div className="p-8 border-2 border-dashed border-slate-200 dark:border-[#0d2336] rounded-2xl flex flex-col items-center justify-center gap-2 bg-slate-50/50 dark:bg-[#071929]/50 text-center">
-              <FiFileText className="text-3xl text-emerald-500" />
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                Click or drag Excel sheet here
+/* ============================================================================
+   LEAD DETAILS MODAL
+============================================================================ */
+
+function LeadDetailsModal({
+  lead,
+  isOpen,
+  onClose,
+  onEdit,
+  onMarkDead,
+  onConvert,
+}: {
+  lead: Lead;
+  isOpen: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+  onMarkDead: () => void;
+  onConvert: () => void;
+}) {
+  const details = parseLeadDescription(lead.description);
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Lead Details" size="xl">
+      <div className="space-y-6">
+        {/* HEADER */}
+
+        <div className="flex flex-col justify-between gap-4 rounded-2xl bg-slate-50 p-5 md:flex-row dark:bg-[#071929]">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] font-bold text-slate-400">
+                {formatLeadId(lead.id)}
               </span>
-              <span className="text-[10px] text-slate-400">Supports .XLSX, .CSV up to 25MB</span>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setShowExcelModal(false)}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  addToast("Importing Excel dataset into leads table...", "success");
-                  setShowExcelModal(false);
-                }}
-              >
-                Start Import
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
 
-      {showIntegrationModal && (
-        <Modal
-          isOpen={showIntegrationModal}
-          onClose={() => setShowIntegrationModal(false)}
-          title="Add From Webhook & Integration"
-        >
-          <div className="space-y-4 py-2">
-            <p className="text-xs text-slate-600 dark:text-slate-300">
-              Connect external lead capture sources (Website forms, Meta Ads, LinkedIn InMail) via automated Webhook URL.
+              <StatusBadge status={lead.status} stage={lead.stage} />
+            </div>
+
+            <h2 className="mt-2 text-lg font-extrabold text-slate-900 dark:text-white">
+              {details.contactName || lead.title}
+            </h2>
+
+            <p className="mt-1 text-xs text-slate-400">
+              {details.organizationName || "No organization"}
             </p>
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
-                CRM Webhook Endpoint URL
-              </label>
-              <input
-                type="text"
-                readOnly
-                value="https://api.synergy.global/v1/leads/webhook/inbound-9021"
-                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-100 dark:bg-[#071929] px-3.5 py-2 text-xs font-mono text-slate-600 dark:text-slate-300"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" size="sm" onClick={() => setShowIntegrationModal(false)}>
-                Close
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  addToast("Webhook URL copied to clipboard!", "success");
-                  setShowIntegrationModal(false);
-                }}
-              >
-                Copy Webhook Link
-              </Button>
-            </div>
           </div>
-        </Modal>
-      )}
 
-      {/* ==================== 6. LEAD PROGRESSION MODAL ==================== */}
-      {selectedLead && (
-        <Modal
-          isOpen={!!selectedLead}
-          onClose={() => setSelectedLead(null)}
-          title={`CRM Lifecycle: ${selectedLead.title}`}
-          size="xl"
-        >
-          <div className="space-y-6 py-2">
-            {/* Visual Lifecycle Stages Progress Bar */}
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#0d2336] pb-4">
-              {[
-                { key: "lead", label: "1. Lead" },
-                { key: "opportunity", label: "2. Opportunity" },
-                { key: "quotation", label: "3. Proposal & Quote" },
-              ].map((step, idx) => {
-                const isCurrent = selectedLead.stage === step.key;
-                const isPassed =
-                  (selectedLead.stage === "opportunity" && idx === 0) ||
-                  (selectedLead.stage === "quotation" && idx <= 1);
+          <div className="flex items-start gap-2">
+            <button
+              type="button"
+              title="Message"
+              className="
+                rounded-xl
+                border
+                border-slate-200
+                bg-white
+                p-2.5
+                text-slate-500
+                hover:text-primary
+                dark:border-[#0d2336]
+                dark:bg-[#051422]
+              "
+            >
+              <FiMessageSquare />
+            </button>
 
-                return (
-                  <div key={step.key} className="flex items-center gap-2">
-                    <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                        isCurrent
-                          ? "bg-primary text-white ring-4 ring-primary/20"
-                          : isPassed
-                          ? "bg-emerald-500 text-white"
-                          : "bg-slate-200 dark:bg-slate-800 text-slate-500"
-                      }`}
-                    >
-                      {isPassed ? "✓" : idx + 1}
-                    </div>
-                    <span
-                      className={`text-xs font-bold ${
-                        isCurrent
-                          ? "text-primary dark:text-sky-400"
-                          : isPassed
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-slate-400"
-                      }`}
-                    >
-                      {step.label}
-                    </span>
-                    {idx < 2 && <FiChevronRight className="text-slate-300 dark:text-slate-700 mx-2" />}
+            <button
+              type="button"
+              title="Edit"
+              onClick={onEdit}
+              className="
+                rounded-xl
+                border
+                border-slate-200
+                bg-white
+                p-2.5
+                text-slate-500
+                hover:text-primary
+                dark:border-[#0d2336]
+                dark:bg-[#051422]
+              "
+            >
+              <FiEdit3 />
+            </button>
+          </div>
+        </div>
+
+        {/* DETAILS */}
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <DetailBox icon={<FiUser />} label="Primary Contact">
+            <DetailLine label="Full Name" value={details.contactName} />
+
+            <DetailLine label="Designation" value={details.designation} />
+
+            <DetailLine label="Mobile" value={details.mobileNumber} />
+
+            <DetailLine label="Email" value={details.email} />
+          </DetailBox>
+
+          <DetailBox icon={<FiBriefcase />} label="Organization">
+            <DetailLine label="Customer Type" value={details.customerType} />
+
+            <DetailLine label="Organization" value={details.organizationName} />
+
+            <DetailLine label="Website" value={details.website} />
+
+            <DetailLine
+              label="Address"
+              value={[
+                details.address,
+                details.city,
+                details.state,
+                details.zipCode,
+                details.country,
+              ]
+                .filter(Boolean)
+                .join(", ")}
+            />
+          </DetailBox>
+
+          <DetailBox icon={<FiShield />} label="Compliance">
+            <DetailLine label="GST" value={details.gstNumber} />
+
+            <DetailLine label="PAN" value={details.panNumber} />
+
+            <DetailLine label="COI" value={details.coiNumber} />
+          </DetailBox>
+
+          <DetailBox icon={<FiActivity />} label="Sales Information">
+            <DetailLine label="Lead Source" value={details.leadSource} />
+
+            <DetailLine
+              label="Assigned To"
+              value={lead.assigned_to_name || "Unassigned"}
+            />
+
+            <DetailLine label="Created" value={formatDate(lead.created_at)} />
+
+            <DetailLine label="Created By" value={lead.creator_name} />
+          </DetailBox>
+        </div>
+
+        {/* REQUIREMENTS */}
+
+        <DetailBox icon={<FiFileText />} label="Requirements & Files">
+          <div className="rounded-xl bg-slate-50 p-4 text-xs leading-6 text-slate-600 dark:bg-[#071929] dark:text-slate-300">
+            {details.remarks || "No requirements or remarks added."}
+          </div>
+
+          {details.attachments.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {details.attachments.map((file) => (
+                <div
+                  key={file}
+                  className="flex items-center gap-2 text-xs font-semibold"
+                >
+                  <FiPaperclip />
+                  {file}
+                </div>
+              ))}
+            </div>
+          )}
+        </DetailBox>
+
+        {/* ACTIVITY */}
+
+        <DetailBox icon={<FiActivity />} label="Activity History">
+          <div className="space-y-4">
+            {lead.activity_history?.length ? (
+              lead.activity_history.map((activity) => (
+                <div
+                  key={activity.id || activity.created_at}
+                  className="flex gap-3"
+                >
+                  <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+
+                  <div>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                      {activity.action}
+                    </p>
+
+                    {activity.description && (
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {activity.description}
+                      </p>
+                    )}
+
+                    <p className="mt-1 text-[10px] text-slate-400">
+                      {formatDate(activity.created_at)}
+                    </p>
                   </div>
-                );
-              })}
-            </div>
-
-            {/* Stage Action Panels */}
-            {selectedLead.stage === "lead" && (
-              <div className="space-y-4">
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  Qualify lead or mark as dead.
-                </p>
-                <div className="flex gap-3 justify-end">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleProgressAction("dead", { status: "dead" })}
-                    disabled={progressing}
-                    className="text-rose-500 border-rose-200"
-                  >
-                    Mark Dead
-                  </Button>
-                  <Button
-                    onClick={() => handleProgressAction("opportunity", { status: "qualified" })}
-                    disabled={progressing}
-                  >
-                    Qualify to Opportunity
-                  </Button>
                 </div>
-              </div>
-            )}
+              ))
+            ) : (
+              <>
+                <ActivityItem
+                  title="Lead Created"
+                  description="Lead was registered in the CRM."
+                  date={lead.created_at}
+                />
 
-            {selectedLead.stage === "opportunity" && (
-              <div className="space-y-4">
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  Opportunity Progression Options:
-                </p>
-                <div className="flex gap-3 justify-end">
-                  <Button
-                    onClick={() => handleProgressAction("quotation")}
-                    disabled={progressing}
-                  >
-                    Generate Quotation & Advance Stage
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {selectedLead.stage === "quotation" && (
-              <div className="space-y-4">
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  Proposal generated. You can print invoice/quotation or mark as Won.
-                </p>
-                <div className="flex gap-3 justify-end">
-                  <Button variant="outline" onClick={() => setPreviewDocLead(selectedLead)}>
-                    <FiPrinter className="mr-1" /> Print Quotation
-                  </Button>
-                  <Button onClick={() => handleProgressAction("quotation", { status: "won" })}>
-                    Mark Won Deal
-                  </Button>
-                </div>
-              </div>
+                <ActivityItem
+                  title={`Current Stage: ${lead.stage}`}
+                  description={`Current status is ${lead.status}.`}
+                  date={lead.created_at}
+                />
+              </>
             )}
           </div>
-        </Modal>
-      )}
+        </DetailBox>
 
-      {/* ==================== 7. PRINT PREVIEW MODAL ==================== */}
-      {previewDocLead && (
-        <DocumentPrintPreview
-          isOpen={!!previewDocLead}
-          onClose={() => setPreviewDocLead(null)}
-          documentType="PROFORMA INVOICE (PI)"
-          documentNumber={`QT-${previewDocLead.id.slice(0, 6).toUpperCase()}`}
-          dateStr={new Date().toLocaleDateString("en-IN")}
-          vendorName={parseLeadDetails(previewDocLead).name}
-          items={(previewDocLead.quotation_items || []).map((item: any) => ({
-            item: item.item || "Line Item",
-            qty: item.qty || 1,
-            price: item.price || 0,
-          }))}
+        {/* ACTIONS */}
+
+        <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-5 dark:border-[#0d2336]">
+          <Button variant="outline" onClick={onEdit}>
+            <FiEdit3 className="mr-2" />
+            Edit
+          </Button>
+
+          <button
+            type="button"
+            onClick={onMarkDead}
+            className="
+              rounded-xl
+              border
+              border-rose-200
+              px-4
+              py-2
+              text-xs
+              font-bold
+              text-rose-500
+              hover:bg-rose-50
+              dark:border-rose-900
+              dark:hover:bg-rose-950/20
+            "
+          >
+            <span className="flex items-center gap-2">
+              <FiXCircle />
+              Mark as Dead
+            </span>
+          </button>
+
+          <Button onClick={onConvert}>
+            <FiArrowUpRight className="mr-2" />
+            Convert to Opportunity
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================================
+   UI COMPONENTS
+============================================================================ */
+
+function KpiCard({
+  label,
+  value,
+  percentage,
+  positive,
+  icon,
+}: {
+  label: string;
+  value: number;
+  percentage: string;
+  positive: boolean;
+  icon: ReactNode;
+}) {
+  return (
+    <div
+      className="
+        rounded-2xl
+        border
+        border-slate-200/80
+        bg-white
+        p-5
+        shadow-sm
+        dark:border-[#0d2336]
+        dark:bg-[#051422]
+      "
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+          {label}
+        </span>
+
+        <span
+          className={`
+            inline-flex
+            items-center
+            gap-1
+            rounded-md
+            px-2
+            py-1
+            text-[10px]
+            font-bold
+            ${
+              positive
+                ? "bg-emerald-500/10 text-emerald-600"
+                : "bg-rose-500/10 text-rose-500"
+            }
+          `}
+        >
+          {icon}
+          {percentage}
+        </span>
+      </div>
+
+      <div className="mt-4">
+        <p className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+          {value.toLocaleString("en-IN")}
+        </p>
+
+        <p
+          className={`
+            mt-1
+            text-[10px]
+            font-bold
+            ${positive ? "text-emerald-500" : "text-rose-500"}
+          `}
+        >
+          vs last month
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status, stage }: { status: string; stage: string }) {
+  let label = status || "Unknown";
+
+  let className =
+    "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300";
+
+  if (status === "new" || stage === "lead") {
+    label = "New";
+
+    className =
+      "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300";
+  }
+
+  if (status === "contacted") {
+    label = "Contacted";
+
+    className = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+  }
+
+  if (status === "qualified" || stage === "opportunity") {
+    label = "Qualified";
+
+    className = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+  }
+
+  if (stage === "quotation") {
+    label = "Quotation";
+
+    className = "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400";
+  }
+
+  if (status === "dead" || stage === "dead") {
+    label = "Dead";
+
+    className = "bg-rose-500/10 text-rose-600 dark:text-rose-400";
+  }
+
+  if (status === "won") {
+    label = "Won";
+
+    className = "bg-emerald-500/10 text-emerald-600";
+  }
+
+  return (
+    <span
+      className={`
+        inline-flex
+        rounded-lg
+        px-2.5
+        py-1.5
+        text-[10px]
+        font-bold
+        capitalize
+        ${className}
+      `}
+    >
+      {label}
+    </span>
+  );
+}
+
+function TableHeader({ label }: { label: string }) {
+  return (
+    <span className="flex items-center gap-2">
+      {label}
+
+      <span className="flex flex-col leading-[6px] text-slate-300">
+        <span>⌃</span>
+        <span>⌄</span>
+      </span>
+    </span>
+  );
+}
+
+function FilterChip({ label }: { label: string }) {
+  return (
+    <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 dark:bg-[#071929] dark:text-slate-300">
+      {label}
+    </span>
+  );
+}
+
+function FilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold text-slate-500">
+        {label}
+      </label>
+
+      {children}
+    </div>
+  );
+}
+
+function DateFilterInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <FiCalendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+
+      <input
+        type="date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="
+          h-11
+          w-full
+          rounded-xl
+          border
+          border-slate-200
+          bg-white
+          pl-10
+          pr-3
+          text-xs
+          text-slate-700
+          outline-none
+          focus:border-primary
+          focus:ring-2
+          focus:ring-primary/10
+          dark:border-[#0d2336]
+          dark:bg-[#071929]
+          dark:text-white
+        "
+      />
+    </div>
+  );
+}
+
+function SelectInput({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<
+    | string
+    | {
+        value: string;
+        label: string;
+      }
+  >;
+  placeholder: string;
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="
+          h-11
+          w-full
+          appearance-none
+          rounded-xl
+          border
+          border-slate-200
+          bg-white
+          px-3
+          pr-9
+          text-xs
+          text-slate-700
+          outline-none
+          focus:border-primary
+          focus:ring-2
+          focus:ring-primary/10
+          dark:border-[#0d2336]
+          dark:bg-[#071929]
+          dark:text-white
+        "
+      >
+        <option value="">{placeholder}</option>
+
+        {options.map((option) => {
+          const item =
+            typeof option === "string"
+              ? {
+                  value: option,
+                  label: option,
+                }
+              : option;
+
+          return (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          );
+        })}
+      </select>
+
+      <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+    </div>
+  );
+}
+
+const filterInput = `
+  w-full
+  rounded-xl
+  border
+  border-slate-200
+  bg-slate-50/70
+  px-3.5
+  py-2.5
+  text-xs
+  text-slate-800
+  outline-none
+  focus:ring-2
+  focus:ring-primary/30
+  dark:border-[#0d2336]
+  dark:bg-[#071929]
+  dark:text-white
+`;
+
+function FormSection({
+  icon,
+  title,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-[#0d2336] dark:bg-[#051422]">
+      <div className="mb-5 flex items-center gap-2.5 border-b border-slate-100 pb-3 dark:border-[#0d2336]">
+        <span className="text-slate-500">{icon}</span>
+
+        <h3 className="text-sm font-bold text-slate-800 dark:text-white">
+          {title}
+        </h3>
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+function FormInput({
+  label,
+  value,
+  onChange,
+  required,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+        {label}
+
+        {required && <span className="ml-1 text-rose-500">*</span>}
+      </label>
+
+      <Input
+        type={type}
+        value={value}
+        placeholder={placeholder || `Enter ${label.toLowerCase()}`}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
+function FormSelect({
+  label,
+  value,
+  onChange,
+  options,
+  required,
+  allowCustom = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  required?: boolean;
+  allowCustom?: boolean;
+}) {
+  const isCustom = allowCustom && value && !options.includes(value);
+
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+        {label}
+
+        {required && <span className="ml-1 text-rose-500">*</span>}
+      </label>
+
+      <div className="relative">
+        <select
+          value={isCustom ? "" : value}
+          onChange={(event) => onChange(event.target.value)}
+          className={`
+            ${filterInput}
+            appearance-none
+            pr-9
+          `}
+        >
+          <option value="">Select {label}</option>
+
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+
+        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      </div>
+
+      {/* {allowCustom && (
+        <input
+          value={isCustom ? value : ""}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="Or enter custom state"
+          className={`
+            ${filterInput}
+            mt-2
+          `}
         />
-      )}
+      )} */}
+    </div>
+  );
+}
+
+function UserSelect({
+  label,
+  value,
+  users,
+  onChange,
+  required,
+}: {
+  label: string;
+  value: string;
+  users: User[];
+  onChange: (value: string) => void;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+        {label}
+
+        {required && <span className="ml-1 text-rose-500">*</span>}
+      </label>
+
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="
+            w-full
+            appearance-none
+            rounded-xl
+            border
+            border-slate-200
+            bg-slate-50/70
+            px-3
+            py-2.5
+            pr-9
+            text-xs
+            outline-none
+            focus:ring-2
+            focus:ring-primary/30
+            dark:border-[#0d2336]
+            dark:bg-[#071929]
+            dark:text-white
+          "
+        >
+          <option value="">Select Assigned To</option>
+
+          {users.map((user) => (
+            <option key={user.id} value={user.id}>
+              {getUserName(user)}
+            </option>
+          ))}
+        </select>
+
+        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      </div>
+    </div>
+  );
+}
+
+function DocumentField({
+  label,
+  value,
+  onChange,
+  onFile,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onFile: (event: ChangeEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+        {label}
+      </label>
+
+      <div className="grid grid-cols-[minmax(0,1fr)_150px] gap-3">
+        <Input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={`Enter ${label}`}
+        />
+
+        <label
+          className="
+            flex
+            cursor-pointer
+            items-center
+            justify-center
+            gap-1.5
+            rounded-xl
+            border-2
+            border-dashed
+            border-slate-200
+            px-3
+            text-[10px]
+            font-bold
+            text-slate-500
+            hover:bg-slate-50
+            dark:border-[#0d2336]
+            dark:hover:bg-[#071929]
+          "
+        >
+          <FiUploadCloud />
+          Upload Doc
+          <input type="file" className="hidden" onChange={onFile} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function DropdownMenu({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`
+        absolute
+        right-0
+        top-full
+        z-50
+        mt-2
+        w-52
+        rounded-2xl
+        border
+        border-slate-200
+        bg-white
+        p-1.5
+        shadow-2xl
+        dark:border-[#0d2336]
+        dark:bg-[#051422]
+        ${className}
+      `}
+    >
+      {children}
+    </div>
+  );
+}
+
+function DropdownButton({
+  icon,
+  children,
+  onClick,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="
+        flex
+        w-full
+        items-center
+        gap-3
+        rounded-xl
+        px-3
+        py-2.5
+        text-left
+        text-xs
+        font-semibold
+        text-slate-700
+        hover:bg-slate-100
+        dark:text-slate-200
+        dark:hover:bg-[#071929]
+      "
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function RowAction({
+  icon,
+  children,
+  onClick,
+  danger,
+  success,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+  onClick: () => void;
+  danger?: boolean;
+  success?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`
+        flex
+        w-full
+        items-center
+        gap-2
+        rounded-lg
+        px-3
+        py-2
+        text-left
+        text-xs
+        font-semibold
+        hover:bg-slate-100
+        dark:hover:bg-[#071929]
+        ${
+          danger
+            ? "text-rose-500"
+            : success
+              ? "text-emerald-600"
+              : "text-slate-700 dark:text-slate-200"
+        }
+      `}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function IntegrationCard({
+  icon,
+  title,
+  description,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="
+        rounded-2xl
+        border
+        border-slate-200
+        p-5
+        text-left
+        transition
+        hover:-translate-y-0.5
+        hover:border-primary/30
+        hover:shadow-md
+        dark:border-[#0d2336]
+      "
+    >
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-500">
+        {icon}
+      </div>
+
+      <h4 className="mt-4 text-xs font-bold text-slate-800 dark:text-white">
+        {title}
+      </h4>
+
+      <p className="mt-1 text-[10px] leading-5 text-slate-400">{description}</p>
+    </button>
+  );
+}
+
+function DetailBox({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 p-5 dark:border-[#0d2336]">
+      <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-[#0d2336]">
+        <span className="text-slate-400">{icon}</span>
+
+        <h3 className="text-xs font-bold text-slate-800 dark:text-white">
+          {label}
+        </h3>
+      </div>
+
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function DetailLine({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="flex justify-between gap-5 text-xs">
+      <span className="text-slate-400">{label}</span>
+
+      <span className="max-w-[65%] text-right font-semibold text-slate-700 dark:text-slate-200">
+        {value || "—"}
+      </span>
+    </div>
+  );
+}
+
+function ActivityItem({
+  title,
+  description,
+  date,
+}: {
+  title: string;
+  description: string;
+  date: string;
+}) {
+  return (
+    <div className="flex gap-3">
+      <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+
+      <div>
+        <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+          {title}
+        </p>
+
+        <p className="mt-1 text-[11px] text-slate-400">{description}</p>
+
+        <p className="mt-1 text-[10px] text-slate-400">{formatDate(date)}</p>
+      </div>
+    </div>
+  );
+}
+
+function EmptyLeads() {
+  return (
+    <div className="flex min-h-[420px] flex-col items-center justify-center gap-3">
+      <div
+        className="
+          rounded-2xl
+          bg-slate-100
+          p-4
+          text-slate-400
+          dark:bg-[#071929]
+        "
+      >
+        <FiUser className="text-3xl" />
+      </div>
+
+      <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+        No Leads Found
+      </p>
+
+      <p className="text-xs text-slate-400">
+        Try changing your search or filters.
+      </p>
     </div>
   );
 }
