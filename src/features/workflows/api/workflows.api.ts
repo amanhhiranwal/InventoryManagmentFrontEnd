@@ -27,23 +27,43 @@ export interface Workflow {
   created_at: string;
 }
 
+export interface LeadActivity {
+  id?: string;
+  action: string;
+  description?: string;
+  created_at: string;
+  created_by_name?: string;
+}
+
 export interface Lead {
   id: string;
   title: string;
   description?: string;
   status: string;
   stage: string;
+
   demo_status?: string;
   requirements?: string;
+
   quotation_type?: string;
-  quotation_items?: Array<{ item: string; qty: number; price: number }>;
+  quotation_items?: Array<{
+    item: string;
+    qty: number;
+    price: number;
+  }>;
+
   creator_id: string;
   creator_name: string;
+
   assigned_to_id?: string;
   assigned_to_name?: string;
+
   assigned_by_id?: string;
   assigned_by_name?: string;
+
   created_at: string;
+
+  activity_history?: LeadActivity[];
 }
 
 export const getWorkflowsApi = async (): Promise<Workflow[]> => {
@@ -58,6 +78,19 @@ export const createWorkflowApi = async (payload: {
   edges: WorkflowEdge[];
 }): Promise<Workflow> => {
   const { data } = await api.post("/api/v1/workflows/", payload);
+  return data.data || data;
+};
+
+export const updateWorkflowApi = async (
+  id: string,
+  payload: {
+    name: string;
+    description?: string;
+    nodes: WorkflowNode[];
+    edges: WorkflowEdge[];
+  }
+): Promise<Workflow> => {
+  const { data } = await api.put(`/api/v1/workflows/${id}`, payload);
   return data.data || data;
 };
 
@@ -80,31 +113,54 @@ export const createLeadApi = async (payload: {
   return data.data || data;
 };
 
+export const updateLeadApi = async (
+  leadId: string,
+  payload: {
+    title?: string;
+    description?: string;
+    status?: string;
+    assigned_to_id?: string;
+  }
+): Promise<Lead> => {
+  const { data } = await api.put(`/api/v1/leads/${leadId}`, payload);
+  return data.data || data;
+};
+
 export interface ProgressLeadPayload {
   stage: string;
   status?: string;
   demo_status?: string;
   requirements?: string;
   quotation_type?: string;
-  quotation_items?: Array<{ item: string; qty: number; price: number }>;
+  quotation_items?: Array<{
+    item: string;
+    qty: number;
+    price: number;
+  }>;
 }
 
-export const progressLeadApi = async (leadId: string, payload: ProgressLeadPayload): Promise<Lead> => {
-  const { data } = await api.put(`/api/v1/leads/${leadId}/progress`, payload);
+export const progressLeadApi = async (
+  leadId: string,
+  payload: ProgressLeadPayload
+): Promise<Lead> => {
+  const { data } = await api.put(
+    `/api/v1/leads/${leadId}/progress`,
+    payload
+  );
+
   return data.data || data;
 };
 
-export const assignLeadApi = async (leadId: string, assignedToId: string): Promise<Lead> => {
-  const { data } = await api.put(`/api/v1/leads/${leadId}/assign`, { assigned_to_id: assignedToId });
-  return data.data || data;
-};
+export const assignLeadApi = async (
+  leadId: string,
+  assignedToId: string
+): Promise<Lead> => {
+  const { data } = await api.put(
+    `/api/v1/leads/${leadId}/assign`,
+    {
+      assigned_to_id: assignedToId,
+    }
+  );
 
-export const updateWorkflowApi = async (id: string, payload: {
-  name: string;
-  description?: string;
-  nodes: WorkflowNode[];
-  edges: WorkflowEdge[];
-}): Promise<Workflow> => {
-  const { data } = await api.put(`/api/v1/workflows/${id}`, payload);
   return data.data || data;
 };
