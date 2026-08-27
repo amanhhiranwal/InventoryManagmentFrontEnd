@@ -2936,8 +2936,9 @@ function ExcelImportModal({
   onImport: () => void;
 }) {
   return (
-    <Modal isOpen onClose={onClose} title="Upload a CSV File">
+    <Modal isOpen onClose={onClose} title="Upload a CSV File" size="lg">
       <div className="space-y-5">
+        {/* Upload Box */}
         <div
           onClick={() => inputRef.current?.click()}
           onDrop={onDrop}
@@ -2951,30 +2952,55 @@ function ExcelImportModal({
             onDragLeave();
           }}
           className={`
+            flex
+            min-h-[116px]
+            w-full
             cursor-pointer
-            rounded-2xl
-            border-2
+            flex-col
+            items-center
+            justify-center
+            rounded-xl
+            border
             border-dashed
-            p-10
+            px-6
+            py-6
             text-center
-            transition
+            transition-all
+            duration-200
+
             ${
               dragging
                 ? "border-primary bg-primary/5"
                 : "border-slate-300 bg-white hover:bg-slate-50"
             }
+
             dark:border-[#0d2336]
             dark:bg-[#051422]
+            dark:hover:bg-[#071929]
           `}
         >
-          <FiUploadCloud className="mx-auto text-3xl text-slate-400" />
+          <FiUploadCloud
+            className={`
+              text-2xl
+              transition-colors
+              ${dragging ? "text-primary" : "text-slate-400"}
+            `}
+          />
 
-          <p className="mt-4 text-sm text-slate-600 dark:text-slate-200">
+          <p className="mt-3 text-xs text-slate-600 dark:text-slate-200">
             Drag and drop your file here, or{" "}
-            <span className="font-bold text-blue-500">Browse</span>
+            <span
+              className="font-semibold text-blue-500 hover:text-blue-600"
+              onClick={(event) => {
+                event.stopPropagation();
+                inputRef.current?.click();
+              }}
+            >
+              Browse
+            </span>
           </p>
 
-          <p className="mt-2 text-[10px] text-slate-400">
+          <p className="mt-1 text-[10px] text-slate-400">
             Supported formats: .xlsx, .xls, .csv • Max file size: 10 MB
           </p>
 
@@ -2987,37 +3013,94 @@ function ExcelImportModal({
           />
         </div>
 
+        {/* Selected File */}
         {file && (
-          <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <div
+            className="
+              flex
+              items-center
+              justify-between
+              rounded-lg
+              border
+              border-emerald-200
+              bg-emerald-50
+              px-3
+              py-2.5
+              dark:border-emerald-900/40
+              dark:bg-emerald-950/20
+            "
+          >
             <div className="flex min-w-0 items-center gap-2">
               <FiCheckCircle className="shrink-0 text-emerald-500" />
 
-              <span className="truncate text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+              <span
+                className="
+                  truncate
+                  text-xs
+                  font-semibold
+                  text-emerald-700
+                  dark:text-emerald-400
+                "
+              >
                 {file.name}
               </span>
             </div>
 
             <button
               type="button"
-              onClick={() => {
-                inputRef.current!.value = "";
+              onClick={(event) => {
+                event.stopPropagation();
+
+                if (inputRef.current) {
+                  inputRef.current.value = "";
+                }
               }}
-              className="text-slate-400 hover:text-rose-500"
+              className="
+                shrink-0
+                rounded-md
+                p-1
+                text-slate-400
+                transition-colors
+                hover:bg-white
+                hover:text-rose-500
+                dark:hover:bg-[#071929]
+              "
             >
-              <FiX />
+              <FiX className="text-sm" />
             </button>
           </div>
         )}
 
+        {/* Sample CSV */}
         <button
           type="button"
           onClick={onDownloadSample}
-          className="text-xs font-semibold text-slate-600 underline underline-offset-2 hover:text-primary dark:text-slate-300"
+          className="
+            text-xs
+            font-semibold
+            text-slate-600
+            underline
+            underline-offset-2
+            transition-colors
+            hover:text-primary
+            dark:text-slate-300
+          "
         >
           Download a sample CSV file
         </button>
 
-        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4 dark:border-[#0d2336]">
+        {/* Footer */}
+        <div
+          className="
+            flex
+            justify-end
+            gap-3
+            border-t
+            border-slate-100
+            pt-4
+            dark:border-[#0d2336]
+          "
+        >
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
