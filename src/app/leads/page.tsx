@@ -2764,6 +2764,7 @@ function LeadFormPage({
 
           <FormSection icon={<FiFileText />} title="Requirements & Files">
             <div className="space-y-5">
+              {/* Remarks */}
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
                   Remarks
@@ -2796,63 +2797,74 @@ function LeadFormPage({
                 />
               </div>
 
-              <label
-                className="
-                  flex
-                  min-h-[150px]
-                  cursor-pointer
-                  flex-col
-                  items-center
-                  justify-center
-                  rounded-2xl
-                  border-2
-                  border-dashed
-                  border-slate-200
-                  p-5
-                  text-center
-                  hover:bg-slate-50
-                  dark:border-[#0d2336]
-                  dark:hover:bg-[#071929]
-                "
-              >
-                <FiPaperclip className="mb-3 text-2xl text-slate-400" />
+              {/* Attachments Heading */}
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+                  Attachments
+                </label>
 
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                  Drop files or click to upload
-                </span>
+                {/* Upload Area */}
+                <label
+                  className="
+                    flex
+                    min-h-[150px]
+                    w-full
+                    cursor-pointer
+                    flex-col
+                    items-center
+                    justify-center
+                    rounded-2xl
+                    border-2
+                    border-dashed
+                    border-slate-200
+                    p-5
+                    text-center
+                    transition
+                    hover:bg-slate-50
+                    dark:border-[#0d2336]
+                    dark:hover:bg-[#071929]
+                  "
+                >
+                  <FiPaperclip className="mb-3 text-2xl text-slate-400" />
 
-                <span className="mt-1 text-[10px] text-slate-400">
-                  PDF, DOC, XLS up to 10MB
-                </span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    Drop files or click to upload
+                  </span>
 
-                <input
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={onAttachment}
-                />
-              </label>
+                  <span className="mt-1 text-[10px] text-slate-400">
+                    PDF, DOC, XLS up to 10MB
+                  </span>
 
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={onAttachment}
+                  />
+                </label>
+              </div>
+
+              {/* Selected Attachments */}
               {form.attachments.length > 0 && (
                 <div className="space-y-2">
                   {form.attachments.map((attachment, index) => (
                     <div
                       key={`${attachment}-${index}`}
                       className="
-                          flex
-                          items-center
-                          gap-2
-                          rounded-lg
-                          bg-slate-50
-                          px-3
-                          py-2
-                          text-[10px]
-                          font-semibold
-                          text-slate-500
-                          dark:bg-[#071929]
-                        "
+                flex
+                items-center
+                gap-2
+                rounded-lg
+                bg-slate-50
+                px-3
+                py-2
+                text-[10px]
+                font-semibold
+                text-slate-500
+                dark:bg-[#071929]
+              "
                     >
-                      <FiCheckCircle className="text-emerald-500" />
+                      <FiCheckCircle className="shrink-0 text-emerald-500" />
 
                       <span className="truncate">{attachment}</span>
                     </div>
@@ -2861,7 +2873,6 @@ function LeadFormPage({
               )}
             </div>
           </FormSection>
-
           <div
             className="
             grid
