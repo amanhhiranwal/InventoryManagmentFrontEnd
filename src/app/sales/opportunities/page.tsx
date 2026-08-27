@@ -40,11 +40,7 @@ interface ProductItem {
 }
 
 type CustomerType =
-  | "Distributor"
-  | "OEM"
-  | "End Customer"
-  | "Institution"
-  | "Corporate";
+  "Distributor" | "OEM" | "End Customer" | "Institution" | "Corporate";
 
 type OpportunityStage =
   | "Qualified"
@@ -230,11 +226,7 @@ function normalizePriority(value: any): Priority {
 function normalizeStatus(value: any): OpportunityStatus {
   const status = String(value || "").toLowerCase();
 
-  if (
-    status === "inactive" ||
-    status === "dead" ||
-    status === "closed"
-  ) {
+  if (status === "inactive" || status === "dead" || status === "closed") {
     return "Inactive";
   }
 
@@ -253,30 +245,17 @@ function normalizeCustomerType(value: any): CustomerType {
 }
 
 function normalizeStage(lead: any): OpportunityStage {
-  const stage = String(
-    lead.stage || lead.status || ""
-  ).toLowerCase();
+  const stage = String(lead.stage || lead.status || "").toLowerCase();
 
-  if (
-    stage === "won" ||
-    stage === "closed won" ||
-    stage === "closed_won"
-  ) {
+  if (stage === "won" || stage === "closed won" || stage === "closed_won") {
     return "Closed Won";
   }
 
-  if (
-    stage === "dead" ||
-    stage === "lost" ||
-    stage === "inactive"
-  ) {
+  if (stage === "dead" || stage === "lost" || stage === "inactive") {
     return "Dead";
   }
 
-  if (
-    stage === "negotiation" ||
-    lead.demo_status === "given"
-  ) {
+  if (stage === "negotiation" || lead.demo_status === "given") {
     return "Negotiation";
   }
 
@@ -300,13 +279,7 @@ function normalizeStage(lead: any): OpportunityStage {
 }
 
 function getLeadId(lead: any) {
-  return (
-    lead.lead_id ||
-    lead.leadId ||
-    lead.reference_id ||
-    lead.id ||
-    ""
-  );
+  return lead.lead_id || lead.leadId || lead.reference_id || lead.id || "";
 }
 
 function getDealValue(lead: any) {
@@ -322,16 +295,11 @@ function getDealValue(lead: any) {
     return lead.estimated_value;
   }
 
-  if (
-    Array.isArray(lead.quotation_items) &&
-    lead.quotation_items.length
-  ) {
+  if (Array.isArray(lead.quotation_items) && lead.quotation_items.length) {
     return lead.quotation_items.reduce(
       (sum: number, item: any) =>
-        sum +
-        Number(item.qty || 1) *
-          Number(item.price || 0),
-      0
+        sum + Number(item.qty || 1) * Number(item.price || 0),
+      0,
     );
   }
 
@@ -368,54 +336,30 @@ function mapLeadToOpportunity(lead: any): Opportunity {
     leadId: String(getLeadId(lead)),
 
     customerName,
-    email:
-      lead.email ||
-      lead.email_address ||
-      "",
-    phone:
-      lead.phone ||
-      lead.mobile ||
-      lead.mobile_number ||
-      "",
+    email: lead.email || lead.email_address || "",
+    phone: lead.phone || lead.mobile || lead.mobile_number || "",
 
     company,
 
-    city:
-      lead.city ||
-      lead.location_city ||
-      "",
+    city: lead.city || lead.location_city || "",
 
-    state:
-      lead.state ||
-      lead.state_name ||
-      "",
+    state: lead.state || lead.state_name || "",
 
-    country:
-      lead.country ||
-      "India",
+    country: lead.country || "India",
 
-    customerType: normalizeCustomerType(
-      lead.customer_type
-    ),
+    customerType: normalizeCustomerType(lead.customer_type),
 
     stage,
 
-    status: normalizeStatus(
-      lead.status
-    ),
+    status: normalizeStatus(lead.status),
 
-    priority: normalizePriority(
-      lead.priority
-    ),
+    priority: normalizePriority(lead.priority),
 
     dealValue: getDealValue(lead),
 
     owner,
 
-    ownerId:
-      lead.assigned_to_id ||
-      lead.owner_id ||
-      undefined,
+    ownerId: lead.assigned_to_id || lead.owner_id || undefined,
 
     expectedClosingDate:
       lead.expected_closing_date ||
@@ -423,52 +367,29 @@ function mapLeadToOpportunity(lead: any): Opportunity {
       lead.closing_date ||
       undefined,
 
-    createdAt:
-      lead.created_at ||
-      lead.createdAt,
+    createdAt: lead.created_at || lead.createdAt,
 
-    designation:
-      lead.designation ||
-      lead.contact_designation ||
-      "",
+    designation: lead.designation || lead.contact_designation || "",
 
-    officeAddress:
-      lead.office_address ||
-      lead.address ||
-      "",
+    officeAddress: lead.office_address || lead.address || "",
 
-    gstNumber:
-      lead.gst_number ||
-      lead.gstin ||
-      "",
+    gstNumber: lead.gst_number || lead.gstin || "",
 
-    panNumber:
-      lead.pan_number ||
-      lead.pan ||
-      "",
+    panNumber: lead.pan_number || lead.pan || "",
 
-    coiNumber:
-      lead.coi_number ||
-      "",
+    coiNumber: lead.coi_number || "",
 
-    requirements:
-      lead.requirements ||
-      "",
+    requirements: lead.requirements || "",
 
-    remarks:
-      lead.remarks ||
-      lead.notes ||
-      "",
+    remarks: lead.remarks || lead.notes || "",
 
-    productItems:
-      Array.isArray(lead.quotation_items)
-        ? lead.quotation_items
-        : [],
+    productItems: Array.isArray(lead.quotation_items)
+      ? lead.quotation_items
+      : [],
 
-    activityHistory:
-      Array.isArray(lead.activity_history)
-        ? lead.activity_history
-        : [],
+    activityHistory: Array.isArray(lead.activity_history)
+      ? lead.activity_history
+      : [],
   };
 }
 
@@ -483,46 +404,34 @@ export default function OpportunitiesPage() {
 
   const [search, setSearch] = useState("");
 
-  const [viewMode, setViewMode] =
-    useState<"board" | "list">("board");
+  const [viewMode, setViewMode] = useState<"board" | "list">("board");
 
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
   const [showFilters, setShowFilters] = useState(false);
-  const [showPageMenu, setShowPageMenu] =
-    useState(false);
+  const [showPageMenu, setShowPageMenu] = useState(false);
 
-  const [filters, setFilters] =
-    useState<OpportunityFilters>(
-      DEFAULT_FILTERS
-    );
+  const [filters, setFilters] = useState<OpportunityFilters>(DEFAULT_FILTERS);
 
   const [appliedFilters, setAppliedFilters] =
-    useState<OpportunityFilters>(
-      DEFAULT_FILTERS
-    );
+    useState<OpportunityFilters>(DEFAULT_FILTERS);
 
-  const [showAddModal, setShowAddModal] =
-    useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const [selectedOpportunity, setSelectedOpportunity] =
     useState<Opportunity | null>(null);
 
-  const [showDetails, setShowDetails] =
-    useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
-  const [openActionMenu, setOpenActionMenu] =
-    useState<string | null>(null);
+  const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
 
   const [editingOpportunity, setEditingOpportunity] =
     useState<Opportunity | null>(null);
 
   const pageMenuRef = useRef<HTMLDivElement>(null);
 
-  const fetchOpportunities = async (
-    silent = false
-  ) => {
+  const fetchOpportunities = async (silent = false) => {
     try {
       if (silent) {
         setRefreshing(true);
@@ -530,31 +439,19 @@ export default function OpportunitiesPage() {
         setLoading(true);
       }
 
-      const res = await api.get(
-        "/api/v1/leads/"
-      );
+      const res = await api.get("/api/v1/leads/");
 
       if (res.data?.success) {
-        const list = Array.isArray(res.data.data)
-          ? res.data.data
-          : [];
+        const list = Array.isArray(res.data.data) ? res.data.data : [];
 
-        setOpps(
-          list.map(mapLeadToOpportunity)
-        );
+        setOpps(list.map(mapLeadToOpportunity));
       } else {
         setOpps([]);
       }
     } catch (error) {
-      console.error(
-        "Failed to fetch opportunities:",
-        error
-      );
+      console.error("Failed to fetch opportunities:", error);
 
-      addToast(
-        "Unable to load opportunities.",
-        "error"
-      );
+      addToast("Unable to load opportunities.", "error");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -567,27 +464,16 @@ export default function OpportunitiesPage() {
        * If your application already has a users endpoint,
        * replace this URL with your actual endpoint.
        */
-      const res = await api.get(
-        "/api/v1/users/"
-      );
+      const res = await api.get("/api/v1/users/");
 
       if (res.data?.success) {
-        const users = Array.isArray(res.data.data)
-          ? res.data.data
-          : [];
+        const users = Array.isArray(res.data.data) ? res.data.data : [];
 
         setSalesUsers(
           users.map((user: any) => ({
-            id: String(
-              user.id ||
-                user.user_id
-            ),
-            name:
-              user.name ||
-              user.full_name ||
-              user.username ||
-              "Sales User",
-          }))
+            id: String(user.id || user.user_id),
+            name: user.name || user.full_name || user.username || "Sales User",
+          })),
         );
       }
     } catch (error) {
@@ -595,10 +481,7 @@ export default function OpportunitiesPage() {
        * Users are optional for rendering the page.
        * The page still works if this endpoint doesn't exist.
        */
-      console.warn(
-        "Sales users endpoint unavailable.",
-        error
-      );
+      console.warn("Sales users endpoint unavailable.", error);
     }
   };
 
@@ -611,104 +494,64 @@ export default function OpportunitiesPage() {
     const handleOutsideClick = (event: MouseEvent) => {
       if (
         pageMenuRef.current &&
-        !pageMenuRef.current.contains(
-          event.target as Node
-        )
+        !pageMenuRef.current.contains(event.target as Node)
       ) {
         setShowPageMenu(false);
       }
     };
 
-    document.addEventListener(
-      "mousedown",
-      handleOutsideClick
-    );
+    document.addEventListener("mousedown", handleOutsideClick);
 
-    return () =>
-      document.removeEventListener(
-        "mousedown",
-        handleOutsideClick
-      );
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
   const filtered = useMemo(() => {
-    const query =
-      search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
 
     return opps.filter((opp) => {
       const matchesSearch =
         !query ||
-        opp.customerName
-          .toLowerCase()
-          .includes(query) ||
-        opp.company
-          .toLowerCase()
-          .includes(query) ||
-        opp.email
-          .toLowerCase()
-          .includes(query) ||
-        opp.leadId
-          .toLowerCase()
-          .includes(query) ||
-        opp.owner
-          .toLowerCase()
-          .includes(query);
+        opp.customerName.toLowerCase().includes(query) ||
+        opp.company.toLowerCase().includes(query) ||
+        opp.email.toLowerCase().includes(query) ||
+        opp.leadId.toLowerCase().includes(query) ||
+        opp.owner.toLowerCase().includes(query);
 
       const matchesCustomerType =
         !appliedFilters.customerType ||
-        opp.customerType ===
-          appliedFilters.customerType;
+        opp.customerType === appliedFilters.customerType;
 
       const matchesAssignedTo =
         !appliedFilters.assignedTo ||
-        opp.ownerId ===
-          appliedFilters.assignedTo ||
-        opp.owner ===
-          appliedFilters.assignedTo;
+        opp.ownerId === appliedFilters.assignedTo ||
+        opp.owner === appliedFilters.assignedTo;
 
       const matchesStatus =
         !appliedFilters.status ||
         appliedFilters.status === "All" ||
-        opp.status ===
-          appliedFilters.status;
+        opp.status === appliedFilters.status;
 
       const matchesState =
         !appliedFilters.state ||
         appliedFilters.state === "All" ||
-        opp.state ===
-          appliedFilters.state;
+        opp.state === appliedFilters.state;
 
       let matchesDate = true;
 
-      if (
-        appliedFilters.dateFrom ||
-        appliedFilters.dateTo
-      ) {
-        const created =
-          opp.createdAt
-            ? new Date(opp.createdAt)
-            : null;
+      if (appliedFilters.dateFrom || appliedFilters.dateTo) {
+        const created = opp.createdAt ? new Date(opp.createdAt) : null;
 
-        if (
-          created &&
-          !Number.isNaN(created.getTime())
-        ) {
+        if (created && !Number.isNaN(created.getTime())) {
           if (
             appliedFilters.dateFrom &&
-            created <
-              new Date(
-                `${appliedFilters.dateFrom}T00:00:00`
-              )
+            created < new Date(`${appliedFilters.dateFrom}T00:00:00`)
           ) {
             matchesDate = false;
           }
 
           if (
             appliedFilters.dateTo &&
-            created >
-              new Date(
-                `${appliedFilters.dateTo}T23:59:59`
-              )
+            created > new Date(`${appliedFilters.dateTo}T23:59:59`)
           ) {
             matchesDate = false;
           }
@@ -724,27 +567,14 @@ export default function OpportunitiesPage() {
         matchesDate
       );
     });
-  }, [
-    opps,
-    search,
-    appliedFilters,
-  ]);
+  }, [opps, search, appliedFilters]);
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(
-      filtered.length / PAGE_SIZE
-    )
-  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
   const paginated = useMemo(() => {
-    const start =
-      (page - 1) * PAGE_SIZE;
+    const start = (page - 1) * PAGE_SIZE;
 
-    return filtered.slice(
-      start,
-      start + PAGE_SIZE
-    );
+    return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, page]);
 
   useEffect(() => {
@@ -766,38 +596,28 @@ export default function OpportunitiesPage() {
   const totalOrders = opps.length;
 
   const negotiationCount = opps.filter(
-    (opp) =>
-      opp.stage === "Negotiation"
+    (opp) => opp.stage === "Negotiation",
   ).length;
 
-  const closedWonToday = opps.filter(
-    (opp) => {
-      if (
-        opp.stage !== "Closed Won"
-      ) {
-        return false;
-      }
-
-      if (!opp.createdAt) {
-        return false;
-      }
-
-      const date = new Date(
-        opp.createdAt
-      );
-
-      const today = new Date();
-
-      return (
-        date.getFullYear() ===
-          today.getFullYear() &&
-        date.getMonth() ===
-          today.getMonth() &&
-        date.getDate() ===
-          today.getDate()
-      );
+  const closedWonToday = opps.filter((opp) => {
+    if (opp.stage !== "Closed Won") {
+      return false;
     }
-  ).length;
+
+    if (!opp.createdAt) {
+      return false;
+    }
+
+    const date = new Date(opp.createdAt);
+
+    const today = new Date();
+
+    return (
+      date.getFullYear() === today.getFullYear() &&
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate()
+    );
+  }).length;
 
   const applyFilters = () => {
     setAppliedFilters({
@@ -807,17 +627,12 @@ export default function OpportunitiesPage() {
     setPage(1);
     setShowFilters(false);
 
-    addToast(
-      "Opportunity filters applied.",
-      "success"
-    );
+    addToast("Opportunity filters applied.", "success");
   };
 
   const clearFilters = () => {
     setFilters(DEFAULT_FILTERS);
-    setAppliedFilters(
-      DEFAULT_FILTERS
-    );
+    setAppliedFilters(DEFAULT_FILTERS);
     setPage(1);
   };
 
@@ -830,163 +645,113 @@ export default function OpportunitiesPage() {
     appliedFilters.state,
   ].filter(Boolean).length;
 
-  const handleCreateOpportunity =
-    async (
-      payload: Record<string, any>
-    ) => {
-      try {
-        setLoading(true);
+  const handleCreateOpportunity = async (payload: Record<string, any>) => {
+    try {
+      setLoading(true);
 
-        const createRes =
-          await api.post(
-            "/api/v1/leads/",
-            {
-              title:
-                payload.contactName ||
-                payload.organizationName,
+      const createRes = await api.post("/api/v1/leads/", {
+        title: payload.contactName || payload.organizationName,
 
-              description:
-                payload.organizationName,
+        description: payload.organizationName,
 
-              status: "active",
+        status: "active",
 
-              customer_type:
-                payload.customerType,
+        customer_type: payload.customerType,
 
-              organization_name:
-                payload.organizationName,
+        organization_name: payload.organizationName,
 
-              organization_website:
-                payload.organizationWebsite,
+        organization_website: payload.organizationWebsite,
 
-              office_address:
-                payload.officeAddress,
+        office_address: payload.officeAddress,
 
-              city: payload.city,
+        city: payload.city,
 
-              state:
-                payload.state,
+        state: payload.state,
 
-              pin_code:
-                payload.pinCode,
+        pin_code: payload.pinCode,
 
-              country:
-                payload.country,
+        country: payload.country,
 
-              gst_number:
-                payload.gstNumber,
+        gst_number: payload.gstNumber,
 
-              pan_number:
-                payload.panNumber,
+        pan_number: payload.panNumber,
 
-              coi_number:
-                payload.coiNumber,
+        coi_number: payload.coiNumber,
 
-              contact_name:
-                payload.contactName,
+        contact_name: payload.contactName,
 
-              designation:
-                payload.designation,
+        designation: payload.designation,
 
-              mobile_number:
-                payload.mobileNumber,
+        mobile_number: payload.mobileNumber,
 
-              email:
-                payload.email,
+        email: payload.email,
 
-              priority:
-                payload.priority,
+        priority: payload.priority,
 
-              expected_closing_date:
-                payload.expectedClosingDate,
+        expected_closing_date: payload.expectedClosingDate,
 
-              requirements:
-                payload.remarks,
+        requirements: payload.remarks,
 
-              remarks:
-                payload.remarks,
-            }
-          );
+        remarks: payload.remarks,
+      });
 
-        if (!createRes.data?.success) {
-          throw new Error(
-            "Lead creation failed."
-          );
-        }
-
-        const newLead =
-          createRes.data.data;
-
-        /*
-         * Advance newly created lead into
-         * opportunity stage.
-         */
-        await api.put(
-          `/api/v1/leads/${newLead.id}/progress`,
-          {
-            stage: "opportunity",
-            status: "active",
-            demo_status: "skipped",
-
-            customer_type:
-              payload.customerType,
-
-            priority:
-              payload.priority,
-
-            expected_closing_date:
-              payload.expectedClosingDate,
-
-            requirements:
-              payload.remarks,
-
-            quotation_type:
-              "quotation",
-
-            quotation_items:
-              payload.productItems || [],
-          }
-        );
-
-        addToast(
-          "Opportunity created successfully.",
-          "success"
-        );
-
-        setShowAddModal(false);
-
-        /*
-         * IMPORTANT:
-         * Refresh immediately after creation.
-         */
-        await fetchOpportunities(true);
-
-        setPage(1);
-      } catch (error: any) {
-        console.error(
-          "Create opportunity error:",
-          error
-        );
-
-        addToast(
-          error?.response?.data
-            ?.detail ||
-            error?.message ||
-            "Failed to create opportunity.",
-          "error"
-        );
-      } finally {
-        setLoading(false);
+      if (!createRes.data?.success) {
+        throw new Error("Lead creation failed.");
       }
-    };
+
+      const newLead = createRes.data.data;
+
+      /*
+       * Advance newly created lead into
+       * opportunity stage.
+       */
+      await api.put(`/api/v1/leads/${newLead.id}/progress`, {
+        stage: "opportunity",
+        status: "active",
+        demo_status: "skipped",
+
+        customer_type: payload.customerType,
+
+        priority: payload.priority,
+
+        expected_closing_date: payload.expectedClosingDate,
+
+        requirements: payload.remarks,
+
+        quotation_type: "quotation",
+
+        quotation_items: payload.productItems || [],
+      });
+
+      addToast("Opportunity created successfully.", "success");
+
+      setShowAddModal(false);
+
+      /*
+       * IMPORTANT:
+       * Refresh immediately after creation.
+       */
+      await fetchOpportunities(true);
+
+      setPage(1);
+    } catch (error: any) {
+      console.error("Create opportunity error:", error);
+
+      addToast(
+        error?.response?.data?.detail ||
+          error?.message ||
+          "Failed to create opportunity.",
+        "error",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleRefresh = async () => {
     await fetchOpportunities(true);
 
-    addToast(
-      "Opportunity list refreshed.",
-      "success"
-    );
+    addToast("Opportunity list refreshed.", "success");
   };
 
   const handleExportData = () => {
@@ -1007,65 +772,47 @@ export default function OpportunitiesPage() {
       "Expected Closing Date",
     ];
 
-    const rows = filtered.map(
-      (opp) => [
-        opp.leadId,
-        opp.customerName,
-        opp.email,
-        opp.phone,
-        opp.company,
-        opp.city,
-        opp.state,
-        opp.customerType,
-        opp.dealValue,
-        opp.owner,
-        opp.status,
-        opp.priority,
-        opp.stage,
-        opp.expectedClosingDate ||
-          "",
-      ]
-    );
+    const rows = filtered.map((opp) => [
+      opp.leadId,
+      opp.customerName,
+      opp.email,
+      opp.phone,
+      opp.company,
+      opp.city,
+      opp.state,
+      opp.customerType,
+      opp.dealValue,
+      opp.owner,
+      opp.status,
+      opp.priority,
+      opp.stage,
+      opp.expectedClosingDate || "",
+    ]);
 
-    const csv = [
-      headers,
-      ...rows,
-    ]
+    const csv = [headers, ...rows]
       .map((row) =>
         row
           .map((cell) => {
-            const value =
-              cell == null
-                ? ""
-                : String(cell);
+            const value = cell == null ? "" : String(cell);
 
-            return `"${value.replace(
-              /"/g,
-              '""'
-            )}"`;
+            return `"${value.replace(/"/g, '""')}"`;
           })
-          .join(",")
+          .join(","),
       )
       .join("\n");
 
-    const blob = new Blob(
-      [csv],
-      {
-        type: "text/csv;charset=utf-8;",
-      }
-    );
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
 
-    const url =
-      URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
 
-    const link =
-      document.createElement("a");
+    const link = document.createElement("a");
 
     link.href = url;
-    link.download =
-      `opportunities-${new Date()
-        .toISOString()
-        .slice(0, 10)}.csv`;
+    link.download = `opportunities-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
 
     document.body.appendChild(link);
     link.click();
@@ -1075,68 +822,39 @@ export default function OpportunitiesPage() {
 
     setShowPageMenu(false);
 
-    addToast(
-      "Opportunity data exported.",
-      "success"
-    );
+    addToast("Opportunity data exported.", "success");
   };
 
   const handleDownloadChart = () => {
-    const canvas =
-      document.createElement(
-        "canvas"
-      );
+    const canvas = document.createElement("canvas");
 
     canvas.width = 1200;
     canvas.height = 700;
 
-    const ctx =
-      canvas.getContext("2d");
+    const ctx = canvas.getContext("2d");
 
     if (!ctx) return;
 
     ctx.fillStyle = "#f5f6f8";
-    ctx.fillRect(
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    );
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.fillStyle = "#233353";
-    ctx.font =
-      "700 32px Arial";
+    ctx.font = "700 32px Arial";
 
-    ctx.fillText(
-      "Opportunity Pipeline",
-      60,
-      70
-    );
+    ctx.fillText("Opportunity Pipeline", 60, 70);
 
     const chartData = [
       {
         label: "Qualified",
-        value: opps.filter(
-          (x) =>
-            x.stage ===
-            "Qualified"
-        ).length,
+        value: opps.filter((x) => x.stage === "Qualified").length,
       },
       {
         label: "Demo Scheduled",
-        value: opps.filter(
-          (x) =>
-            x.stage ===
-            "Demo Scheduled"
-        ).length,
+        value: opps.filter((x) => x.stage === "Demo Scheduled").length,
       },
       {
         label: "Proposal Sent",
-        value: opps.filter(
-          (x) =>
-            x.stage ===
-            "Proposal Sent"
-        ).length,
+        value: opps.filter((x) => x.stage === "Proposal Sent").length,
       },
       {
         label: "Negotiation",
@@ -1144,86 +862,46 @@ export default function OpportunitiesPage() {
       },
     ];
 
-    const max =
-      Math.max(
-        ...chartData.map(
-          (x) => x.value
-        ),
-        1
-      );
+    const max = Math.max(...chartData.map((x) => x.value), 1);
 
-    chartData.forEach(
-      (item, index) => {
-        const x =
-          100 + index * 260;
+    chartData.forEach((item, index) => {
+      const x = 100 + index * 260;
 
-        const barHeight =
-          (item.value / max) *
-          400;
+      const barHeight = (item.value / max) * 400;
 
-        const y =
-          570 - barHeight;
+      const y = 570 - barHeight;
 
-        ctx.fillStyle =
-          "#233353";
+      ctx.fillStyle = "#233353";
 
-        ctx.fillRect(
-          x,
-          y,
-          120,
-          barHeight
-        );
+      ctx.fillRect(x, y, 120, barHeight);
 
-        ctx.fillStyle =
-          "#475569";
+      ctx.fillStyle = "#475569";
 
-        ctx.font =
-          "600 18px Arial";
+      ctx.font = "600 18px Arial";
 
-        ctx.fillText(
-          item.label,
-          x - 10,
-          620
-        );
+      ctx.fillText(item.label, x - 10, 620);
 
-        ctx.fillStyle =
-          "#233353";
+      ctx.fillStyle = "#233353";
 
-        ctx.font =
-          "700 24px Arial";
+      ctx.font = "700 24px Arial";
 
-        ctx.fillText(
-          String(item.value),
-          x + 45,
-          y - 15
-        );
-      }
-    );
+      ctx.fillText(String(item.value), x + 45, y - 15);
+    });
 
-    const link =
-      document.createElement("a");
+    const link = document.createElement("a");
 
-    link.download =
-      "opportunity-pipeline.png";
+    link.download = "opportunity-pipeline.png";
 
-    link.href =
-      canvas.toDataURL(
-        "image/png"
-      );
+    link.href = canvas.toDataURL("image/png");
 
     link.click();
 
     setShowPageMenu(false);
 
-    addToast(
-      "Pipeline chart downloaded.",
-      "success"
-    );
+    addToast("Pipeline chart downloaded.", "success");
   };
 
-  const openDetails = async (
-    opp: Opportunity
-  ) => {
+  const openDetails = async (opp: Opportunity) => {
     setSelectedOpportunity(opp);
     setShowDetails(true);
     setOpenActionMenu(null);
@@ -1234,38 +912,26 @@ export default function OpportunitiesPage() {
      * remains usable.
      */
     try {
-      const res =
-        await api.get(
-          `/api/v1/leads/${opp.id}`
-        );
+      const res = await api.get(`/api/v1/leads/${opp.id}`);
 
       if (res.data?.success) {
-        setSelectedOpportunity(
-          mapLeadToOpportunity(
-            res.data.data
-          )
-        );
+        setSelectedOpportunity(mapLeadToOpportunity(res.data.data));
       }
     } catch {
       // Keep current opportunity data.
     }
   };
 
-  const handleMarkDead = async (
-    opp: Opportunity
-  ) => {
+  const handleMarkDead = async (opp: Opportunity) => {
     try {
       /*
        * Change this endpoint/body if your backend
        * uses a dedicated "mark dead" endpoint.
        */
-      await api.put(
-        `/api/v1/leads/${opp.id}/progress`,
-        {
-          stage: "dead",
-          status: "inactive",
-        }
-      );
+      await api.put(`/api/v1/leads/${opp.id}/progress`, {
+        stage: "dead",
+        status: "inactive",
+      });
 
       setOpps((current) =>
         current.map((item) =>
@@ -1275,29 +941,21 @@ export default function OpportunitiesPage() {
                 stage: "Dead",
                 status: "Inactive",
               }
-            : item
-        )
+            : item,
+        ),
       );
 
       setOpenActionMenu(null);
 
-      addToast(
-        "Opportunity marked as dead.",
-        "success"
-      );
+      addToast("Opportunity marked as dead.", "success");
     } catch (error) {
       console.error(error);
 
-      addToast(
-        "Failed to mark opportunity as dead.",
-        "error"
-      );
+      addToast("Failed to mark opportunity as dead.", "error");
     }
   };
 
-  const handleSaveEdit = async (
-    payload: Partial<Opportunity>
-  ) => {
+  const handleSaveEdit = async (payload: Partial<Opportunity>) => {
     if (!editingOpportunity) {
       return;
     }
@@ -1306,66 +964,55 @@ export default function OpportunitiesPage() {
       /*
        * Change this endpoint/body to match your API.
        */
-      const res =
-        await api.put(
-          `/api/v1/leads/${editingOpportunity.id}`,
-          {
-            title:
-              payload.customerName,
+      const res = await api.put(`/api/v1/leads/${editingOpportunity.id}`, {
+        title: payload.customerName,
 
-            organization_name:
-              payload.company,
+        organization_name: payload.company,
 
-            customer_type:
-              payload.customerType,
+        customer_type: payload.customerType,
 
-            priority:
-              payload.priority,
+        priority: payload.priority,
 
-            assigned_to_id:
-              payload.ownerId,
+        assigned_to_id: payload.ownerId,
 
-            expected_closing_date:
-              payload.expectedClosingDate,
-          }
-        );
+        expected_closing_date: payload.expectedClosingDate,
+      });
 
-      if (
-        res.data?.success !== false
-      ) {
+      if (res.data?.success !== false) {
         setOpps((current) =>
           current.map((item) =>
-            item.id ===
-            editingOpportunity.id
+            item.id === editingOpportunity.id
               ? {
                   ...item,
                   ...payload,
                 }
-              : item
-          )
+              : item,
+          ),
         );
 
         setEditingOpportunity(null);
 
-        addToast(
-          "Opportunity updated.",
-          "success"
-        );
+        addToast("Opportunity updated.", "success");
       }
     } catch (error) {
       console.error(error);
 
-      addToast(
-        "Failed to update opportunity.",
-        "error"
-      );
+      addToast("Failed to update opportunity.", "error");
     }
   };
+
+  if (showAddModal) {
+    return (
+      <NewOpportunityPage
+        onClose={() => setShowAddModal(false)}
+        onSubmit={handleCreateOpportunity}
+      />
+    );
+  }
 
   return (
     <div className="min-h-full bg-[#f5f6f8] dark:bg-[#020b14] text-slate-800 dark:text-white">
       <div className="space-y-5 p-1">
-
         {/* =========================================================
             PAGE HEADER
         ========================================================= */}
@@ -1383,11 +1030,7 @@ export default function OpportunitiesPage() {
               className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
             >
               <FiRefreshCw
-                className={
-                  refreshing
-                    ? "animate-spin"
-                    : ""
-                }
+                className={refreshing ? "animate-spin" : ""}
                 size={13}
               />
             </button>
@@ -1412,16 +1055,10 @@ export default function OpportunitiesPage() {
 
               <button
                 type="button"
-                onClick={() =>
-                  setShowPageMenu(
-                    (value) => !value
-                  )
-                }
+                onClick={() => setShowPageMenu((value) => !value)}
                 className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:bg-[#071929] dark:text-slate-300"
               >
-                <FiMoreVertical
-                  size={15}
-                />
+                <FiMoreVertical size={15} />
               </button>
             </div>
 
@@ -1432,9 +1069,7 @@ export default function OpportunitiesPage() {
                   onClick={handleExportData}
                   className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs font-medium hover:bg-slate-50 dark:hover:bg-[#0b2034]"
                 >
-                  <FiDownload
-                    size={14}
-                  />
+                  <FiDownload size={14} />
                   Export Data
                 </button>
 
@@ -1455,7 +1090,6 @@ export default function OpportunitiesPage() {
             KPI CARDS
         ========================================================= */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-
           <KpiCard
             title="Total Orders"
             value={totalOrders}
@@ -1476,14 +1110,12 @@ export default function OpportunitiesPage() {
             change="15.0%"
             positive
           />
-
         </div>
 
         {/* =========================================================
             SEARCH + VIEW + FILTER + ADD
         ========================================================= */}
         <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center">
-
           <div className="relative flex-1">
             <FiSearch
               className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
@@ -1494,9 +1126,7 @@ export default function OpportunitiesPage() {
               type="text"
               value={search}
               onChange={(event) => {
-                setSearch(
-                  event.target.value
-                );
+                setSearch(event.target.value);
                 setPage(1);
               }}
               placeholder="Search Opportunities"
@@ -1505,13 +1135,10 @@ export default function OpportunitiesPage() {
           </div>
 
           <div className="flex items-center gap-2">
-
             <div className="flex h-11 items-center rounded-lg border border-slate-200 bg-white p-1 dark:border-[#17304a] dark:bg-[#071929]">
               <button
                 type="button"
-                onClick={() =>
-                  setViewMode("list")
-                }
+                onClick={() => setViewMode("list")}
                 className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold ${
                   viewMode === "list"
                     ? "bg-[#f1f2f4] text-slate-900 shadow-sm dark:bg-[#10243a] dark:text-white"
@@ -1524,9 +1151,7 @@ export default function OpportunitiesPage() {
 
               <button
                 type="button"
-                onClick={() =>
-                  setViewMode("board")
-                }
+                onClick={() => setViewMode("board")}
                 className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold ${
                   viewMode === "board"
                     ? "bg-[#f1f2f4] text-slate-900 shadow-sm dark:bg-[#10243a] dark:text-white"
@@ -1540,37 +1165,25 @@ export default function OpportunitiesPage() {
 
             <button
               type="button"
-              onClick={() =>
-                setShowFilters(
-                  (value) => !value
-                )
-              }
+              onClick={() => setShowFilters((value) => !value)}
               className={`relative flex h-11 w-11 items-center justify-center rounded-lg border bg-white ${
-                showFilters ||
-                activeFilterCount > 0
+                showFilters || activeFilterCount > 0
                   ? "border-[#233353] text-[#233353]"
                   : "border-slate-200 text-slate-600"
               } dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300`}
             >
-              <FiSliders
-                size={17}
-              />
+              <FiSliders size={17} />
 
-              {activeFilterCount >
-                0 && (
+              {activeFilterCount > 0 && (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#233353] px-1 text-[8px] font-bold text-white">
-                  {
-                    activeFilterCount
-                  }
+                  {activeFilterCount}
                 </span>
               )}
             </button>
 
             <button
               type="button"
-              onClick={() =>
-                setShowAddModal(true)
-              }
+              onClick={() => setShowAddModal(true)}
               className="flex h-11 items-center gap-2 rounded-lg bg-[#233353] px-5 text-xs font-bold text-white shadow-sm hover:bg-[#18243a]"
             >
               <FiPlus size={16} />
@@ -1601,62 +1214,30 @@ export default function OpportunitiesPage() {
           <BoardView
             opportunities={filtered}
             onDetails={openDetails}
-            openActionMenu={
-              openActionMenu
-            }
-            setOpenActionMenu={
-              setOpenActionMenu
-            }
+            openActionMenu={openActionMenu}
+            setOpenActionMenu={setOpenActionMenu}
             onEdit={(opp) => {
-              setEditingOpportunity(
-                opp
-              );
+              setEditingOpportunity(opp);
               setOpenActionMenu(null);
             }}
-            onMarkDead={
-              handleMarkDead
-            }
+            onMarkDead={handleMarkDead}
           />
         ) : (
           <ListView
             opportunities={paginated}
-            filteredCount={
-              filtered.length
-            }
+            filteredCount={filtered.length}
             page={page}
             pageSize={PAGE_SIZE}
             totalPages={totalPages}
             onPageChange={setPage}
             onDetails={openDetails}
-            openActionMenu={
-              openActionMenu
-            }
-            setOpenActionMenu={
-              setOpenActionMenu
-            }
+            openActionMenu={openActionMenu}
+            setOpenActionMenu={setOpenActionMenu}
             onEdit={(opp) => {
-              setEditingOpportunity(
-                opp
-              );
+              setEditingOpportunity(opp);
               setOpenActionMenu(null);
             }}
-            onMarkDead={
-              handleMarkDead
-            }
-          />
-        )}
-
-        {/* =========================================================
-            ADD OPPORTUNITY
-        ========================================================= */}
-        {showAddModal && (
-          <AddOpportunityModal
-            onClose={() =>
-              setShowAddModal(false)
-            }
-            onSubmit={
-              handleCreateOpportunity
-            }
+            onMarkDead={handleMarkDead}
           />
         )}
 
@@ -1665,47 +1246,30 @@ export default function OpportunitiesPage() {
         ========================================================= */}
         {editingOpportunity && (
           <EditOpportunityModal
-            opportunity={
-              editingOpportunity
-            }
+            opportunity={editingOpportunity}
             salesUsers={salesUsers}
-            onClose={() =>
-              setEditingOpportunity(
-                null
-              )
-            }
-            onSubmit={
-              handleSaveEdit
-            }
+            onClose={() => setEditingOpportunity(null)}
+            onSubmit={handleSaveEdit}
           />
         )}
 
         {/* =========================================================
             LEAD DETAILS DRAWER
         ========================================================= */}
-        {showDetails &&
-          selectedOpportunity && (
-            <LeadDetailsDrawer
-              opportunity={
-                selectedOpportunity
-              }
-              onClose={() =>
-                setShowDetails(false)
-              }
-              onEdit={() => {
-                setShowDetails(false);
-                setEditingOpportunity(
-                  selectedOpportunity
-                );
-              }}
-              onMarkDead={() => {
-                setShowDetails(false);
-                handleMarkDead(
-                  selectedOpportunity
-                );
-              }}
-            />
-          )}
+        {showDetails && selectedOpportunity && (
+          <LeadDetailsDrawer
+            opportunity={selectedOpportunity}
+            onClose={() => setShowDetails(false)}
+            onEdit={() => {
+              setShowDetails(false);
+              setEditingOpportunity(selectedOpportunity);
+            }}
+            onMarkDead={() => {
+              setShowDetails(false);
+              handleMarkDead(selectedOpportunity);
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -1735,13 +1299,10 @@ function KpiCard({
             : "bg-rose-50 text-rose-500"
         }`}
       >
-        {positive ? "↗" : "↘"}{" "}
-        {change}
+        {positive ? "↗" : "↘"} {change}
       </div>
 
-      <p className="text-xs text-slate-500 dark:text-slate-400">
-        {title}
-      </p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{title}</p>
 
       <h2 className="mt-2 text-[27px] font-semibold tracking-tight text-[#233353] dark:text-white">
         {value.toLocaleString("en-IN")}
@@ -1762,20 +1323,15 @@ function OpportunityFilterPopover({
   onClear,
 }: {
   filters: OpportunityFilters;
-  setFilters: React.Dispatch<
-    React.SetStateAction<OpportunityFilters>
-  >;
+  setFilters: React.Dispatch<React.SetStateAction<OpportunityFilters>>;
   salesUsers: SalesUser[];
   onApply: () => void;
   onClear: () => void;
 }) {
   return (
     <div className="absolute right-0 top-14 z-[90] w-[455px] rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-[#17304a] dark:bg-[#071929]">
-
       <div className="mb-5 flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-500">
-          Date Range
-        </span>
+        <span className="text-xs font-semibold text-slate-500">Date Range</span>
 
         <button
           type="button"
@@ -1798,21 +1354,16 @@ function OpportunityFilterPopover({
             type="date"
             value={filters.dateFrom}
             onChange={(event) =>
-              setFilters(
-                (current) => ({
-                  ...current,
-                  dateFrom:
-                    event.target.value,
-                })
-              )
+              setFilters((current) => ({
+                ...current,
+                dateFrom: event.target.value,
+              }))
             }
             className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-2 text-xs outline-none dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
           />
         </div>
 
-        <span className="text-slate-400">
-          -
-        </span>
+        <span className="text-slate-400">-</span>
 
         <div className="relative flex-1">
           <FiCalendar
@@ -1824,13 +1375,10 @@ function OpportunityFilterPopover({
             type="date"
             value={filters.dateTo}
             onChange={(event) =>
-              setFilters(
-                (current) => ({
-                  ...current,
-                  dateTo:
-                    event.target.value,
-                })
-              )
+              setFilters((current) => ({
+                ...current,
+                dateTo: event.target.value,
+              }))
             }
             className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-2 text-xs outline-none dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
           />
@@ -1838,90 +1386,63 @@ function OpportunityFilterPopover({
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-
         {/* Customer Type */}
         <FilterSelect
           label="Customer Type *"
-          value={
-            filters.customerType
-          }
+          value={filters.customerType}
           placeholder="Select the customer type"
           options={CUSTOMER_TYPES}
           onChange={(value) =>
-            setFilters(
-              (current) => ({
-                ...current,
-                customerType:
-                  value,
-              })
-            )
+            setFilters((current) => ({
+              ...current,
+              customerType: value,
+            }))
           }
         />
 
         {/* Assigned To */}
         <FilterSelect
           label="Assigned to"
-          value={
-            filters.assignedTo
-          }
+          value={filters.assignedTo}
           placeholder="Select"
-          options={salesUsers.map(
-            (user) => user.id
-          )}
-          displayOptions={salesUsers.map(
-            (user) => ({
-              value: user.id,
-              label: user.name,
-            })
-          )}
+          options={salesUsers.map((user) => user.id)}
+          displayOptions={salesUsers.map((user) => ({
+            value: user.id,
+            label: user.name,
+          }))}
           onChange={(value) =>
-            setFilters(
-              (current) => ({
-                ...current,
-                assignedTo:
-                  value,
-              })
-            )
+            setFilters((current) => ({
+              ...current,
+              assignedTo: value,
+            }))
           }
         />
 
         {/* Status */}
         <FilterSelect
           label="Status"
-          value={
-            filters.status
-          }
+          value={filters.status}
           placeholder="Select Status"
-          options={
-            STATUS_OPTIONS
-          }
+          options={STATUS_OPTIONS}
           onChange={(value) =>
-            setFilters(
-              (current) => ({
-                ...current,
-                status:
-                  value,
-              })
-            )
+            setFilters((current) => ({
+              ...current,
+              status: value,
+            }))
           }
         />
 
         {/* State */}
         <FilterSelect
           label="State"
-          value={
-            filters.state
-          }
+          value={filters.state}
           placeholder="Select"
           options={STATES}
           onChange={(value) =>
-            setFilters(
-              (current) => ({
-                ...current,
-                state:
-                  value,
-              })
-            )
+            setFilters((current) => ({
+              ...current,
+              state: value,
+            }))
           }
         />
       </div>
@@ -1963,9 +1484,7 @@ function FilterSelect({
     value: string;
     label: string;
   }[];
-  onChange: (
-    value: string
-  ) => void;
+  onChange: (value: string) => void;
 }) {
   return (
     <div>
@@ -1975,44 +1494,22 @@ function FilterSelect({
 
       <select
         value={value}
-        onChange={(event) =>
-          onChange(
-            event.target.value
-          )
-        }
+        onChange={(event) => onChange(event.target.value)}
         className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
       >
-        <option value="">
-          {placeholder}
-        </option>
+        <option value="">{placeholder}</option>
 
         {displayOptions
-          ? displayOptions.map(
-              (option) => (
-                <option
-                  key={
-                    option.value
-                  }
-                  value={
-                    option.value
-                  }
-                >
-                  {option.label}
-                </option>
-              )
-            )
-          : options.map(
-              (option) => (
-                <option
-                  key={option}
-                  value={
-                    option
-                  }
-                >
-                  {option}
-                </option>
-              )
-            )}
+          ? displayOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))
+          : options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
       </select>
     </div>
   );
@@ -2031,116 +1528,72 @@ function BoardView({
   onMarkDead,
 }: {
   opportunities: Opportunity[];
-  onDetails: (
-    opportunity: Opportunity
-  ) => void;
+  onDetails: (opportunity: Opportunity) => void;
   openActionMenu: string | null;
-  setOpenActionMenu: (
-    id: string | null
-  ) => void;
-  onEdit: (
-    opportunity: Opportunity
-  ) => void;
-  onMarkDead: (
-    opportunity: Opportunity
-  ) => void;
+  setOpenActionMenu: (id: string | null) => void;
+  onEdit: (opportunity: Opportunity) => void;
+  onMarkDead: (opportunity: Opportunity) => void;
 }) {
   return (
     <div className="overflow-x-auto pb-5">
       <div className="grid min-w-[1080px] grid-cols-4 gap-4">
+        {BOARD_STAGES.map((stage) => {
+          const stageDeals = opportunities.filter((opp) => opp.stage === stage);
 
-        {BOARD_STAGES.map(
-          (stage) => {
-            const stageDeals =
-              opportunities.filter(
-                (opp) =>
-                  opp.stage ===
-                  stage
-              );
+          const totalValue = stageDeals.reduce(
+            (sum, deal) => sum + deal.dealValue,
+            0,
+          );
 
-            const totalValue =
-              stageDeals.reduce(
-                (sum, deal) =>
-                  sum +
-                  deal.dealValue,
-                0
-              );
+          return (
+            <div
+              key={stage}
+              className="min-h-[530px] rounded-xl border border-slate-200 bg-white p-3 dark:border-[#17304a] dark:bg-[#071929]"
+            >
+              {/* Column Header */}
+              <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-3 dark:border-[#17304a]">
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-semibold">{stage}</span>
 
-            return (
-              <div
-                key={stage}
-                className="min-h-[530px] rounded-xl border border-slate-200 bg-white p-3 dark:border-[#17304a] dark:bg-[#071929]"
-              >
-                {/* Column Header */}
-                <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-3 dark:border-[#17304a]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-semibold">
-                      {stage}
-                    </span>
-
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-500 dark:bg-blue-500/10">
-                      {
-                        stageDeals.length
-                      }
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-slate-400">
-                      {formatShortCurrency(
-                        totalValue
-                      )}
-                    </span>
-
-                    <button
-                      type="button"
-                      className="text-slate-500"
-                    >
-                      <FiMoreVertical
-                        size={15}
-                      />
-                    </button>
-                  </div>
+                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-500 dark:bg-blue-500/10">
+                    {stageDeals.length}
+                  </span>
                 </div>
 
-                {/* Cards */}
-                <div className="space-y-2.5">
-                  {stageDeals.map(
-                    (opp) => (
-                      <OpportunityBoardCard
-                        key={opp.id}
-                        opportunity={
-                          opp
-                        }
-                        onDetails={
-                          onDetails
-                        }
-                        openActionMenu={
-                          openActionMenu
-                        }
-                        setOpenActionMenu={
-                          setOpenActionMenu
-                        }
-                        onEdit={
-                          onEdit
-                        }
-                        onMarkDead={
-                          onMarkDead
-                        }
-                      />
-                    )
-                  )}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-medium text-slate-400">
+                    {formatShortCurrency(totalValue)}
+                  </span>
 
-                  {!stageDeals.length && (
-                    <div className="flex min-h-[130px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-[10px] italic text-slate-400 dark:border-[#17304a]">
-                      No opportunities
-                    </div>
-                  )}
+                  <button type="button" className="text-slate-500">
+                    <FiMoreVertical size={15} />
+                  </button>
                 </div>
               </div>
-            );
-          }
-        )}
+
+              {/* Cards */}
+              <div className="space-y-2.5">
+                {stageDeals.map((opp) => (
+                  <OpportunityBoardCard
+                    key={opp.id}
+                    opportunity={opp}
+                    onDetails={onDetails}
+                    openActionMenu={openActionMenu}
+                    setOpenActionMenu={setOpenActionMenu}
+                    onEdit={onEdit}
+                    onMarkDead={onMarkDead}
+                  />
+                ))}
+
+                {!stageDeals.length && (
+                  <div className="flex min-h-[130px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-[10px] italic text-slate-400 dark:border-[#17304a]">
+                    No opportunities
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -2159,42 +1612,24 @@ function OpportunityBoardCard({
   onMarkDead,
 }: {
   opportunity: Opportunity;
-  onDetails: (
-    opportunity: Opportunity
-  ) => void;
+  onDetails: (opportunity: Opportunity) => void;
   openActionMenu: string | null;
-  setOpenActionMenu: (
-    id: string | null
-  ) => void;
-  onEdit: (
-    opportunity: Opportunity
-  ) => void;
-  onMarkDead: (
-    opportunity: Opportunity
-  ) => void;
+  setOpenActionMenu: (id: string | null) => void;
+  onEdit: (opportunity: Opportunity) => void;
+  onMarkDead: (opportunity: Opportunity) => void;
 }) {
-  const progress =
-    STAGE_PROGRESS[
-      opportunity.stage
-    ];
+  const progress = STAGE_PROGRESS[opportunity.stage];
 
   return (
     <div className="relative rounded-xl border border-slate-200 bg-[#f8f8f8] p-3 shadow-sm transition hover:shadow-md dark:border-[#17304a] dark:bg-[#0b1d2e]">
-
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"
-          onClick={() =>
-            onDetails(
-              opportunity
-            )
-          }
+          onClick={() => onDetails(opportunity)}
           className="min-w-0 text-left"
         >
           <p className="truncate text-[12px] font-bold text-slate-900 dark:text-white">
-            {
-              opportunity.customerName
-            }
+            {opportunity.customerName}
           </p>
 
           <p className="truncate text-[9px] font-medium text-slate-500">
@@ -2203,46 +1638,24 @@ function OpportunityBoardCard({
         </button>
 
         <ActionMenu
-          opportunity={
-            opportunity
-          }
-          open={
-            openActionMenu ===
-            opportunity.id
-          }
+          opportunity={opportunity}
+          open={openActionMenu === opportunity.id}
           onToggle={() =>
             setOpenActionMenu(
-              openActionMenu ===
-                opportunity.id
-                ? null
-                : opportunity.id
+              openActionMenu === opportunity.id ? null : opportunity.id,
             )
           }
-          onEdit={() =>
-            onEdit(
-              opportunity
-            )
-          }
-          onMarkDead={() =>
-            onMarkDead(
-              opportunity
-            )
-          }
+          onEdit={() => onEdit(opportunity)}
+          onMarkDead={() => onMarkDead(opportunity)}
         />
       </div>
 
       <div className="mt-3 flex items-center justify-between">
         <span className="text-[10px] font-semibold text-slate-500">
-          {formatShortCurrency(
-            opportunity.dealValue
-          )}
+          {formatShortCurrency(opportunity.dealValue)}
         </span>
 
-        <PriorityBadge
-          priority={
-            opportunity.priority
-          }
-        />
+        <PriorityBadge priority={opportunity.priority} />
       </div>
 
       <div className="mt-3 h-[3px] overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
@@ -2256,11 +1669,7 @@ function OpportunityBoardCard({
 
       <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2.5 dark:border-[#17304a]">
         <div className="flex items-center gap-1.5">
-          <Avatar
-            name={
-              opportunity.owner
-            }
-          />
+          <Avatar name={opportunity.owner} />
 
           <span className="max-w-[95px] truncate text-[9px] font-medium text-slate-500">
             {opportunity.owner}
@@ -2268,10 +1677,7 @@ function OpportunityBoardCard({
         </div>
 
         <span className="text-[9px] text-slate-400">
-          {formatDate(
-            opportunity.expectedClosingDate ||
-              opportunity.createdAt
-          )}
+          {formatDate(opportunity.expectedClosingDate || opportunity.createdAt)}
         </span>
       </div>
     </div>
@@ -2300,254 +1706,149 @@ function ListView({
   page: number;
   pageSize: number;
   totalPages: number;
-  onPageChange: (
-    page: number
-  ) => void;
-  onDetails: (
-    opportunity: Opportunity
-  ) => void;
+  onPageChange: (page: number) => void;
+  onDetails: (opportunity: Opportunity) => void;
   openActionMenu: string | null;
-  setOpenActionMenu: (
-    id: string | null
-  ) => void;
-  onEdit: (
-    opportunity: Opportunity
-  ) => void;
-  onMarkDead: (
-    opportunity: Opportunity
-  ) => void;
+  setOpenActionMenu: (id: string | null) => void;
+  onEdit: (opportunity: Opportunity) => void;
+  onMarkDead: (opportunity: Opportunity) => void;
 }) {
-  const start =
-    filteredCount === 0
-      ? 0
-      : (page - 1) *
-          pageSize +
-        1;
+  const start = filteredCount === 0 ? 0 : (page - 1) * pageSize + 1;
 
-  const end = Math.min(
-    page * pageSize,
-    filteredCount
-  );
+  const end = Math.min(page * pageSize, filteredCount);
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#17304a] dark:bg-[#071929]">
-
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1000px] border-collapse">
           <thead>
             <tr className="border-b border-slate-200 bg-white dark:border-[#17304a] dark:bg-[#071929]">
               <th className="w-10 px-3 py-3">
-                <input
-                  type="checkbox"
-                  className="h-3.5 w-3.5 rounded"
-                />
+                <input type="checkbox" className="h-3.5 w-3.5 rounded" />
               </th>
 
-              <TableHeader>
-                Lead ID
-              </TableHeader>
+              <TableHeader>Lead ID</TableHeader>
 
-              <TableHeader>
-                Customer Name
-              </TableHeader>
+              <TableHeader>Customer Name</TableHeader>
 
-              <TableHeader>
-                Company
-              </TableHeader>
+              <TableHeader>Company</TableHeader>
 
-              <TableHeader>
-                Deal Value
-              </TableHeader>
+              <TableHeader>Deal Value</TableHeader>
 
-              <TableHeader>
-                Assigned To
-              </TableHeader>
+              <TableHeader>Assigned To</TableHeader>
 
-              <TableHeader>
-                Status
-              </TableHeader>
+              <TableHeader>Status</TableHeader>
 
-              <TableHeader>
-                Priority
-              </TableHeader>
+              <TableHeader>Priority</TableHeader>
 
-              <TableHeader align="right">
-                Actions
-              </TableHeader>
+              <TableHeader align="right">Actions</TableHeader>
             </tr>
           </thead>
 
           <tbody>
-            {opportunities.map(
-              (opp) => (
-                <tr
-                  key={opp.id}
-                  className="border-b border-slate-100 transition hover:bg-slate-50 dark:border-[#17304a]/70 dark:hover:bg-[#0b2034]"
-                >
-                  <td className="px-3 py-3.5">
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5 rounded"
-                    />
-                  </td>
+            {opportunities.map((opp) => (
+              <tr
+                key={opp.id}
+                className="border-b border-slate-100 transition hover:bg-slate-50 dark:border-[#17304a]/70 dark:hover:bg-[#0b2034]"
+              >
+                <td className="px-3 py-3.5">
+                  <input type="checkbox" className="h-3.5 w-3.5 rounded" />
+                </td>
 
-                  <td className="px-3 py-3.5">
-                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                      #
-                      {
-                        opp.leadId
-                      }
+                <td className="px-3 py-3.5">
+                  <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    #{opp.leadId}
+                  </span>
+                </td>
+
+                <td className="px-3 py-3.5">
+                  <button
+                    type="button"
+                    onClick={() => onDetails(opp)}
+                    className="text-left"
+                  >
+                    <p className="text-[12px] font-bold text-slate-900 hover:text-[#233353] dark:text-white">
+                      {opp.customerName}
+                    </p>
+
+                    <p className="mt-0.5 text-[9px] text-slate-500">
+                      {opp.email}
+                    </p>
+
+                    {opp.city && (
+                      <p className="mt-0.5 flex items-center gap-1 text-[8px] text-slate-500">
+                        <FiMapPin size={8} />
+                        {opp.city}
+                      </p>
+                    )}
+                  </button>
+                </td>
+
+                <td className="px-3 py-3.5">
+                  <span className="block max-w-[130px] text-[11px] font-medium text-slate-700 dark:text-slate-300">
+                    {opp.company}
+                  </span>
+                </td>
+
+                <td className="px-3 py-3.5">
+                  <span className="text-[11px] font-semibold text-slate-700 dark:text-white">
+                    {formatShortCurrency(opp.dealValue)}
+                  </span>
+                </td>
+
+                <td className="px-3 py-3.5">
+                  <div className="flex items-center gap-2">
+                    <Avatar name={opp.owner} />
+
+                    <span className="max-w-[80px] truncate text-[10px] font-medium text-slate-600 dark:text-slate-300">
+                      {opp.owner}
                     </span>
-                  </td>
+                  </div>
+                </td>
 
-                  <td className="px-3 py-3.5">
+                <td className="px-3 py-3.5">
+                  <StatusBadge status={opp.stage} />
+                </td>
+
+                <td className="px-3 py-3.5">
+                  <PriorityBadge priority={opp.priority} />
+                </td>
+
+                <td className="px-3 py-3.5">
+                  <div className="flex items-center justify-end gap-3">
                     <button
                       type="button"
-                      onClick={() =>
-                        onDetails(
-                          opp
+                      title="Call"
+                      onClick={() => onDetails(opp)}
+                      className="text-slate-600 transition hover:text-[#233353] dark:text-slate-300"
+                    >
+                      <FiPhone size={14} />
+                    </button>
+
+                    <ActionMenu
+                      opportunity={opp}
+                      open={openActionMenu === opp.id}
+                      onToggle={() =>
+                        setOpenActionMenu(
+                          openActionMenu === opp.id ? null : opp.id,
                         )
                       }
-                      className="text-left"
-                    >
-                      <p className="text-[12px] font-bold text-slate-900 hover:text-[#233353] dark:text-white">
-                        {
-                          opp.customerName
-                        }
-                      </p>
-
-                      <p className="mt-0.5 text-[9px] text-slate-500">
-                        {
-                          opp.email
-                        }
-                      </p>
-
-                      {opp.city && (
-                        <p className="mt-0.5 flex items-center gap-1 text-[8px] text-slate-500">
-                          <FiMapPin
-                            size={8}
-                          />
-                          {
-                            opp.city
-                          }
-                        </p>
-                      )}
-                    </button>
-                  </td>
-
-                  <td className="px-3 py-3.5">
-                    <span className="block max-w-[130px] text-[11px] font-medium text-slate-700 dark:text-slate-300">
-                      {
-                        opp.company
-                      }
-                    </span>
-                  </td>
-
-                  <td className="px-3 py-3.5">
-                    <span className="text-[11px] font-semibold text-slate-700 dark:text-white">
-                      {formatShortCurrency(
-                        opp.dealValue
-                      )}
-                    </span>
-                  </td>
-
-                  <td className="px-3 py-3.5">
-                    <div className="flex items-center gap-2">
-                      <Avatar
-                        name={
-                          opp.owner
-                        }
-                      />
-
-                      <span className="max-w-[80px] truncate text-[10px] font-medium text-slate-600 dark:text-slate-300">
-                        {
-                          opp.owner
-                        }
-                      </span>
-                    </div>
-                  </td>
-
-                  <td className="px-3 py-3.5">
-                    <StatusBadge
-                      status={
-                        opp.stage
-                      }
+                      onEdit={() => onEdit(opp)}
+                      onMarkDead={() => onMarkDead(opp)}
                     />
-                  </td>
+                  </div>
+                </td>
+              </tr>
+            ))}
 
-                  <td className="px-3 py-3.5">
-                    <PriorityBadge
-                      priority={
-                        opp.priority
-                      }
-                    />
-                  </td>
-
-                  <td className="px-3 py-3.5">
-                    <div className="flex items-center justify-end gap-3">
-                      <button
-                        type="button"
-                        title="Call"
-                        onClick={() =>
-                          onDetails(
-                            opp
-                          )
-                        }
-                        className="text-slate-600 transition hover:text-[#233353] dark:text-slate-300"
-                      >
-                        <FiPhone
-                          size={14}
-                        />
-                      </button>
-
-                      <ActionMenu
-                        opportunity={
-                          opp
-                        }
-                        open={
-                          openActionMenu ===
-                          opp.id
-                        }
-                        onToggle={() =>
-                          setOpenActionMenu(
-                            openActionMenu ===
-                              opp.id
-                              ? null
-                              : opp.id
-                          )
-                        }
-                        onEdit={() =>
-                          onEdit(
-                            opp
-                          )
-                        }
-                        onMarkDead={() =>
-                          onMarkDead(
-                            opp
-                          )
-                        }
-                      />
-                    </div>
-                  </td>
-                </tr>
-              )
-            )}
-
-            {opportunities.length ===
-              0 && (
+            {opportunities.length === 0 && (
               <tr>
-                <td
-                  colSpan={9}
-                  className="py-16 text-center"
-                >
+                <td colSpan={9} className="py-16 text-center">
                   <div className="flex flex-col items-center gap-2 text-slate-400">
-                    <FiAlertCircle
-                      size={24}
-                    />
+                    <FiAlertCircle size={24} />
 
                     <p className="text-xs font-medium">
-                      No opportunities
-                      found.
+                      No opportunities found.
                     </p>
                   </div>
                 </td>
@@ -2560,85 +1861,46 @@ function ListView({
       {/* Pagination */}
       <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 dark:border-[#17304a]">
         <p className="text-[10px] text-slate-500">
-          Showing{" "}
-          {start}-{end} of{" "}
-          {filteredCount}{" "}
-          opportunities
+          Showing {start}-{end} of {filteredCount} opportunities
         </p>
 
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             disabled={page === 1}
-            onClick={() =>
-              onPageChange(
-                Math.max(
-                  1,
-                  page - 1
-                )
-              )
-            }
+            onClick={() => onPageChange(Math.max(1, page - 1))}
             className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 disabled:opacity-30"
           >
-            <FiChevronLeft
-              size={14}
-            />
+            <FiChevronLeft size={14} />
           </button>
 
           {Array.from(
             {
-              length: Math.min(
-                totalPages,
-                3
-              ),
+              length: Math.min(totalPages, 3),
             },
-            (_, index) =>
-              index + 1
-          ).map(
-            (pageNumber) => (
-              <button
-                key={
-                  pageNumber
-                }
-                type="button"
-                onClick={() =>
-                  onPageChange(
-                    pageNumber
-                  )
-                }
-                className={`flex h-7 w-7 items-center justify-center rounded-md text-[10px] font-semibold ${
-                  page ===
-                  pageNumber
-                    ? "bg-[#233353] text-white"
-                    : "border border-slate-200 bg-white text-slate-600 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
-                }`}
-              >
-                {
-                  pageNumber
-                }
-              </button>
-            )
-          )}
+            (_, index) => index + 1,
+          ).map((pageNumber) => (
+            <button
+              key={pageNumber}
+              type="button"
+              onClick={() => onPageChange(pageNumber)}
+              className={`flex h-7 w-7 items-center justify-center rounded-md text-[10px] font-semibold ${
+                page === pageNumber
+                  ? "bg-[#233353] text-white"
+                  : "border border-slate-200 bg-white text-slate-600 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
+              }`}
+            >
+              {pageNumber}
+            </button>
+          ))}
 
           <button
             type="button"
-            disabled={
-              page ===
-              totalPages
-            }
-            onClick={() =>
-              onPageChange(
-                Math.min(
-                  totalPages,
-                  page + 1
-                )
-              )
-            }
+            disabled={page === totalPages}
+            onClick={() => onPageChange(Math.min(totalPages, page + 1))}
             className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 disabled:opacity-30"
           >
-            <FiChevronRight
-              size={14}
-            />
+            <FiChevronRight size={14} />
           </button>
         </div>
       </div>
@@ -2656,9 +1918,7 @@ function TableHeader({
   return (
     <th
       className={`px-3 py-3 text-[10px] font-semibold text-slate-500 ${
-        align === "right"
-          ? "text-right"
-          : "text-left"
+        align === "right" ? "text-right" : "text-left"
       }`}
     >
       {children}
@@ -2693,14 +1953,11 @@ function ActionMenu({
         }}
         className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200 dark:hover:bg-[#17304a]"
       >
-        <FiMoreVertical
-          size={15}
-        />
+        <FiMoreVertical size={15} />
       </button>
 
       {open && (
         <div className="absolute right-0 top-8 z-[70] w-32 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
-
           <button
             type="button"
             onClick={(event) => {
@@ -2709,14 +1966,11 @@ function ActionMenu({
             }}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] font-medium hover:bg-slate-50 dark:hover:bg-[#0b2034]"
           >
-            <FiEdit2
-              size={12}
-            />
+            <FiEdit2 size={12} />
             Edit
           </button>
 
-          {opportunity.stage !==
-            "Dead" && (
+          {opportunity.stage !== "Dead" && (
             <button
               type="button"
               onClick={(event) => {
@@ -2750,46 +2004,37 @@ function LeadDetailsDrawer({
   onEdit: () => void;
   onMarkDead: () => void;
 }) {
-  const [showMenu, setShowMenu] =
-    useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
-  const activities =
-    opportunity.activityHistory?.length
-      ? opportunity.activityHistory
-      : [
-          {
-            id: "demo",
-            type: "Demo Scheduled" as const,
-            title: "Demo Scheduled",
-            description:
-              "Requested a live demo for the selected display solution.",
-            date:
-              opportunity.expectedClosingDate ||
-              formatDate(
-                opportunity.createdAt
-              ),
-            time: "10:00 AM",
-          },
-          {
-            id: "call",
-            type: "Outgoing Call" as const,
-            title: "Outgoing Call",
-            description:
-              "Discussed technical specifications and requirements.",
-            date: "Yesterday",
-          },
-          {
-            id: "form",
-            type: "Form Submission" as const,
-            title: "Form Submission",
-            description:
-              'Lead entered through "Synergy" landing page.',
-            date:
-              formatDate(
-                opportunity.createdAt
-              ),
-          },
-        ];
+  const activities = opportunity.activityHistory?.length
+    ? opportunity.activityHistory
+    : [
+        {
+          id: "demo",
+          type: "Demo Scheduled" as const,
+          title: "Demo Scheduled",
+          description:
+            "Requested a live demo for the selected display solution.",
+          date:
+            opportunity.expectedClosingDate ||
+            formatDate(opportunity.createdAt),
+          time: "10:00 AM",
+        },
+        {
+          id: "call",
+          type: "Outgoing Call" as const,
+          title: "Outgoing Call",
+          description: "Discussed technical specifications and requirements.",
+          date: "Yesterday",
+        },
+        {
+          id: "form",
+          type: "Form Submission" as const,
+          title: "Form Submission",
+          description: 'Lead entered through "Synergy" landing page.',
+          date: formatDate(opportunity.createdAt),
+        },
+      ];
 
   return (
     <div className="fixed inset-0 z-[200]">
@@ -2799,10 +2044,8 @@ function LeadDetailsDrawer({
       />
 
       <aside className="absolute right-0 top-0 flex h-full w-full max-w-[570px] flex-col bg-white shadow-2xl dark:bg-[#071929]">
-
         {/* Drawer Header */}
         <div className="border-b border-slate-200 dark:border-[#17304a]">
-
           <div className="flex items-center justify-between px-5 py-4">
             <div className="flex items-center gap-2">
               <button
@@ -2813,9 +2056,7 @@ function LeadDetailsDrawer({
                 <FiX size={18} />
               </button>
 
-              <h2 className="text-[16px] font-semibold">
-                Lead Details
-              </h2>
+              <h2 className="text-[16px] font-semibold">Lead Details</h2>
             </div>
 
             <button
@@ -2828,43 +2069,29 @@ function LeadDetailsDrawer({
 
           {/* Pipeline Progress */}
           <div className="grid grid-cols-5 border-t border-slate-200 dark:border-[#17304a]">
-            {[
-              "New",
-              "Open",
-              "In Progress",
-              "Open Deal",
-              "Closed",
-            ].map(
+            {["New", "Open", "In Progress", "Open Deal", "Closed"].map(
               (stage, index) => (
                 <div
                   key={stage}
                   className={`flex h-8 items-center justify-center gap-1 text-[9px] ${
-                    index <
-                    3
+                    index < 3
                       ? "bg-emerald-50 text-emerald-600"
-                      : index ===
-                        3
-                      ? "bg-amber-50 text-amber-600"
-                      : "bg-slate-50 text-slate-400"
+                      : index === 3
+                        ? "bg-amber-50 text-amber-600"
+                        : "bg-slate-50 text-slate-400"
                   }`}
                 >
-                  {index <
-                  3 ? (
-                    <FiCheckCircle
-                      size={11}
-                    />
-                  ) : index ===
-                    3 ? (
-                    <FiClock
-                      size={11}
-                    />
+                  {index < 3 ? (
+                    <FiCheckCircle size={11} />
+                  ) : index === 3 ? (
+                    <FiClock size={11} />
                   ) : (
                     <span className="h-2.5 w-2.5 rounded-full border border-slate-400" />
                   )}
 
                   {stage}
                 </div>
-              )
+              ),
             )}
           </div>
         </div>
@@ -2873,61 +2100,39 @@ function LeadDetailsDrawer({
         <div className="flex items-start justify-between px-6 py-5">
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-600 dark:bg-[#17304a] dark:text-white">
-              {getInitials(
-                opportunity.customerName
-              )}
+              {getInitials(opportunity.customerName)}
             </div>
 
             <div>
               <h3 className="text-[18px] font-semibold">
-                {
-                  opportunity.customerName
-                }
+                {opportunity.customerName}
               </h3>
 
               <p className="text-[11px] text-slate-500">
-                {
-                  opportunity.designation ||
-                  "IT Director"
-                }{" "}
-                @{" "}
-                {
-                  opportunity.company
-                }
+                {opportunity.designation || "IT Director"} @{" "}
+                {opportunity.company}
               </p>
 
               <div className="mt-1 flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
                 {opportunity.email && (
                   <span className="flex items-center gap-1">
-                    <FiMail
-                      size={11}
-                    />
-                    {
-                      opportunity.email
-                    }
+                    <FiMail size={11} />
+                    {opportunity.email}
                   </span>
                 )}
 
                 {opportunity.phone && (
                   <span className="flex items-center gap-1">
-                    <FiPhone
-                      size={11}
-                    />
-                    {
-                      opportunity.phone
-                    }
+                    <FiPhone size={11} />
+                    {opportunity.phone}
                   </span>
                 )}
               </div>
 
               {opportunity.state && (
                 <p className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
-                  <FiMapPin
-                    size={11}
-                  />
-                  {
-                    opportunity.state
-                  }
+                  <FiMapPin size={11} />
+                  {opportunity.state}
                 </p>
               )}
             </div>
@@ -2938,25 +2143,16 @@ function LeadDetailsDrawer({
               type="button"
               className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 dark:border-[#17304a] dark:text-slate-300"
             >
-              <FiMessageSquare
-                size={16}
-              />
+              <FiMessageSquare size={16} />
             </button>
 
             <div className="relative">
               <button
                 type="button"
-                onClick={() =>
-                  setShowMenu(
-                    (value) =>
-                      !value
-                  )
-                }
+                onClick={() => setShowMenu((value) => !value)}
                 className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 dark:border-[#17304a] dark:text-slate-300"
               >
-                <FiMoreVertical
-                  size={16}
-                />
+                <FiMoreVertical size={16} />
               </button>
 
               {showMenu && (
@@ -2964,25 +2160,19 @@ function LeadDetailsDrawer({
                   <button
                     type="button"
                     onClick={() => {
-                      setShowMenu(
-                        false
-                      );
+                      setShowMenu(false);
                       onEdit();
                     }}
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] hover:bg-slate-50 dark:hover:bg-[#0b2034]"
                   >
-                    <FiEdit2
-                      size={12}
-                    />
+                    <FiEdit2 size={12} />
                     Edit
                   </button>
 
                   <button
                     type="button"
                     onClick={() => {
-                      setShowMenu(
-                        false
-                      );
+                      setShowMenu(false);
                       onMarkDead();
                     }}
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
@@ -2998,11 +2188,8 @@ function LeadDetailsDrawer({
 
         {/* Activity */}
         <div className="flex-1 overflow-y-auto px-6 pb-8">
-
           <div className="mb-4 flex items-center justify-between">
-            <h4 className="text-[12px] font-bold">
-              Activity History
-            </h4>
+            <h4 className="text-[12px] font-bold">Activity History</h4>
 
             <button
               type="button"
@@ -3013,74 +2200,44 @@ function LeadDetailsDrawer({
           </div>
 
           <div className="relative ml-2 border-l border-slate-200 pl-5 dark:border-[#17304a]">
-            {activities.map(
-              (activity) => (
-                <div
-                  key={activity.id}
-                  className="relative mb-5"
-                >
-                  <span className="absolute -left-[25px] top-2 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#233353] dark:border-[#071929]" />
+            {activities.map((activity) => (
+              <div key={activity.id} className="relative mb-5">
+                <span className="absolute -left-[25px] top-2 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#233353] dark:border-[#071929]" />
 
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-[#17304a] dark:bg-[#0b1d2e]">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h5 className="text-[11px] font-bold">
-                          {
-                            activity.title
-                          }
-                        </h5>
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-[#17304a] dark:bg-[#0b1d2e]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h5 className="text-[11px] font-bold">
+                        {activity.title}
+                      </h5>
 
-                        <p className="mt-1 text-[10px] leading-5 text-slate-500">
-                          {
-                            activity.description
-                          }
-                        </p>
-                      </div>
-
-                      <span className="whitespace-nowrap text-[9px] text-slate-400">
-                        {
-                          activity.date
-                        }
-                        {activity.time
-                          ? `, ${activity.time}`
-                          : ""}
-                      </span>
+                      <p className="mt-1 text-[10px] leading-5 text-slate-500">
+                        {activity.description}
+                      </p>
                     </div>
+
+                    <span className="whitespace-nowrap text-[9px] text-slate-400">
+                      {activity.date}
+                      {activity.time ? `, ${activity.time}` : ""}
+                    </span>
                   </div>
                 </div>
-              )
-            )}
+              </div>
+            ))}
           </div>
 
           {/* Opportunity information */}
           <div className="mt-8 grid grid-cols-2 gap-3">
-            <InfoBox
-              label="Lead ID"
-              value={
-                opportunity.leadId
-              }
-            />
+            <InfoBox label="Lead ID" value={opportunity.leadId} />
 
             <InfoBox
               label="Deal Value"
-              value={formatCurrency(
-                opportunity.dealValue
-              )}
+              value={formatCurrency(opportunity.dealValue)}
             />
 
-            <InfoBox
-              label="Customer Type"
-              value={
-                opportunity.customerType
-              }
-            />
+            <InfoBox label="Customer Type" value={opportunity.customerType} />
 
-            <InfoBox
-              label="Priority"
-              value={
-                opportunity.priority
-              }
-            />
+            <InfoBox label="Priority" value={opportunity.priority} />
           </div>
         </div>
       </aside>
@@ -3088,166 +2245,133 @@ function LeadDetailsDrawer({
   );
 }
 
-function InfoBox({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function InfoBox({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-slate-200 p-3 dark:border-[#17304a]">
-      <p className="text-[9px] text-slate-400">
-        {label}
-      </p>
+      <p className="text-[9px] text-slate-400">{label}</p>
 
-      <p className="mt-1 text-[11px] font-semibold">
-        {value || "-"}
-      </p>
+      <p className="mt-1 text-[11px] font-semibold">{value || "-"}</p>
     </div>
   );
 }
 
 /* ================================================================
-   ADD OPPORTUNITY MODAL
+   NEW OPPORTUNITY PAGE
 ================================================================ */
 
-function AddOpportunityModal({
+function NewOpportunityPage({
   onClose,
   onSubmit,
 }: {
   onClose: () => void;
-  onSubmit: (
-    payload: Record<string, any>
-  ) => Promise<void>;
+  onSubmit: (payload: Record<string, any>) => Promise<void>;
 }) {
-  const [customerType, setCustomerType] =
-    useState<CustomerType>(
-      "Distributor"
-    );
+  const [customerType, setCustomerType] = useState<CustomerType>("Distributor");
 
-  const [organizationName, setOrganizationName] =
-    useState("");
+  const [organizationName, setOrganizationName] = useState("");
 
-  const [organizationWebsite, setOrganizationWebsite] =
-    useState("");
+  const [organizationWebsite, setOrganizationWebsite] = useState("");
 
-  const [officeAddress, setOfficeAddress] =
-    useState("");
+  const [officeAddress, setOfficeAddress] = useState("");
 
-  const [city, setCity] =
-    useState("");
+  const [city, setCity] = useState("");
 
-  const [state, setState] =
-    useState("");
+  const [state, setState] = useState("");
 
-  const [pinCode, setPinCode] =
-    useState("");
+  const [pinCode, setPinCode] = useState("");
 
-  const [country, setCountry] =
-    useState("India");
+  const [country, setCountry] = useState("India");
 
-  const [gstNumber, setGstNumber] =
-    useState("");
+  const [gstNumber, setGstNumber] = useState("");
 
-  const [panNumber, setPanNumber] =
-    useState("");
+  const [panNumber, setPanNumber] = useState("");
 
-  const [coiNumber, setCoiNumber] =
-    useState("");
+  const [coiNumber, setCoiNumber] = useState("");
 
-  const [contactName, setContactName] =
-    useState("");
+  const [contactName, setContactName] = useState("");
 
-  const [designation, setDesignation] =
-    useState("");
+  const [designation, setDesignation] = useState("");
 
-  const [mobileNumber, setMobileNumber] =
-    useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
 
-  const [email, setEmail] =
-    useState("");
+  const [email, setEmail] = useState("");
 
-  const [priority, setPriority] =
-    useState<Priority>("Medium");
+  const [priority, setPriority] = useState<Priority>("Medium");
 
-  const [expectedClosingDate, setExpectedClosingDate] =
-    useState("");
+  const [expectedClosingDate, setExpectedClosingDate] = useState("");
 
-  const [remarks, setRemarks] =
-    useState("");
+  const [remarks, setRemarks] = useState("");
 
-  const [purchaseTimeline, setPurchaseTimeline] =
-    useState("");
+  const [purchaseTimeline, setPurchaseTimeline] = useState("");
 
-  const [productItems, setProductItems] =
-    useState<ProductItem[]>([
-      {
-        name: "Digital Signage",
-        qty: 0,
-        price: 0,
-      },
-      {
-        name: "Commercial Display",
-        qty: 0,
-        price: 0,
-      },
-      {
-        name: "Advertising Display",
-        qty: 0,
-        price: 0,
-      },
-      {
-        name: "Signage",
-        qty: 0,
-        price: 0,
-      },
-    ]);
+  const [leadSource, setLeadSource] = useState("Website");
 
-  const [submitting, setSubmitting] =
-    useState(false);
+  const [assignedTo, setAssignedTo] = useState("");
 
-  const totalQty =
-    productItems.reduce(
-      (sum, item) =>
-        sum + item.qty,
-      0
-    );
+  const [attachments, setAttachments] = useState<File[]>([]);
 
-  const totalValue =
-    productItems.reduce(
-      (sum, item) =>
-        sum +
-        item.qty *
-          item.price,
-      0
-    );
+  const [productItems, setProductItems] = useState<ProductItem[]>([
+    {
+      name: "Interactive Flat Panel",
+      qty: 0,
+      price: 0,
+    },
+    {
+      name: "LED Video Wall",
+      qty: 0,
+      price: 0,
+    },
+    {
+      name: "Digital Signage",
+      qty: 0,
+      price: 0,
+    },
+    {
+      name: "Commercial Display",
+      qty: 0,
+      price: 0,
+    },
+    {
+      name: "Advertising Display",
+      qty: 0,
+      price: 0,
+    },
+    {
+      name: "Signage",
+      qty: 0,
+      price: 0,
+    },
+  ]);
 
-  const updateProductQty = (
-    index: number,
-    delta: number
-  ) => {
-    setProductItems(
-      (current) =>
-        current.map(
-          (item, itemIndex) =>
-            itemIndex === index
-              ? {
-                  ...item,
-                  qty: Math.max(
-                    0,
-                    item.qty +
-                      delta
-                  ),
-                }
-              : item
-        )
+  const [submitting, setSubmitting] = useState(false);
+
+  const totalQty = productItems.reduce((sum, item) => sum + item.qty, 0);
+
+  const totalValue = productItems.reduce(
+    (sum, item) => sum + item.qty * item.price,
+    0,
+  );
+
+  const updateProductQty = (index: number, delta: number) => {
+    setProductItems((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...item,
+              qty: Math.max(0, item.qty + delta),
+            }
+          : item,
+      ),
     );
   };
 
-  const handleSubmit = async (
-    event: React.FormEvent
-  ) => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+
+    setAttachments(files);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
     if (
@@ -3281,12 +2405,11 @@ function AddOpportunityModal({
         priority,
         expectedClosingDate,
         purchaseTimeline,
+        leadSource,
+        assignedTo,
         remarks,
-        productItems:
-          productItems.filter(
-            (item) =>
-              item.qty > 0
-          ),
+        attachments,
+        productItems: productItems.filter((item) => item.qty > 0),
       });
     } finally {
       setSubmitting(false);
@@ -3294,385 +2417,308 @@ function AddOpportunityModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[150] overflow-y-auto">
-      <div
-        className="fixed inset-0 bg-black/30"
-        onClick={onClose}
-      />
+    <div className="min-h-[calc(100vh-60px)] bg-[#f5f6f8] text-slate-800 dark:bg-[#020b14] dark:text-white">
+      {/* =========================================================
+          PAGE HEADER
+      ========================================================= */}
 
-      <div className="relative mx-auto my-6 w-[calc(100%-24px)] max-w-[1120px]">
-        <div className="overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#071929]">
+      <div className="border-b border-slate-200 bg-white px-5 py-4 dark:border-[#17304a] dark:bg-[#071929]">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-[18px] font-semibold text-slate-900 dark:text-white">
+              New Opportunity
+            </h1>
 
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-[#17304a]">
-            <div>
-              <h2 className="text-[18px] font-semibold">
-                New Opportunity
-              </h2>
+            <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400">
+              <span>Opportunity</span>
 
-              <p className="mt-0.5 text-[10px] text-slate-400">
-                Opportunity{" "}
-                <span className="mx-1">
-                  ›
-                </span>{" "}
-                New
-              </p>
+              <span>›</span>
+
+              <span>New</span>
             </div>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-[#10243a]"
-            >
-              <FiX size={17} />
-            </button>
           </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="max-h-[78vh] overflow-y-auto"
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-[#10243a]"
+            title="Close"
           >
-            <div className="grid grid-cols-1 gap-3 bg-[#f5f6f8] p-4 lg:grid-cols-[1fr_310px] dark:bg-[#020b14]">
+            <FiX size={17} />
+          </button>
+        </div>
+      </div>
 
-              {/* LEFT */}
-              <div className="space-y-3">
+      {/* =========================================================
+          FORM
+      ========================================================= */}
 
-                {/* Customer Information */}
-                <FormSection
-                  icon={
-                    <FiUser
-                      size={17}
+      <form
+        onSubmit={handleSubmit}
+        className="flex min-h-[calc(100vh-138px)] flex-col"
+      >
+        {/* =======================================================
+            CONTENT
+        ======================================================= */}
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 gap-3 p-4 xl:grid-cols-[minmax(0,1fr)_310px]">
+            {/* ===================================================
+                LEFT COLUMN
+            =================================================== */}
+
+            <div className="space-y-3">
+              {/* =================================================
+                  CUSTOMER INFORMATION
+              ================================================= */}
+
+              <FormSection
+                icon={<FiUser size={17} />}
+                title="Customer Information"
+              >
+                <div className="space-y-4">
+                  <FormSelect
+                    label="Customer Type *"
+                    value={customerType}
+                    options={CUSTOMER_TYPES}
+                    onChange={(value) => setCustomerType(value as CustomerType)}
+                  />
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <FormInput
+                      label="Organization Name *"
+                      value={organizationName}
+                      onChange={setOrganizationName}
+                      placeholder="Acme Solutions Pvt. Ltd."
                     />
-                  }
-                  title="Customer Information"
-                >
-                  <div className="grid grid-cols-1 gap-4">
-                    <FormSelect
-                      label="Customer Type *"
-                      value={
-                        customerType
-                      }
-                      options={
-                        CUSTOMER_TYPES
-                      }
-                      onChange={(
-                        value
-                      ) =>
-                        setCustomerType(
-                          value as CustomerType
-                        )
-                      }
+
+                    <FormInput
+                      label="Organization Website *"
+                      value={organizationWebsite}
+                      onChange={setOrganizationWebsite}
+                      placeholder="www.acmesolutions.example"
                     />
+                  </div>
+                </div>
+              </FormSection>
 
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <FormInput
-                        label="Organization Name *"
-                        value={
-                          organizationName
-                        }
-                        onChange={
-                          setOrganizationName
-                        }
-                        placeholder="Acme Solutions Pvt. Ltd."
-                      />
+              {/* =================================================
+                  ORGANIZATION DETAILS
+              ================================================= */}
 
-                      <FormInput
-                        label="Organization Website *"
-                        value={
-                          organizationWebsite
+              <FormSection
+                icon={<FiMapPin size={17} />}
+                title="Organization Details"
+              >
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <FormInput
+                    label="Office Address *"
+                    value={officeAddress}
+                    onChange={setOfficeAddress}
+                    placeholder="42, MG Road, Building A, Suite 304"
+                  />
+
+                  <FormInput
+                    label="City *"
+                    value={city}
+                    onChange={setCity}
+                    placeholder="Bengaluru"
+                  />
+
+                  <FormInput
+                    label="State / Province *"
+                    value={state}
+                    onChange={setState}
+                    placeholder="Karnataka"
+                  />
+
+                  <FormInput
+                    label="PIN / ZIP Code *"
+                    value={pinCode}
+                    onChange={setPinCode}
+                    placeholder="560001"
+                  />
+
+                  <FormInput
+                    label="Country *"
+                    value={country}
+                    onChange={setCountry}
+                    placeholder="India"
+                  />
+                </div>
+              </FormSection>
+
+              {/* =================================================
+                  REGISTRATION & COMPLIANCE
+              ================================================= */}
+
+              <FormSection
+                icon={<FiCheckCircle size={17} />}
+                title="Registration & Compliance"
+              >
+                <div className="space-y-3">
+                  <DocumentInput
+                    label="GST Number"
+                    value={gstNumber}
+                    onChange={setGstNumber}
+                    placeholder="Enter GSTIN"
+                  />
+
+                  <DocumentInput
+                    label="PAN Number"
+                    value={panNumber}
+                    onChange={setPanNumber}
+                    placeholder="Enter PAN"
+                  />
+
+                  <DocumentInput
+                    label="COI (Certificate of Incorporation)"
+                    value={coiNumber}
+                    onChange={setCoiNumber}
+                    placeholder="COI Number"
+                  />
+                </div>
+              </FormSection>
+
+              {/* =================================================
+                  PRIMARY CONTACT
+              ================================================= */}
+
+              <FormSection icon={<FiUser size={17} />} title="Primary Contact">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <FormInput
+                    label="Full Name *"
+                    value={contactName}
+                    onChange={setContactName}
+                    placeholder="Arjun Mehta"
+                  />
+
+                  <FormInput
+                    label="Designation *"
+                    value={designation}
+                    onChange={setDesignation}
+                    placeholder="Procurement Manager"
+                  />
+
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
+                      Mobile Number *
+                    </label>
+
+                    <div className="grid grid-cols-[74px_1fr] gap-2">
+                      <div className="flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-[10px] text-slate-700 dark:border-[#17304a] dark:bg-[#071929] dark:text-white">
+                        🇮🇳 +91
+                      </div>
+
+                      <input
+                        type="tel"
+                        value={mobileNumber}
+                        onChange={(event) =>
+                          setMobileNumber(event.target.value)
                         }
-                        onChange={
-                          setOrganizationWebsite
-                        }
-                        placeholder="www.example.com"
+                        placeholder="9876543210"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
                       />
                     </div>
                   </div>
-                </FormSection>
 
-                {/* Organization Details */}
-                <FormSection
-                  icon={
-                    <FiMapPin
-                      size={17}
-                    />
-                  }
-                  title="Organization Details"
-                >
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <FormInput
-                      label="Office Address *"
-                      value={
-                        officeAddress
-                      }
-                      onChange={
-                        setOfficeAddress
-                      }
-                      placeholder="42, MG Road, Building A, Suite 304"
-                    />
+                  <FormInput
+                    label="Email Address *"
+                    value={email}
+                    onChange={setEmail}
+                    placeholder="arjun.mehta@acmesolutions.example"
+                    type="email"
+                  />
+                </div>
+              </FormSection>
+            </div>
 
-                    <FormInput
-                      label="City *"
-                      value={city}
-                      onChange={setCity}
-                      placeholder="Bengaluru"
-                    />
+            {/* ===================================================
+                RIGHT COLUMN
+            =================================================== */}
 
-                    <FormInput
-                      label="State / Province *"
-                      value={state}
-                      onChange={setState}
-                      placeholder="Karnataka"
-                    />
+            <div className="space-y-3">
+              {/* =================================================
+                  PRODUCT INTEREST
+              ================================================= */}
 
-                    <FormInput
-                      label="PIN / ZIP Code *"
-                      value={pinCode}
-                      onChange={
-                        setPinCode
-                      }
-                      placeholder="560001"
-                    />
+              <FormSection
+                icon={<FiShoppingCart size={17} />}
+                title="Product Interest"
+              >
+                <p className="mb-2 text-[10px] text-slate-500">
+                  Product Categories
+                </p>
 
-                    <FormInput
-                      label="Country *"
-                      value={country}
-                      onChange={
-                        setCountry
-                      }
-                      placeholder="India"
-                    />
-                  </div>
-                </FormSection>
-
-                {/* Registration */}
-                <FormSection
-                  icon={
-                    <FiCheckCircle
-                      size={17}
-                    />
-                  }
-                  title="Registration & Compliance"
-                >
-                  <div className="space-y-3">
-                    <DocumentInput
-                      label="GST Number"
-                      value={
-                        gstNumber
-                      }
-                      onChange={
-                        setGstNumber
-                      }
-                      placeholder="Enter GSTIN"
-                    />
-
-                    <DocumentInput
-                      label="PAN Number"
-                      value={
-                        panNumber
-                      }
-                      onChange={
-                        setPanNumber
-                      }
-                      placeholder="Enter PAN"
-                    />
-
-                    <DocumentInput
-                      label="COI (Certificate of Incorporation)"
-                      value={
-                        coiNumber
-                      }
-                      onChange={
-                        setCoiNumber
-                      }
-                      placeholder="COI Number"
-                    />
-                  </div>
-                </FormSection>
-
-                {/* Primary Contact */}
-                <FormSection
-                  icon={
-                    <FiUser
-                      size={17}
-                    />
-                  }
-                  title="Primary Contact"
-                >
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <FormInput
-                      label="Full Name *"
-                      value={
-                        contactName
-                      }
-                      onChange={
-                        setContactName
-                      }
-                      placeholder="Arjun Mehta"
-                    />
-
-                    <FormInput
-                      label="Designation *"
-                      value={
-                        designation
-                      }
-                      onChange={
-                        setDesignation
-                      }
-                      placeholder="Procurement Manager"
-                    />
-
-                    <FormInput
-                      label="Mobile Number *"
-                      value={
-                        mobileNumber
-                      }
-                      onChange={
-                        setMobileNumber
-                      }
-                      placeholder="9876543210"
-                    />
-
-                    <FormInput
-                      label="Email Address *"
-                      value={
-                        email
-                      }
-                      onChange={
-                        setEmail
-                      }
-                      placeholder="arjun@example.com"
-                      type="email"
-                    />
-                  </div>
-                </FormSection>
-              </div>
-
-              {/* RIGHT */}
-              <div className="space-y-3">
-
-                {/* Product Interest */}
-                <FormSection
-                  icon={
-                    <FiShoppingCart
-                      size={17}
-                    />
-                  }
-                  title="Product Interest"
-                >
-                  <p className="mb-2 text-[10px] text-slate-500">
-                    Product Categories
-                  </p>
-
-                  <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-[#17304a]">
-                    {productItems.map(
-                      (
-                        item,
-                        index
-                      ) => (
-                        <div
-                          key={
-                            item.name
-                          }
-                          className="flex items-center justify-between border-b border-slate-100 px-3 py-2 last:border-b-0 dark:border-[#17304a]"
-                        >
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={
-                                item.qty >
-                                0
-                              }
-                              onChange={() =>
-                                updateProductQty(
-                                  index,
-                                  item.qty >
-                                    0
-                                    ? -item.qty
-                                    : 1
-                                )
-                              }
-                              className="h-3.5 w-3.5"
-                            />
-
-                            <span className="text-[10px] font-medium">
-                              {
-                                item.name
-                              }
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateProductQty(
-                                  index,
-                                  -1
-                                )
-                              }
-                              className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-500 dark:border-[#17304a]"
-                            >
-                              -
-                            </button>
-
-                            <span className="w-5 text-center text-[10px]">
-                              {
-                                item.qty
-                              }
-                            </span>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateProductQty(
-                                  index,
-                                  1
-                                )
-                              }
-                              className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-500 dark:border-[#17304a]"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    )}
-
-                    <div className="flex items-center justify-between bg-slate-50 px-3 py-2 dark:bg-[#0b2034]">
-                      <span className="text-[10px] font-semibold">
-                        Total
-                      </span>
-
-                      <span className="text-[11px] font-bold">
-                        {
-                          totalQty
-                        }
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-3">
-                    <FormInput
-                      label="Total Est. Value *"
-                      value={
-                        totalValue
-                          ? String(
-                              totalValue
+                <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-[#17304a]">
+                  {productItems.map((item, index) => (
+                    <div
+                      key={item.name}
+                      className="flex items-center justify-between border-b border-slate-100 px-3 py-2.5 last:border-b-0 dark:border-[#17304a]"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={item.qty > 0}
+                          onChange={() =>
+                            updateProductQty(
+                              index,
+                              item.qty > 0 ? -item.qty : 1,
                             )
-                          : ""
-                      }
-                      onChange={() => {}}
-                      placeholder="₹ 0.00"
-                      type="number"
-                    />
-                  </div>
+                          }
+                          className="h-3.5 w-3.5 shrink-0"
+                        />
 
+                        <span className="truncate text-[10px] font-medium">
+                          {item.name}
+                        </span>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => updateProductQty(index, -1)}
+                          className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-[#17304a]"
+                        >
+                          −
+                        </button>
+
+                        <span className="w-5 text-center text-[10px]">
+                          {item.qty}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => updateProductQty(index, 1)}
+                          className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-[#17304a]"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="flex items-center justify-between bg-slate-50 px-3 py-2.5 dark:bg-[#0b2034]">
+                    <span className="text-[10px] font-semibold">Total</span>
+
+                    <span className="text-[11px] font-bold">{totalQty}</span>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <FormInput
+                    label="Total Est. Value *"
+                    value={totalValue ? String(totalValue) : ""}
+                    onChange={() => {}}
+                    placeholder="₹ 0.00"
+                    type="number"
+                  />
+                </div>
+
+                <div className="mt-3">
                   <FormSelect
                     label="Purchase Timeline *"
-                    value={
-                      purchaseTimeline
-                    }
+                    value={purchaseTimeline}
                     options={[
                       "Immediate",
                       "Within 30 Days",
@@ -3680,24 +2726,23 @@ function AddOpportunityModal({
                       "3 - 6 Months",
                       "6+ Months",
                     ]}
-                    onChange={
-                      setPurchaseTimeline
-                    }
+                    onChange={setPurchaseTimeline}
                   />
-                </FormSection>
+                </div>
+              </FormSection>
 
-                {/* Sales Information */}
-                <FormSection
-                  icon={
-                    <FiUser
-                      size={17}
-                    />
-                  }
-                  title="Sales Information"
-                >
+              {/* =================================================
+                  SALES INFORMATION
+              ================================================= */}
+
+              <FormSection
+                icon={<FiUser size={17} />}
+                title="Sales Information"
+              >
+                <div className="space-y-3">
                   <FormSelect
                     label="Lead Source *"
-                    value="Website"
+                    value={leadSource}
                     options={[
                       "Website",
                       "Referral",
@@ -3706,163 +2751,150 @@ function AddOpportunityModal({
                       "Exhibition",
                       "Partner",
                     ]}
-                    onChange={() => {}}
+                    onChange={setLeadSource}
                   />
 
                   <FormSelect
                     label="Assigned to *"
-                    value=""
-                    options={[
-                      "Sales Team",
-                    ]}
-                    onChange={() => {}}
+                    value={assignedTo}
+                    options={["Sales Team"]}
+                    onChange={setAssignedTo}
                   />
 
-                  <div className="mt-3">
+                  <div>
                     <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
                       Priority
                     </label>
 
                     <div className="flex gap-2">
-                      {(
-                        [
-                          "High",
-                          "Medium",
-                          "Low",
-                        ] as Priority[]
-                      ).map(
-                        (item) => (
-                          <button
-                            type="button"
-                            key={
-                              item
-                            }
-                            onClick={() =>
-                              setPriority(
-                                item
-                              )
-                            }
-                            className={`rounded-md px-3 py-1.5 text-[10px] font-semibold ${
-                              priority ===
-                              item
-                                ? item ===
-                                  "High"
-                                  ? "bg-rose-50 text-rose-500"
-                                  : item ===
-                                    "Medium"
+                      {(["High", "Medium", "Low"] as Priority[]).map((item) => (
+                        <button
+                          type="button"
+                          key={item}
+                          onClick={() => setPriority(item)}
+                          className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${
+                            priority === item
+                              ? item === "High"
+                                ? "bg-rose-50 text-rose-500"
+                                : item === "Medium"
                                   ? "bg-amber-50 text-amber-600"
                                   : "bg-slate-100 text-slate-600"
-                                : "bg-slate-100 text-slate-500 dark:bg-[#10243a]"
-                            }`}
-                          >
-                            {
-                              item
-                            }
-                          </button>
-                        )
-                      )}
+                              : "bg-slate-100 text-slate-500 dark:bg-[#10243a]"
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="mt-3">
-                    <FormInput
-                      label="Expected Closing Date"
-                      type="date"
-                      value={
-                        expectedClosingDate
-                      }
-                      onChange={
-                        setExpectedClosingDate
-                      }
-                    />
-                  </div>
-                </FormSection>
-
-                {/* Requirements */}
-                <FormSection
-                  icon={
-                    <FiFileText
-                      size={17}
-                    />
-                  }
-                  title="Requirements & Files"
-                >
-                  <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-                    Remarks
-                  </label>
-
-                  <textarea
-                    value={remarks}
-                    onChange={(event) =>
-                      setRemarks(
-                        event.target.value
-                      )
-                    }
-                    rows={5}
-                    placeholder="Enter specific hardware requirements or customization requests..."
-                    className="w-full resize-none rounded-lg border border-slate-200 bg-white p-3 text-[10px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929]"
-                  />
-
-                  <div className="mt-3">
+                  <div>
                     <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-                      Attachments
+                      Expected Closing Date
                     </label>
 
-                    <div className="flex min-h-[95px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 text-center dark:border-[#31506b]">
-                      <FiUploadCloud
-                        size={19}
-                        className="text-slate-400"
+                    <div className="relative">
+                      <FiCalendar
+                        size={15}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
                       />
 
-                      <p className="mt-1 text-[10px] text-slate-500">
-                        Drop files or
-                        click to
-                        upload
-                      </p>
-
-                      <p className="text-[8px] text-slate-400">
-                        PDF, DOC,
-                        XLS up to
-                        10MB
-                      </p>
+                      <input
+                        type="date"
+                        value={expectedClosingDate}
+                        onChange={(event) =>
+                          setExpectedClosingDate(event.target.value)
+                        }
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-[10px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                      />
                     </div>
                   </div>
-                </FormSection>
-              </div>
+                </div>
+              </FormSection>
+
+              {/* =================================================
+                  REQUIREMENTS & FILES
+              ================================================= */}
+
+              <FormSection
+                icon={<FiFileText size={17} />}
+                title="Requirements & Files"
+              >
+                <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
+                  Remarks
+                </label>
+
+                <textarea
+                  value={remarks}
+                  onChange={(event) => setRemarks(event.target.value)}
+                  rows={5}
+                  placeholder="Enter specific hardware requirements or customization requests..."
+                  className="w-full resize-none rounded-lg border border-slate-200 bg-white p-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                />
+
+                <div className="mt-3">
+                  <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
+                    Attachments
+                  </label>
+
+                  <label className="flex min-h-[105px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 text-center transition hover:bg-slate-50 dark:border-[#31506b] dark:hover:bg-[#0b2034]">
+                    <FiUploadCloud size={19} className="text-slate-400" />
+
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {attachments.length
+                        ? `${attachments.length} file(s) selected`
+                        : "Drop files or click to upload"}
+                    </p>
+
+                    <p className="text-[8px] text-slate-400">
+                      PDF, DOC, XLS up to 10MB
+                    </p>
+
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </FormSection>
             </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-6 py-4 dark:border-[#17304a] dark:bg-[#071929]">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 dark:border-[#17304a] dark:text-slate-300"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 dark:border-[#17304a] dark:text-slate-300"
-              >
-                Save as Draft
-              </button>
-
-              <button
-                type="submit"
-                disabled={
-                  submitting
-                }
-                className="rounded-lg bg-[#233353] px-5 py-2.5 text-xs font-bold text-white disabled:opacity-50"
-              >
-                {submitting
-                  ? "Saving..."
-                  : "Save Opportunity"}
-              </button>
-            </div>
-          </form>
+          </div>
         </div>
-      </div>
+
+        {/* =======================================================
+            FOOTER
+        ======================================================= */}
+
+        <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-6 py-3.5 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] dark:border-[#17304a] dark:bg-[#071929]">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            disabled={submitting}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
+          >
+            Save as Draft
+          </button>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-lg bg-[#233353] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting ? "Saving..." : "Save Opportunity"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -3880,45 +2912,23 @@ function EditOpportunityModal({
   opportunity: Opportunity;
   salesUsers: SalesUser[];
   onClose: () => void;
-  onSubmit: (
-    payload: Partial<Opportunity>
-  ) => Promise<void>;
+  onSubmit: (payload: Partial<Opportunity>) => Promise<void>;
 }) {
-  const [customerName, setCustomerName] =
-    useState(
-      opportunity.customerName
-    );
+  const [customerName, setCustomerName] = useState(opportunity.customerName);
 
-  const [company, setCompany] =
-    useState(
-      opportunity.company
-    );
+  const [company, setCompany] = useState(opportunity.company);
 
-  const [customerType, setCustomerType] =
-    useState(
-      opportunity.customerType
-    );
+  const [customerType, setCustomerType] = useState(opportunity.customerType);
 
-  const [priority, setPriority] =
-    useState(
-      opportunity.priority
-    );
+  const [priority, setPriority] = useState(opportunity.priority);
 
-  const [ownerId, setOwnerId] =
-    useState(
-      opportunity.ownerId ||
-        ""
-    );
+  const [ownerId, setOwnerId] = useState(opportunity.ownerId || "");
 
-  const [expectedClosingDate, setExpectedClosingDate] =
-    useState(
-      opportunity.expectedClosingDate ||
-        ""
-    );
+  const [expectedClosingDate, setExpectedClosingDate] = useState(
+    opportunity.expectedClosingDate || "",
+  );
 
-  const submit = async (
-    event: React.FormEvent
-  ) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
 
     await onSubmit({
@@ -3929,11 +2939,7 @@ function EditOpportunityModal({
       ownerId,
       expectedClosingDate,
       owner:
-        salesUsers.find(
-          (user) =>
-            user.id ===
-            ownerId
-        )?.name ||
+        salesUsers.find((user) => user.id === ownerId)?.name ||
         opportunity.owner,
     });
   };
@@ -3945,15 +2951,9 @@ function EditOpportunityModal({
         className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#071929]"
       >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-[16px] font-semibold">
-            Edit Opportunity
-          </h2>
+          <h2 className="text-[16px] font-semibold">Edit Opportunity</h2>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-500"
-          >
+          <button type="button" onClick={onClose} className="text-slate-500">
             <FiX size={17} />
           </button>
         </div>
@@ -3961,91 +2961,42 @@ function EditOpportunityModal({
         <div className="space-y-4">
           <FormInput
             label="Customer Name"
-            value={
-              customerName
-            }
-            onChange={
-              setCustomerName
-            }
+            value={customerName}
+            onChange={setCustomerName}
           />
 
-          <FormInput
-            label="Company"
-            value={company}
-            onChange={
-              setCompany
-            }
-          />
+          <FormInput label="Company" value={company} onChange={setCompany} />
 
           <FormSelect
             label="Customer Type"
-            value={
-              customerType
-            }
-            options={
-              CUSTOMER_TYPES
-            }
-            onChange={(
-              value
-            ) =>
-              setCustomerType(
-                value as CustomerType
-              )
-            }
+            value={customerType}
+            options={CUSTOMER_TYPES}
+            onChange={(value) => setCustomerType(value as CustomerType)}
           />
 
           <FormSelect
             label="Assigned To"
-            value={
-              ownerId
-            }
-            options={
-              salesUsers.map(
-                (user) =>
-                  user.id
-              )
-            }
-            displayOptions={salesUsers.map(
-              (user) => ({
-                value:
-                  user.id,
-                label:
-                  user.name,
-              })
-            )}
-            onChange={
-              setOwnerId
-            }
+            value={ownerId}
+            options={salesUsers.map((user) => user.id)}
+            displayOptions={salesUsers.map((user) => ({
+              value: user.id,
+              label: user.name,
+            }))}
+            onChange={setOwnerId}
           />
 
           <FormSelect
             label="Priority"
-            value={
-              priority
-            }
-            options={[
-              "High",
-              "Medium",
-              "Low",
-            ]}
-            onChange={(
-              value
-            ) =>
-              setPriority(
-                value as Priority
-              )
-            }
+            value={priority}
+            options={["High", "Medium", "Low"]}
+            onChange={(value) => setPriority(value as Priority)}
           />
 
           <FormInput
             label="Expected Closing Date"
             type="date"
-            value={
-              expectedClosingDate
-            }
-            onChange={
-              setExpectedClosingDate
-            }
+            value={expectedClosingDate}
+            onChange={setExpectedClosingDate}
           />
         </div>
 
@@ -4086,13 +3037,9 @@ function FormSection({
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-[#17304a] dark:bg-[#071929]">
       <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-[#17304a]">
-        <span className="text-slate-600 dark:text-slate-300">
-          {icon}
-        </span>
+        <span className="text-slate-600 dark:text-slate-300">{icon}</span>
 
-        <h3 className="text-[13px] font-semibold">
-          {title}
-        </h3>
+        <h3 className="text-[13px] font-semibold">{title}</h3>
       </div>
 
       {children}
@@ -4109,9 +3056,7 @@ function FormInput({
 }: {
   label: string;
   value: string;
-  onChange: (
-    value: string
-  ) => void;
+  onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
 }) {
@@ -4125,11 +3070,7 @@ function FormInput({
         type={type}
         value={value}
         placeholder={placeholder}
-        onChange={(event) =>
-          onChange(
-            event.target.value
-          )
-        }
+        onChange={(event) => onChange(event.target.value)}
         className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
       />
     </div>
@@ -4150,9 +3091,7 @@ function FormSelect({
     value: string;
     label: string;
   }[];
-  onChange: (
-    value: string
-  ) => void;
+  onChange: (value: string) => void;
 }) {
   return (
     <div>
@@ -4162,46 +3101,22 @@ function FormSelect({
 
       <select
         value={value}
-        onChange={(event) =>
-          onChange(
-            event.target.value
-          )
-        }
+        onChange={(event) => onChange(event.target.value)}
         className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[10px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
       >
-        <option value="">
-          Select here
-        </option>
+        <option value="">Select here</option>
 
         {displayOptions
-          ? displayOptions.map(
-              (option) => (
-                <option
-                  key={
-                    option.value
-                  }
-                  value={
-                    option.value
-                  }
-                >
-                  {
-                    option.label
-                  }
-                </option>
-              )
-            )
-          : options.map(
-              (option) => (
-                <option
-                  key={option}
-                  value={
-                    option
-                  }
-                >
-                  {option}
-                </option>
-              )
-            )}
+          ? displayOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))
+          : options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
       </select>
     </div>
   );
@@ -4215,9 +3130,7 @@ function DocumentInput({
 }: {
   label: string;
   value: string;
-  onChange: (
-    value: string
-  ) => void;
+  onChange: (value: string) => void;
   placeholder?: string;
 }) {
   return (
@@ -4226,18 +3139,14 @@ function DocumentInput({
         label={label}
         value={value}
         onChange={onChange}
-        placeholder={
-          placeholder
-        }
+        placeholder={placeholder}
       />
 
       <button
         type="button"
         className="mb-0 flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 text-[10px] font-medium text-slate-400 dark:border-[#31506b]"
       >
-        <FiUploadCloud
-          size={14}
-        />
+        <FiUploadCloud size={14} />
         Upload Doc
       </button>
     </div>
@@ -4248,11 +3157,7 @@ function DocumentInput({
    BADGES / AVATAR
 ================================================================ */
 
-function Avatar({
-  name,
-}: {
-  name: string;
-}) {
+function Avatar({ name }: { name: string }) {
   return (
     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[8px] font-bold text-slate-600 dark:bg-[#17304a] dark:text-slate-200">
       {getInitials(name)}
@@ -4260,17 +3165,13 @@ function Avatar({
   );
 }
 
-function PriorityBadge({
-  priority,
-}: {
-  priority: Priority;
-}) {
+function PriorityBadge({ priority }: { priority: Priority }) {
   const styles =
     priority === "High"
       ? "border-rose-400 text-rose-500"
       : priority === "Low"
-      ? "border-amber-400 text-amber-500"
-      : "border-blue-400 text-blue-500";
+        ? "border-amber-400 text-amber-500"
+        : "border-blue-400 text-blue-500";
 
   return (
     <span
@@ -4281,26 +3182,19 @@ function PriorityBadge({
   );
 }
 
-function StatusBadge({
-  status,
-}: {
-  status: OpportunityStage;
-}) {
+function StatusBadge({ status }: { status: OpportunityStage }) {
   const styles =
     status === "Negotiation"
       ? "bg-slate-100 text-slate-600"
-      : status ===
-        "Proposal Sent"
-      ? "bg-slate-100 text-slate-600"
-      : status ===
-        "Demo Scheduled"
-      ? "bg-slate-100 text-slate-600"
-      : status ===
-        "Closed Won"
-      ? "bg-emerald-50 text-emerald-600"
-      : status === "Dead"
-      ? "bg-rose-50 text-rose-500"
-      : "bg-slate-100 text-slate-600";
+      : status === "Proposal Sent"
+        ? "bg-slate-100 text-slate-600"
+        : status === "Demo Scheduled"
+          ? "bg-slate-100 text-slate-600"
+          : status === "Closed Won"
+            ? "bg-emerald-50 text-emerald-600"
+            : status === "Dead"
+              ? "bg-rose-50 text-rose-500"
+              : "bg-slate-100 text-slate-600";
 
   return (
     <span
