@@ -417,11 +417,10 @@ export default function LeadsPage() {
   const [draftFilters, setDraftFilters] = useState<LeadFilters>(EMPTY_FILTERS);
 
   const [showExcelModal, setShowExcelModal] = useState(false);
-  const [showIntegrationModal, setShowIntegrationModal] = useState(false);
 
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [detailsLead, setDetailsLead] = useState<Lead | null>(null);
-
+  const [showDetailsMenu, setShowDetailsMenu] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
 
   /*
@@ -448,22 +447,6 @@ export default function LeadsPage() {
   const filterRef = useRef<HTMLDivElement | null>(null);
   const topMenuRef = useRef<HTMLDivElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
-
-  /*
-   * Integration.
-   */
-  const [selectedIntegration, setSelectedIntegration] = useState<string>("");
-
-  const [integrationLead, setIntegrationLead] = useState<IntegrationLeadState>({
-    source: "",
-    contactName: "",
-    organizationName: "",
-    email: "",
-    mobileNumber: "",
-    website: "",
-    remarks: "",
-    assignedToId: "",
-  });
 
   /* --------------------------------------------------------------------------
      FETCH
@@ -1853,8 +1836,17 @@ export default function LeadsPage() {
                 icon={<FiLink className="text-indigo-500" />}
                 onClick={() => {
                   setShowAddMenu(false);
-                  setSelectedIntegration("");
-                  setShowIntegrationModal(true);
+                  setShowTopMenu(false);
+
+                  if (leads.length > 0) {
+                    const lead = leads[0];
+
+                    setDetailsLead(lead);
+                    setShowDetailsModal(true);
+                    setShowDetailsMenu(false);
+                  } else {
+                    addToast("No lead is available to display.", "warning");
+                  }
                 }}
               >
                 Add From Integration
@@ -2341,29 +2333,6 @@ export default function LeadsPage() {
       )}
 
       {/* ======================================================================
-          INTEGRATION
-      ====================================================================== */}
-
-      {showIntegrationModal && (
-        <IntegrationModal
-          selectedSource={selectedIntegration}
-          integrationLead={integrationLead}
-          users={users}
-          saving={saving}
-          onClose={() => {
-            if (!saving) {
-              setShowIntegrationModal(false);
-
-              setSelectedIntegration("");
-            }
-          }}
-          onSelectSource={openIntegration}
-          onChange={updateIntegrationLead}
-          onSubmit={importIntegrationLead}
-        />
-      )}
-
-      {/* ======================================================================
           DETAILS
       ====================================================================== */}
 
@@ -2657,7 +2626,7 @@ function LeadFormPage({
               />
             </div>
           </FormSection>
-          
+
           <FormSection icon={<FiMapPin />} title="Organization Details">
             <div className="space-y-4">
               {/* First row: Address + City */}
@@ -2795,6 +2764,7 @@ function LeadFormPage({
 
           <FormSection icon={<FiFileText />} title="Requirements & Files">
             <div className="space-y-5">
+              {/* Remarks */}
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
                   Remarks
@@ -2827,63 +2797,74 @@ function LeadFormPage({
                 />
               </div>
 
-              <label
-                className="
-                  flex
-                  min-h-[150px]
-                  cursor-pointer
-                  flex-col
-                  items-center
-                  justify-center
-                  rounded-2xl
-                  border-2
-                  border-dashed
-                  border-slate-200
-                  p-5
-                  text-center
-                  hover:bg-slate-50
-                  dark:border-[#0d2336]
-                  dark:hover:bg-[#071929]
-                "
-              >
-                <FiPaperclip className="mb-3 text-2xl text-slate-400" />
+              {/* Attachments Heading */}
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+                  Attachments
+                </label>
 
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                  Drop files or click to upload
-                </span>
+                {/* Upload Area */}
+                <label
+                  className="
+                    flex
+                    min-h-[150px]
+                    w-full
+                    cursor-pointer
+                    flex-col
+                    items-center
+                    justify-center
+                    rounded-2xl
+                    border-2
+                    border-dashed
+                    border-slate-200
+                    p-5
+                    text-center
+                    transition
+                    hover:bg-slate-50
+                    dark:border-[#0d2336]
+                    dark:hover:bg-[#071929]
+                  "
+                >
+                  <FiPaperclip className="mb-3 text-2xl text-slate-400" />
 
-                <span className="mt-1 text-[10px] text-slate-400">
-                  PDF, DOC, XLS up to 10MB
-                </span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    Drop files or click to upload
+                  </span>
 
-                <input
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={onAttachment}
-                />
-              </label>
+                  <span className="mt-1 text-[10px] text-slate-400">
+                    PDF, DOC, XLS up to 10MB
+                  </span>
 
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={onAttachment}
+                  />
+                </label>
+              </div>
+
+              {/* Selected Attachments */}
               {form.attachments.length > 0 && (
                 <div className="space-y-2">
                   {form.attachments.map((attachment, index) => (
                     <div
                       key={`${attachment}-${index}`}
                       className="
-                          flex
-                          items-center
-                          gap-2
-                          rounded-lg
-                          bg-slate-50
-                          px-3
-                          py-2
-                          text-[10px]
-                          font-semibold
-                          text-slate-500
-                          dark:bg-[#071929]
-                        "
+                flex
+                items-center
+                gap-2
+                rounded-lg
+                bg-slate-50
+                px-3
+                py-2
+                text-[10px]
+                font-semibold
+                text-slate-500
+                dark:bg-[#071929]
+              "
                     >
-                      <FiCheckCircle className="text-emerald-500" />
+                      <FiCheckCircle className="shrink-0 text-emerald-500" />
 
                       <span className="truncate">{attachment}</span>
                     </div>
@@ -2892,7 +2873,6 @@ function LeadFormPage({
               )}
             </div>
           </FormSection>
-
           <div
             className="
             grid
@@ -2967,8 +2947,9 @@ function ExcelImportModal({
   onImport: () => void;
 }) {
   return (
-    <Modal isOpen onClose={onClose} title="Upload a CSV File">
+    <Modal isOpen onClose={onClose} title="Upload a CSV File" size="lg">
       <div className="space-y-5">
+        {/* Upload Box */}
         <div
           onClick={() => inputRef.current?.click()}
           onDrop={onDrop}
@@ -2982,30 +2963,55 @@ function ExcelImportModal({
             onDragLeave();
           }}
           className={`
+            flex
+            min-h-[116px]
+            w-full
             cursor-pointer
-            rounded-2xl
-            border-2
+            flex-col
+            items-center
+            justify-center
+            rounded-xl
+            border
             border-dashed
-            p-10
+            px-6
+            py-6
             text-center
-            transition
+            transition-all
+            duration-200
+
             ${
               dragging
                 ? "border-primary bg-primary/5"
                 : "border-slate-300 bg-white hover:bg-slate-50"
             }
+
             dark:border-[#0d2336]
             dark:bg-[#051422]
+            dark:hover:bg-[#071929]
           `}
         >
-          <FiUploadCloud className="mx-auto text-3xl text-slate-400" />
+          <FiUploadCloud
+            className={`
+              text-2xl
+              transition-colors
+              ${dragging ? "text-primary" : "text-slate-400"}
+            `}
+          />
 
-          <p className="mt-4 text-sm text-slate-600 dark:text-slate-200">
+          <p className="mt-3 text-xs text-slate-600 dark:text-slate-200">
             Drag and drop your file here, or{" "}
-            <span className="font-bold text-blue-500">Browse</span>
+            <span
+              className="font-semibold text-blue-500 hover:text-blue-600"
+              onClick={(event) => {
+                event.stopPropagation();
+                inputRef.current?.click();
+              }}
+            >
+              Browse
+            </span>
           </p>
 
-          <p className="mt-2 text-[10px] text-slate-400">
+          <p className="mt-1 text-[10px] text-slate-400">
             Supported formats: .xlsx, .xls, .csv • Max file size: 10 MB
           </p>
 
@@ -3018,37 +3024,94 @@ function ExcelImportModal({
           />
         </div>
 
+        {/* Selected File */}
         {file && (
-          <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <div
+            className="
+              flex
+              items-center
+              justify-between
+              rounded-lg
+              border
+              border-emerald-200
+              bg-emerald-50
+              px-3
+              py-2.5
+              dark:border-emerald-900/40
+              dark:bg-emerald-950/20
+            "
+          >
             <div className="flex min-w-0 items-center gap-2">
               <FiCheckCircle className="shrink-0 text-emerald-500" />
 
-              <span className="truncate text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+              <span
+                className="
+                  truncate
+                  text-xs
+                  font-semibold
+                  text-emerald-700
+                  dark:text-emerald-400
+                "
+              >
                 {file.name}
               </span>
             </div>
 
             <button
               type="button"
-              onClick={() => {
-                inputRef.current!.value = "";
+              onClick={(event) => {
+                event.stopPropagation();
+
+                if (inputRef.current) {
+                  inputRef.current.value = "";
+                }
               }}
-              className="text-slate-400 hover:text-rose-500"
+              className="
+                shrink-0
+                rounded-md
+                p-1
+                text-slate-400
+                transition-colors
+                hover:bg-white
+                hover:text-rose-500
+                dark:hover:bg-[#071929]
+              "
             >
-              <FiX />
+              <FiX className="text-sm" />
             </button>
           </div>
         )}
 
+        {/* Sample CSV */}
         <button
           type="button"
           onClick={onDownloadSample}
-          className="text-xs font-semibold text-slate-600 underline underline-offset-2 hover:text-primary dark:text-slate-300"
+          className="
+            text-xs
+            font-semibold
+            text-slate-600
+            underline
+            underline-offset-2
+            transition-colors
+            hover:text-primary
+            dark:text-slate-300
+          "
         >
           Download a sample CSV file
         </button>
 
-        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4 dark:border-[#0d2336]">
+        {/* Footer */}
+        <div
+          className="
+            flex
+            justify-end
+            gap-3
+            border-t
+            border-slate-100
+            pt-4
+            dark:border-[#0d2336]
+          "
+        >
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
@@ -3065,182 +3128,6 @@ function ExcelImportModal({
           </Button>
         </div>
       </div>
-    </Modal>
-  );
-}
-
-/* ============================================================================
-   INTEGRATION MODAL
-============================================================================ */
-
-function IntegrationModal({
-  selectedSource,
-  integrationLead,
-  users,
-  saving,
-  onClose,
-  onSelectSource,
-  onChange,
-  onSubmit,
-}: {
-  selectedSource: string;
-  integrationLead: IntegrationLeadState;
-  users: User[];
-  saving: boolean;
-  onClose: () => void;
-  onSelectSource: (source: string) => void;
-  onChange: <K extends keyof IntegrationLeadState>(
-    field: K,
-    value: IntegrationLeadState[K],
-  ) => void;
-  onSubmit: () => void;
-}) {
-  return (
-    <Modal isOpen onClose={onClose} title="Add From Integration" size="xl">
-      {!selectedSource ? (
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-sm font-bold text-slate-800 dark:text-white">
-              Select Lead Source
-            </h3>
-
-            <p className="mt-1 text-xs text-slate-400">
-              Select an integration to enter and create the lead details.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <IntegrationCard
-              icon={<FiLink />}
-              title="Website Forms"
-              description="Capture leads from your website."
-              onClick={() => onSelectSource("Website")}
-            />
-
-            <IntegrationCard
-              icon={<FiDatabase />}
-              title="Meta / Social"
-              description="Receive social campaign leads."
-              onClick={() => onSelectSource("Meta Ads")}
-            />
-
-            <IntegrationCard
-              icon={<FiMail />}
-              title="Email"
-              description="Convert inbound enquiries."
-              onClick={() => onSelectSource("Email")}
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-[#0d2336]">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Integration Source
-              </p>
-
-              <h3 className="mt-1 text-base font-bold text-slate-800 dark:text-white">
-                {selectedSource}
-              </h3>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => onSelectSource("")}
-              className="text-xs font-bold text-primary"
-            >
-              Change Source
-            </button>
-          </div>
-
-          <FormSection icon={<FiUser />} title="Lead Details">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <FormInput
-                label="Full Name"
-                required
-                value={integrationLead.contactName}
-                onChange={(value) => onChange("contactName", value)}
-              />
-
-              <FormInput
-                label="Organization Name"
-                required
-                value={integrationLead.organizationName}
-                onChange={(value) => onChange("organizationName", value)}
-              />
-
-              <FormInput
-                label="Email Address"
-                type="email"
-                value={integrationLead.email}
-                onChange={(value) => onChange("email", value)}
-              />
-
-              <FormInput
-                label="Mobile Number"
-                value={integrationLead.mobileNumber}
-                onChange={(value) => onChange("mobileNumber", value)}
-              />
-
-              <FormInput
-                label="Organization Website"
-                value={integrationLead.website}
-                onChange={(value) => onChange("website", value)}
-              />
-
-              <UserSelect
-                label="Assigned To"
-                value={integrationLead.assignedToId}
-                users={users}
-                onChange={(value) => onChange("assignedToId", value)}
-              />
-            </div>
-          </FormSection>
-
-          <FormSection icon={<FiFileText />} title="Requirements & Files">
-            <textarea
-              rows={5}
-              value={integrationLead.remarks}
-              onChange={(event) => onChange("remarks", event.target.value)}
-              placeholder="Enter lead requirements..."
-              className="
-                w-full
-                resize-none
-                rounded-xl
-                border
-                border-slate-200
-                bg-slate-50/70
-                p-3
-                text-xs
-                outline-none
-                focus:ring-2
-                focus:ring-primary/20
-                dark:border-[#0d2336]
-                dark:bg-[#071929]
-                dark:text-white
-              "
-            />
-          </FormSection>
-
-          <div className="flex justify-end gap-3 border-t border-slate-100 pt-5 dark:border-[#0d2336]">
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-
-            <Button disabled={saving} onClick={onSubmit}>
-              {saving ? (
-                <span className="flex items-center gap-2">
-                  <CgSpinner className="animate-spin" />
-                  Saving...
-                </span>
-              ) : (
-                "Add Lead"
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
     </Modal>
   );
 }
@@ -3266,233 +3153,583 @@ function LeadDetailsModal({
 }) {
   const details = parseLeadDescription(lead.description);
 
+  const [showMenu, setShowMenu] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowMenu(false);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const isDead = lead.status === "dead" || lead.stage === "dead";
+  const isQualified =
+    lead.status === "qualified" || lead.stage === "opportunity";
+
+  const currentStage = isDead
+    ? "closed"
+    : isQualified
+      ? "openDeal"
+      : lead.status === "contacted"
+        ? "inProgress"
+        : "open";
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Lead Details" size="xl">
-      <div className="space-y-6">
+    <div className="fixed inset-0 z-[100]">
+      {/* BACKDROP */}
+
+      <button
+        type="button"
+        aria-label="Close lead details"
+        onClick={onClose}
+        className="
+          absolute
+          inset-0
+          bg-slate-950/45
+          backdrop-blur-[2px]
+        "
+      />
+
+      {/* DRAWER */}
+
+      <aside
+        className="
+          absolute
+          right-0
+          top-0
+          flex
+          h-full
+          w-full
+          max-w-[700px]
+          flex-col
+          bg-white
+          shadow-2xl
+          dark:bg-[#051422]
+        "
+      >
         {/* HEADER */}
 
-        <div className="flex flex-col justify-between gap-4 rounded-2xl bg-slate-50 p-5 md:flex-row dark:bg-[#071929]">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] font-bold text-slate-400">
-                {formatLeadId(lead.id)}
-              </span>
+        <div
+          className="
+            flex
+            h-[76px]
+            shrink-0
+            items-center
+            justify-between
+            border-b
+            border-slate-200
+            px-6
+            dark:border-[#0d2336]
+          "
+        >
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="
+                rounded-lg
+                p-1
+                text-slate-500
+                transition
+                hover:bg-slate-100
+                hover:text-slate-800
+                dark:hover:bg-[#071929]
+              "
+            >
+              <FiX className="text-xl" />
+            </button>
 
-              <StatusBadge status={lead.status} stage={lead.stage} />
-            </div>
-
-            <h2 className="mt-2 text-lg font-extrabold text-slate-900 dark:text-white">
-              {details.contactName || lead.title}
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-white">
+              Lead Details
             </h2>
-
-            <p className="mt-1 text-xs text-slate-400">
-              {details.organizationName || "No organization"}
-            </p>
           </div>
-
-          <div className="flex items-start gap-2">
-            <button
-              type="button"
-              title="Message"
-              className="
-                rounded-xl
-                border
-                border-slate-200
-                bg-white
-                p-2.5
-                text-slate-500
-                hover:text-primary
-                dark:border-[#0d2336]
-                dark:bg-[#051422]
-              "
-            >
-              <FiMessageSquare />
-            </button>
-
-            <button
-              type="button"
-              title="Edit"
-              onClick={onEdit}
-              className="
-                rounded-xl
-                border
-                border-slate-200
-                bg-white
-                p-2.5
-                text-slate-500
-                hover:text-primary
-                dark:border-[#0d2336]
-                dark:bg-[#051422]
-              "
-            >
-              <FiEdit3 />
-            </button>
-          </div>
-        </div>
-
-        {/* DETAILS */}
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <DetailBox icon={<FiUser />} label="Primary Contact">
-            <DetailLine label="Full Name" value={details.contactName} />
-
-            <DetailLine label="Designation" value={details.designation} />
-
-            <DetailLine label="Mobile" value={details.mobileNumber} />
-
-            <DetailLine label="Email" value={details.email} />
-          </DetailBox>
-
-          <DetailBox icon={<FiBriefcase />} label="Organization">
-            <DetailLine label="Customer Type" value={details.customerType} />
-
-            <DetailLine label="Organization" value={details.organizationName} />
-
-            <DetailLine label="Website" value={details.website} />
-
-            <DetailLine
-              label="Address"
-              value={[
-                details.address,
-                details.city,
-                details.state,
-                details.zipCode,
-                details.country,
-              ]
-                .filter(Boolean)
-                .join(", ")}
-            />
-          </DetailBox>
-
-          <DetailBox icon={<FiShield />} label="Compliance">
-            <DetailLine label="GST" value={details.gstNumber} />
-
-            <DetailLine label="PAN" value={details.panNumber} />
-
-            <DetailLine label="COI" value={details.coiNumber} />
-          </DetailBox>
-
-          <DetailBox icon={<FiActivity />} label="Sales Information">
-            <DetailLine label="Lead Source" value={details.leadSource} />
-
-            <DetailLine
-              label="Assigned To"
-              value={lead.assigned_to_name || "Unassigned"}
-            />
-
-            <DetailLine label="Created" value={formatDate(lead.created_at)} />
-
-            <DetailLine label="Created By" value={lead.creator_name} />
-          </DetailBox>
-        </div>
-
-        {/* REQUIREMENTS */}
-
-        <DetailBox icon={<FiFileText />} label="Requirements & Files">
-          <div className="rounded-xl bg-slate-50 p-4 text-xs leading-6 text-slate-600 dark:bg-[#071929] dark:text-slate-300">
-            {details.remarks || "No requirements or remarks added."}
-          </div>
-
-          {details.attachments.length > 0 && (
-            <div className="mt-3 space-y-2">
-              {details.attachments.map((file) => (
-                <div
-                  key={file}
-                  className="flex items-center gap-2 text-xs font-semibold"
-                >
-                  <FiPaperclip />
-                  {file}
-                </div>
-              ))}
-            </div>
-          )}
-        </DetailBox>
-
-        {/* ACTIVITY */}
-
-        <DetailBox icon={<FiActivity />} label="Activity History">
-          <div className="space-y-4">
-            {lead.activity_history?.length ? (
-              lead.activity_history.map((activity) => (
-                <div
-                  key={activity.id || activity.created_at}
-                  className="flex gap-3"
-                >
-                  <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
-
-                  <div>
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                      {activity.action}
-                    </p>
-
-                    {activity.description && (
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        {activity.description}
-                      </p>
-                    )}
-
-                    <p className="mt-1 text-[10px] text-slate-400">
-                      {formatDate(activity.created_at)}
-                    </p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <>
-                <ActivityItem
-                  title="Lead Created"
-                  description="Lead was registered in the CRM."
-                  date={lead.created_at}
-                />
-
-                <ActivityItem
-                  title={`Current Stage: ${lead.stage}`}
-                  description={`Current status is ${lead.status}.`}
-                  date={lead.created_at}
-                />
-              </>
-            )}
-          </div>
-        </DetailBox>
-
-        {/* ACTIONS */}
-
-        <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-5 dark:border-[#0d2336]">
-          <Button variant="outline" onClick={onEdit}>
-            <FiEdit3 className="mr-2" />
-            Edit
-          </Button>
 
           <button
             type="button"
-            onClick={onMarkDead}
+            onClick={onConvert}
+            disabled={isDead}
             className="
-              rounded-xl
-              border
-              border-rose-200
+              rounded-lg
+              bg-[#1d2b45]
               px-4
-              py-2
+              py-2.5
               text-xs
               font-bold
-              text-rose-500
-              hover:bg-rose-50
-              dark:border-rose-900
-              dark:hover:bg-rose-950/20
+              text-white
+              transition
+              hover:bg-[#162238]
+              disabled:cursor-not-allowed
+              disabled:opacity-40
             "
           >
-            <span className="flex items-center gap-2">
-              <FiXCircle />
-              Mark as Dead
-            </span>
+            Convert To Opportunity
           </button>
-
-          <Button onClick={onConvert}>
-            <FiArrowUpRight className="mr-2" />
-            Convert to Opportunity
-          </Button>
         </div>
+
+        {/* STATUS PIPELINE */}
+
+        <div
+          className="
+            grid
+            shrink-0
+            grid-cols-5
+            border-b
+            border-slate-200
+            dark:border-[#0d2336]
+          "
+        >
+          <LeadStage
+            label="New"
+            active={currentStage === "open" || currentStage === "inProgress"}
+            completed={currentStage !== "open" && !isDead}
+            first
+          />
+
+          <LeadStage
+            label="Open"
+            active={currentStage === "open"}
+            completed={
+              currentStage === "inProgress" || currentStage === "openDeal"
+            }
+          />
+
+          <LeadStage
+            label="In Progress"
+            active={currentStage === "inProgress"}
+            completed={currentStage === "openDeal"}
+          />
+
+          <LeadStage
+            label="Open Deal"
+            active={currentStage === "openDeal"}
+            completed={false}
+          />
+
+          <LeadStage
+            label="Closed"
+            active={currentStage === "closed"}
+            completed={false}
+          />
+        </div>
+
+        {/* CONTENT */}
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-6">
+            {/* LEAD HEADER */}
+
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-4">
+                {/* AVATAR */}
+
+                <div
+                  className="
+                    relative
+                    flex
+                    h-20
+                    w-20
+                    shrink-0
+                    items-center
+                    justify-center
+                    overflow-hidden
+                    rounded-full
+                    bg-slate-200
+                    text-xl
+                    font-bold
+                    text-slate-500
+                    dark:bg-[#0d2336]
+                  "
+                >
+                  {getInitials(details.contactName || lead.title)}
+
+                  <span
+                    className="
+                      absolute
+                      bottom-1
+                      right-1
+                      h-5
+                      w-5
+                      rounded-full
+                      border-2
+                      border-white
+                      bg-emerald-500
+                      dark:border-[#051422]
+                    "
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <h3 className="truncate text-xl font-semibold text-slate-900 dark:text-white">
+                    {details.contactName || getLeadDisplayName(lead)}
+                  </h3>
+
+                  <p className="mt-0.5 text-sm text-slate-700 dark:text-slate-300">
+                    {details.designation || "Lead"}{" "}
+                    {details.organizationName
+                      ? `@ ${details.organizationName}`
+                      : ""}
+                  </p>
+
+                  <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                    {details.email && (
+                      <span className="flex items-center gap-1">
+                        <FiMail />
+                        {details.email}
+                      </span>
+                    )}
+
+                    {details.mobileNumber && (
+                      <span className="flex items-center gap-1">
+                        <FiPhone />
+                        {details.mobileNumber}
+                      </span>
+                    )}
+                  </div>
+
+                  {(details.state || details.city) && (
+                    <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+                      <FiMapPin />
+                      {details.city
+                        ? `${details.city}${
+                            details.state ? `, ${details.state}` : ""
+                          }`
+                        : details.state}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* ACTION BUTTONS */}
+
+              <div className="relative flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  className="
+                    flex
+                    h-9
+                    w-9
+                    items-center
+                    justify-center
+                    rounded-lg
+                    border
+                    border-slate-200
+                    bg-white
+                    text-slate-600
+                    shadow-sm
+                    hover:bg-slate-50
+                    dark:border-[#0d2336]
+                    dark:bg-[#071929]
+                    dark:text-slate-300
+                  "
+                >
+                  <FiMessageSquare />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowMenu((value) => !value)}
+                  className="
+                    flex
+                    h-9
+                    w-9
+                    items-center
+                    justify-center
+                    rounded-lg
+                    border
+                    border-slate-200
+                    bg-white
+                    text-slate-600
+                    shadow-sm
+                    hover:bg-slate-50
+                    dark:border-[#0d2336]
+                    dark:bg-[#071929]
+                    dark:text-slate-300
+                  "
+                >
+                  <FiMoreVertical />
+                </button>
+
+                {showMenu && (
+                  <div
+                    className="
+                      absolute
+                      right-0
+                      top-11
+                      z-20
+                      w-32
+                      overflow-hidden
+                      rounded-lg
+                      border
+                      border-slate-200
+                      bg-white
+                      py-1
+                      shadow-xl
+                      dark:border-[#0d2336]
+                      dark:bg-[#071929]
+                    "
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMenu(false);
+                        onEdit();
+                      }}
+                      className="
+                        flex
+                        w-full
+                        items-center
+                        px-4
+                        py-2.5
+                        text-left
+                        text-xs
+                        font-medium
+                        text-slate-700
+                        hover:bg-slate-50
+                        dark:text-slate-200
+                        dark:hover:bg-[#0d2336]
+                      "
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isDead}
+                      onClick={() => {
+                        setShowMenu(false);
+                        onMarkDead();
+                      }}
+                      className="
+                        flex
+                        w-full
+                        items-center
+                        px-4
+                        py-2.5
+                        text-left
+                        text-xs
+                        font-medium
+                        text-rose-500
+                        hover:bg-rose-50
+                        disabled:cursor-not-allowed
+                        disabled:opacity-40
+                        dark:hover:bg-rose-950/20
+                      "
+                    >
+                      Mark as Dead
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ACTIVITY HISTORY */}
+
+            <div className="mt-8">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-800 dark:text-white">
+                  Activity History
+                </h3>
+
+                <button
+                  type="button"
+                  className="
+                    text-[11px]
+                    font-medium
+                    text-slate-500
+                    hover:text-primary
+                    dark:text-slate-400
+                  "
+                >
+                  + Log Activity
+                </button>
+              </div>
+
+              <div className="relative pl-5">
+                {/* TIMELINE */}
+
+                <div
+                  className="
+                    absolute
+                    bottom-1
+                    left-[4px]
+                    top-1
+                    w-px
+                    bg-slate-200
+                    dark:bg-[#0d2336]
+                  "
+                />
+
+                {lead.activity_history?.length ? (
+                  <div className="space-y-5">
+                    {lead.activity_history.map((activity, index) => (
+                      <ActivityTimelineCard
+                        key={activity.id || `${activity.created_at}-${index}`}
+                        title={activity.action}
+                        description={activity.description}
+                        date={activity.created_at}
+                        active={index === 0}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <ActivityTimelineCard
+                      title="Lead Created"
+                      description="Lead was registered in the CRM."
+                      date={lead.created_at}
+                      active
+                    />
+
+                    <ActivityTimelineCard
+                      title="Form Submission"
+                      description={
+                        details.remarks ||
+                        "Lead entered through the integration."
+                      }
+                      date={lead.created_at}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function LeadStage({
+  label,
+  active,
+  completed,
+  first,
+}: {
+  label: string;
+  active?: boolean;
+  completed?: boolean;
+  first?: boolean;
+}) {
+  return (
+    <div
+      className={`
+        flex
+        h-8
+        items-center
+        justify-center
+        gap-1.5
+        border-r
+        border-slate-200
+        text-[10px]
+        font-medium
+        dark:border-[#0d2336]
+        ${
+          active
+            ? "bg-amber-50 text-slate-700 dark:bg-amber-950/20 dark:text-slate-200"
+            : completed
+              ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20"
+              : "bg-white text-slate-500 dark:bg-[#051422] dark:text-slate-400"
+        }
+        ${first ? "" : ""}
+      `}
+    >
+      <span
+        className={`
+          flex
+          h-3
+          w-3
+          items-center
+          justify-center
+          rounded-full
+          border
+          text-[7px]
+          ${
+            completed
+              ? "border-emerald-500 bg-emerald-500 text-white"
+              : active
+                ? "border-amber-500 text-amber-500"
+                : "border-slate-300 text-slate-400 dark:border-slate-600"
+          }
+        `}
+      >
+        {completed ? "✓" : ""}
+      </span>
+
+      {label}
+    </div>
+  );
+}
+
+function ActivityTimelineCard({
+  title,
+  description,
+  date,
+  active = false,
+}: {
+  title: string;
+  description?: string;
+  date?: string;
+  active?: boolean;
+}) {
+  return (
+    <div className="relative">
+      {/* TIMELINE DOT */}
+
+      <span
+        className={`
+          absolute
+          -left-[25px]
+          top-2
+          h-2.5
+          w-2.5
+          rounded-full
+          border-2
+          border-white
+          dark:border-[#051422]
+          ${active ? "bg-[#1d2b45]" : "bg-slate-200 dark:bg-slate-600"}
+        `}
+      />
+
+      {/* CARD */}
+
+      <div
+        className="
+          rounded-xl
+          border
+          border-slate-200
+          bg-white
+          px-4
+          py-3
+          shadow-sm
+          dark:border-[#0d2336]
+          dark:bg-[#071929]
+        "
+      >
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-xs font-bold text-slate-800 dark:text-white">
+            {title}
+          </p>
+
+          <span className="shrink-0 text-[9px] text-slate-400">
+            {formatDate(date)}
+          </span>
+        </div>
+
+        {description && (
+          <p className="mt-1.5 max-w-[90%] text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+            {description}
+          </p>
+        )}
+
+        {date && (
+          <p className="mt-1.5 flex items-center gap-1 text-[9px] text-slate-400">
+            <FiCalendar />
+            {formatDate(date)}
+          </p>
+        )}
       </div>
-    </Modal>
+    </div>
   );
 }
 
