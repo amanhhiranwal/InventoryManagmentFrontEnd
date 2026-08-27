@@ -1395,7 +1395,7 @@ export default function OpportunitiesPage() {
 
           <div className="relative" ref={pageMenuRef}>
             <div className="flex items-center gap-1">
-              <button
+              {/* <button
                 type="button"
                 onClick={() =>
                   setShowPageMenu(
@@ -1408,7 +1408,7 @@ export default function OpportunitiesPage() {
                 <FiChevronDown
                   size={12}
                 />
-              </button>
+              </button> */}
 
               <button
                 type="button"
