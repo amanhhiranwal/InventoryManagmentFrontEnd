@@ -2639,8 +2639,8 @@ function NewOpportunityPage({
 
             <div className="space-y-3">
               {/* =================================================
-                  PRODUCT INTEREST
-              ================================================= */}
+                      PRODUCT INTEREST
+                  ================================================= */}
 
               <FormSection
                 icon={<FiShoppingCart size={17} />}
@@ -2650,61 +2650,78 @@ function NewOpportunityPage({
                   Product Categories
                 </p>
 
+                {/* Product Categories */}
                 <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-[#17304a]">
-                  {productItems.map((item, index) => (
-                    <div
-                      key={item.name}
-                      className="flex items-center justify-between border-b border-slate-100 px-3 py-2.5 last:border-b-0 dark:border-[#17304a]"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={item.qty > 0}
-                          onChange={() =>
-                            updateProductQty(
-                              index,
-                              item.qty > 0 ? -item.qty : 1,
-                            )
-                          }
-                          className="h-3.5 w-3.5 shrink-0"
-                        />
+                  {/* 
+                    Show 4 products at a time.
+                    Additional products can be accessed using
+                    the vertical scrollbar.
+                  */}
+                  <div className="max-h-[168px] overflow-y-auto">
+                    {productItems.map((item, index) => (
+                      <div
+                        key={item.name}
+                        className="flex min-h-[42px] items-center justify-between border-b border-slate-100 px-3 py-2.5 last:border-b-0 dark:border-[#17304a]"
+                      >
+                        {/* Product Name */}
+                        <div className="flex min-w-0 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={item.qty > 0}
+                            onChange={() =>
+                              updateProductQty(
+                                index,
+                                item.qty > 0 ? -item.qty : 1,
+                              )
+                            }
+                            className="h-3.5 w-3.5 shrink-0 cursor-pointer"
+                          />
 
-                        <span className="truncate text-[10px] font-medium">
-                          {item.name}
-                        </span>
+                          <span className="truncate text-[10px] font-medium text-slate-700 dark:text-slate-200">
+                            {item.name}
+                          </span>
+                        </div>
+
+                        {/* Quantity Controls */}
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => updateProductQty(index, -1)}
+                            disabled={item.qty === 0}
+                            className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-[12px] text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#17304a] dark:hover:bg-[#0b2034]"
+                          >
+                            −
+                          </button>
+
+                          <span className="flex w-5 items-center justify-center text-[10px] font-medium text-slate-700 dark:text-slate-200">
+                            {item.qty}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => updateProductQty(index, 1)}
+                            className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-[12px] text-slate-500 transition hover:bg-slate-50 dark:border-[#17304a] dark:hover:bg-[#0b2034]"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
+                    ))}
+                  </div>
 
-                      <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => updateProductQty(index, -1)}
-                          className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-[#17304a]"
-                        >
-                          −
-                        </button>
+                  {/* Total - stays fixed below scroll area */}
+                  <div className="flex h-[32px] items-center justify-between bg-slate-50 px-3 dark:bg-[#0b2034]">
+                    <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-200">
+                      Total
+                    </span>
 
-                        <span className="w-5 text-center text-[10px]">
-                          {item.qty}
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() => updateProductQty(index, 1)}
-                          className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-[#17304a]"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="flex items-center justify-between bg-slate-50 px-3 py-2.5 dark:bg-[#0b2034]">
-                    <span className="text-[10px] font-semibold">Total</span>
-
-                    <span className="text-[11px] font-bold">{totalQty}</span>
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-white">
+                      {totalQty}
+                    </span>
                   </div>
                 </div>
 
+                {/* Total Estimated Value */}
                 <div className="mt-3">
                   <FormInput
                     label="Total Est. Value *"
@@ -2715,6 +2732,7 @@ function NewOpportunityPage({
                   />
                 </div>
 
+                {/* Purchase Timeline */}
                 <div className="mt-3">
                   <FormSelect
                     label="Purchase Timeline *"
