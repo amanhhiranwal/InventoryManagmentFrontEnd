@@ -2304,7 +2304,7 @@ function NewOpportunityPage({
 
   const [purchaseTimeline, setPurchaseTimeline] = useState("");
 
-  const [leadSource, setLeadSource] = useState("Website");
+  const [leadSource, setLeadSource] = useState("Marketing");
 
   const [assignedTo, setAssignedTo] = useState("");
 
@@ -2510,41 +2510,53 @@ function NewOpportunityPage({
                 icon={<FiMapPin size={17} />}
                 title="Organization Details"
               >
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <FormInput
-                    label="Office Address *"
-                    value={officeAddress}
-                    onChange={setOfficeAddress}
-                    placeholder="42, MG Road, Building A, Suite 304"
-                  />
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
+                  {/* First Row */}
+                  <div className="md:col-span-3">
+                    <FormInput
+                      label="Office Address *"
+                      value={officeAddress}
+                      onChange={setOfficeAddress}
+                      placeholder="42, MG Road, Building A, Suite 304"
+                    />
+                  </div>
 
-                  <FormInput
-                    label="City *"
-                    value={city}
-                    onChange={setCity}
-                    placeholder="Bengaluru"
-                  />
+                  <div className="md:col-span-3">
+                    <FormInput
+                      label="City *"
+                      value={city}
+                      onChange={setCity}
+                      placeholder="Bengaluru"
+                    />
+                  </div>
 
-                  <FormInput
-                    label="State / Province *"
-                    value={state}
-                    onChange={setState}
-                    placeholder="Karnataka"
-                  />
+                  {/* Second Row */}
+                  <div className="md:col-span-2">
+                    <FormInput
+                      label="State / Province *"
+                      value={state}
+                      onChange={setState}
+                      placeholder="Karnataka"
+                    />
+                  </div>
 
-                  <FormInput
-                    label="PIN / ZIP Code *"
-                    value={pinCode}
-                    onChange={setPinCode}
-                    placeholder="560001"
-                  />
+                  <div className="md:col-span-2">
+                    <FormInput
+                      label="PIN / ZIP Code *"
+                      value={pinCode}
+                      onChange={setPinCode}
+                      placeholder="560001"
+                    />
+                  </div>
 
-                  <FormInput
-                    label="Country *"
-                    value={country}
-                    onChange={setCountry}
-                    placeholder="India"
-                  />
+                  <div className="md:col-span-2">
+                    <FormInput
+                      label="Country *"
+                      value={country}
+                      onChange={setCountry}
+                      placeholder="India"
+                    />
+                  </div>
                 </div>
               </FormSection>
 
@@ -2639,8 +2651,8 @@ function NewOpportunityPage({
 
             <div className="space-y-3">
               {/* =================================================
-                  PRODUCT INTEREST
-              ================================================= */}
+                      PRODUCT INTEREST
+                  ================================================= */}
 
               <FormSection
                 icon={<FiShoppingCart size={17} />}
@@ -2650,61 +2662,78 @@ function NewOpportunityPage({
                   Product Categories
                 </p>
 
+                {/* Product Categories */}
                 <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-[#17304a]">
-                  {productItems.map((item, index) => (
-                    <div
-                      key={item.name}
-                      className="flex items-center justify-between border-b border-slate-100 px-3 py-2.5 last:border-b-0 dark:border-[#17304a]"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={item.qty > 0}
-                          onChange={() =>
-                            updateProductQty(
-                              index,
-                              item.qty > 0 ? -item.qty : 1,
-                            )
-                          }
-                          className="h-3.5 w-3.5 shrink-0"
-                        />
+                  {/* 
+                    Show 4 products at a time.
+                    Additional products can be accessed using
+                    the vertical scrollbar.
+                  */}
+                  <div className="max-h-[168px] overflow-y-auto">
+                    {productItems.map((item, index) => (
+                      <div
+                        key={item.name}
+                        className="flex min-h-[42px] items-center justify-between border-b border-slate-100 px-3 py-2.5 last:border-b-0 dark:border-[#17304a]"
+                      >
+                        {/* Product Name */}
+                        <div className="flex min-w-0 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={item.qty > 0}
+                            onChange={() =>
+                              updateProductQty(
+                                index,
+                                item.qty > 0 ? -item.qty : 1,
+                              )
+                            }
+                            className="h-3.5 w-3.5 shrink-0 cursor-pointer"
+                          />
 
-                        <span className="truncate text-[10px] font-medium">
-                          {item.name}
-                        </span>
+                          <span className="truncate text-[10px] font-medium text-slate-700 dark:text-slate-200">
+                            {item.name}
+                          </span>
+                        </div>
+
+                        {/* Quantity Controls */}
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => updateProductQty(index, -1)}
+                            disabled={item.qty === 0}
+                            className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-[12px] text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#17304a] dark:hover:bg-[#0b2034]"
+                          >
+                            −
+                          </button>
+
+                          <span className="flex w-5 items-center justify-center text-[10px] font-medium text-slate-700 dark:text-slate-200">
+                            {item.qty}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => updateProductQty(index, 1)}
+                            className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-[12px] text-slate-500 transition hover:bg-slate-50 dark:border-[#17304a] dark:hover:bg-[#0b2034]"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
+                    ))}
+                  </div>
 
-                      <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => updateProductQty(index, -1)}
-                          className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-[#17304a]"
-                        >
-                          −
-                        </button>
+                  {/* Total - stays fixed below scroll area */}
+                  <div className="flex h-[32px] items-center justify-between bg-slate-50 px-3 dark:bg-[#0b2034]">
+                    <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-200">
+                      Total
+                    </span>
 
-                        <span className="w-5 text-center text-[10px]">
-                          {item.qty}
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() => updateProductQty(index, 1)}
-                          className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-[#17304a]"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="flex items-center justify-between bg-slate-50 px-3 py-2.5 dark:bg-[#0b2034]">
-                    <span className="text-[10px] font-semibold">Total</span>
-
-                    <span className="text-[11px] font-bold">{totalQty}</span>
+                    <span className="text-[11px] font-bold text-slate-700 dark:text-white">
+                      {totalQty}
+                    </span>
                   </div>
                 </div>
 
+                {/* Total Estimated Value */}
                 <div className="mt-3">
                   <FormInput
                     label="Total Est. Value *"
@@ -2715,6 +2744,7 @@ function NewOpportunityPage({
                   />
                 </div>
 
+                {/* Purchase Timeline */}
                 <div className="mt-3">
                   <FormSelect
                     label="Purchase Timeline *"
@@ -2743,14 +2773,7 @@ function NewOpportunityPage({
                   <FormSelect
                     label="Lead Source *"
                     value={leadSource}
-                    options={[
-                      "Website",
-                      "Referral",
-                      "Email",
-                      "Phone",
-                      "Exhibition",
-                      "Partner",
-                    ]}
+                    options={["Marketing", "Cold Calling", "In-bound"]}
                     onChange={setLeadSource}
                   />
 
@@ -2761,30 +2784,35 @@ function NewOpportunityPage({
                     onChange={setAssignedTo}
                   />
 
+                  {/* Priority */}
                   <div>
                     <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
                       Priority
                     </label>
 
                     <div className="flex gap-2">
-                      {(["High", "Medium", "Low"] as Priority[]).map((item) => (
-                        <button
-                          type="button"
-                          key={item}
-                          onClick={() => setPriority(item)}
-                          className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${
-                            priority === item
-                              ? item === "High"
-                                ? "bg-rose-50 text-rose-500"
-                                : item === "Medium"
-                                  ? "bg-amber-50 text-amber-600"
-                                  : "bg-slate-100 text-slate-600"
-                              : "bg-slate-100 text-slate-500 dark:bg-[#10243a]"
-                          }`}
-                        >
-                          {item}
-                        </button>
-                      ))}
+                      {(["High", "Medium", "Low"] as Priority[]).map((item) => {
+                        const isSelected = priority === item;
+
+                        return (
+                          <button
+                            type="button"
+                            key={item}
+                            onClick={() => setPriority(item)}
+                            className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${
+                              isSelected
+                                ? item === "High"
+                                  ? "border border-rose-100 bg-rose-50 text-rose-500 shadow-sm"
+                                  : item === "Medium"
+                                    ? "border border-amber-100 bg-amber-50 text-amber-600 shadow-sm"
+                                    : "border border-slate-200 bg-white text-slate-700 shadow-sm"
+                                : "border border-transparent bg-slate-100 text-slate-500 dark:bg-[#10243a] dark:text-slate-400"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
