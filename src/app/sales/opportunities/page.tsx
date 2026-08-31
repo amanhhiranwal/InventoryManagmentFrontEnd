@@ -2510,41 +2510,53 @@ function NewOpportunityPage({
                 icon={<FiMapPin size={17} />}
                 title="Organization Details"
               >
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <FormInput
-                    label="Office Address *"
-                    value={officeAddress}
-                    onChange={setOfficeAddress}
-                    placeholder="42, MG Road, Building A, Suite 304"
-                  />
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
+                  {/* First Row */}
+                  <div className="md:col-span-3">
+                    <FormInput
+                      label="Office Address *"
+                      value={officeAddress}
+                      onChange={setOfficeAddress}
+                      placeholder="42, MG Road, Building A, Suite 304"
+                    />
+                  </div>
 
-                  <FormInput
-                    label="City *"
-                    value={city}
-                    onChange={setCity}
-                    placeholder="Bengaluru"
-                  />
+                  <div className="md:col-span-3">
+                    <FormInput
+                      label="City *"
+                      value={city}
+                      onChange={setCity}
+                      placeholder="Bengaluru"
+                    />
+                  </div>
 
-                  <FormInput
-                    label="State / Province *"
-                    value={state}
-                    onChange={setState}
-                    placeholder="Karnataka"
-                  />
+                  {/* Second Row */}
+                  <div className="md:col-span-2">
+                    <FormInput
+                      label="State / Province *"
+                      value={state}
+                      onChange={setState}
+                      placeholder="Karnataka"
+                    />
+                  </div>
 
-                  <FormInput
-                    label="PIN / ZIP Code *"
-                    value={pinCode}
-                    onChange={setPinCode}
-                    placeholder="560001"
-                  />
+                  <div className="md:col-span-2">
+                    <FormInput
+                      label="PIN / ZIP Code *"
+                      value={pinCode}
+                      onChange={setPinCode}
+                      placeholder="560001"
+                    />
+                  </div>
 
-                  <FormInput
-                    label="Country *"
-                    value={country}
-                    onChange={setCountry}
-                    placeholder="India"
-                  />
+                  <div className="md:col-span-2">
+                    <FormInput
+                      label="Country *"
+                      value={country}
+                      onChange={setCountry}
+                      placeholder="India"
+                    />
+                  </div>
                 </div>
               </FormSection>
 
