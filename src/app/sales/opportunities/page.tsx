@@ -2784,30 +2784,35 @@ function NewOpportunityPage({
                     onChange={setAssignedTo}
                   />
 
+                  {/* Priority */}
                   <div>
                     <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
                       Priority
                     </label>
 
                     <div className="flex gap-2">
-                      {(["High", "Medium", "Low"] as Priority[]).map((item) => (
-                        <button
-                          type="button"
-                          key={item}
-                          onClick={() => setPriority(item)}
-                          className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${
-                            priority === item
-                              ? item === "High"
-                                ? "bg-rose-50 text-rose-500"
-                                : item === "Medium"
-                                  ? "bg-amber-50 text-amber-600"
-                                  : "bg-slate-100 text-slate-600"
-                              : "bg-slate-100 text-slate-500 dark:bg-[#10243a]"
-                          }`}
-                        >
-                          {item}
-                        </button>
-                      ))}
+                      {(["High", "Medium", "Low"] as Priority[]).map((item) => {
+                        const isSelected = priority === item;
+
+                        return (
+                          <button
+                            type="button"
+                            key={item}
+                            onClick={() => setPriority(item)}
+                            className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${
+                              isSelected
+                                ? item === "High"
+                                  ? "border border-rose-100 bg-rose-50 text-rose-500 shadow-sm"
+                                  : item === "Medium"
+                                    ? "border border-amber-100 bg-amber-50 text-amber-600 shadow-sm"
+                                    : "border border-slate-200 bg-white text-slate-700 shadow-sm"
+                                : "border border-transparent bg-slate-100 text-slate-500 dark:bg-[#10243a] dark:text-slate-400"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
