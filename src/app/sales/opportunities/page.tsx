@@ -2304,7 +2304,7 @@ function NewOpportunityPage({
 
   const [purchaseTimeline, setPurchaseTimeline] = useState("");
 
-  const [leadSource, setLeadSource] = useState("Website");
+  const [leadSource, setLeadSource] = useState("Marketing");
 
   const [assignedTo, setAssignedTo] = useState("");
 
@@ -2773,14 +2773,7 @@ function NewOpportunityPage({
                   <FormSelect
                     label="Lead Source *"
                     value={leadSource}
-                    options={[
-                      "Website",
-                      "Referral",
-                      "Email",
-                      "Phone",
-                      "Exhibition",
-                      "Partner",
-                    ]}
+                    options={["Marketing", "Cold Calling", "In-bound"]}
                     onChange={setLeadSource}
                   />
 
