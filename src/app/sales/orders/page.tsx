@@ -2614,15 +2614,11 @@ export default function OrdersListPage() {
                                 }
                                 className="w-full h-9 rounded-md border border-slate-200 px-2 text-xs bg-white"
                               >
-                                <option value={0}>0%</option>
-
-                                <option value={5}>5%</option>
-
-                                <option value={12}>12%</option>
-
                                 <option value={18}>18%</option>
 
-                                <option value={28}>28%</option>
+                                <option value={15}>15%</option>
+
+                                <option value={12}>12%</option>
                               </select>
                             </div>
                           </div>
