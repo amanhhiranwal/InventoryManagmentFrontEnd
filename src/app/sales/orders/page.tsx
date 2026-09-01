@@ -1280,7 +1280,7 @@ export default function OrdersListPage() {
                   </div>
                 </div>
               </div>
-              
+
               {/* =================================================
                 CUSTOMER INFORMATION
             ================================================= */}
@@ -1329,7 +1329,7 @@ export default function OrdersListPage() {
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
-                      Organization:
+                      Organization Name:
                     </span>
 
                     <input
@@ -1376,13 +1376,13 @@ export default function OrdersListPage() {
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
-                      CIN:
+                      COI Number:
                     </span>
 
                     <input
                       value={newOrder.cin}
                       onChange={(e) => updateNewOrder("cin", e.target.value)}
-                      placeholder="CIN number"
+                      placeholder="COI number"
                       className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
                   </div>
