@@ -133,6 +133,8 @@ const CUSTOMER_TYPES = [
   "Corporate",
 ];
 
+const COUNTRIES = ["India", "United States", "China", "Malaysia", "Indonesia"];
+
 const STATES = [
   "Delhi",
   "Maharashtra",
@@ -1543,10 +1545,15 @@ export default function OrdersListPage() {
                         >
                           <option value="">Select here</option>
 
-                          <option value="India">India</option>
+                          {COUNTRIES.map((country) => (
+                            <option key={country} value={country}>
+                              {country}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
+                      {/* State / Province */}
                       <div>
                         <label className="block text-[11px] text-slate-500 mb-1.5">
                           State / Province *
@@ -1667,10 +1674,15 @@ export default function OrdersListPage() {
                         >
                           <option value="">Select here</option>
 
-                          <option value="India">India</option>
+                          {COUNTRIES.map((country) => (
+                            <option key={country} value={country}>
+                              {country}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
+                      {/* State / Province */}
                       <div>
                         <label className="block text-[11px] text-slate-500 mb-1.5">
                           State / Province *
