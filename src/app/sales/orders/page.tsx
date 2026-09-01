@@ -1159,8 +1159,8 @@ export default function OrdersListPage() {
 
             <div className="bg-white rounded-xl p-5">
               {/* =================================================
-                ORDER INFORMATION
-            ================================================= */}
+                      ORDER INFORMATION
+                  ================================================= */}
 
               <div>
                 <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
@@ -1176,7 +1176,9 @@ export default function OrdersListPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">
-                  {/* Sales Order ID */}
+                  {/* =================================================
+                          ROW 1 - SALES ORDER ID
+                      ================================================= */}
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
@@ -1188,7 +1190,9 @@ export default function OrdersListPage() {
                     </span>
                   </div>
 
-                  {/* Opportunity ID */}
+                  {/* =================================================
+                          ROW 1 - OPPORTUNITY ID
+                      ================================================= */}
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
@@ -1205,7 +1209,9 @@ export default function OrdersListPage() {
                     />
                   </div>
 
-                  {/* Order Date */}
+                  {/* =================================================
+                          ROW 2 - ORDER DATE
+                      ================================================= */}
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
@@ -1217,7 +1223,15 @@ export default function OrdersListPage() {
                     </span>
                   </div>
 
-                  {/* Assigned To */}
+                  {/* =================================================
+                      ROW 2 - EMPTY COLUMN
+                      ================================================= */}
+
+                  <div />
+
+                  {/* =================================================
+                          ROW 3 - ASSIGNED TO
+                      ================================================= */}
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
@@ -1240,7 +1254,9 @@ export default function OrdersListPage() {
                     </div>
                   </div>
 
-                  {/* Sales Executive */}
+                  {/* =================================================
+                          ROW 3 - SALES EXECUTIVE
+                      ================================================= */}
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
@@ -1313,7 +1329,7 @@ export default function OrdersListPage() {
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
-                      Organization:
+                      Organization Name:
                     </span>
 
                     <input
@@ -1360,13 +1376,13 @@ export default function OrdersListPage() {
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
-                      CIN:
+                      COI Number:
                     </span>
 
                     <input
                       value={newOrder.cin}
                       onChange={(e) => updateNewOrder("cin", e.target.value)}
-                      placeholder="CIN number"
+                      placeholder="COI number"
                       className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
                   </div>
