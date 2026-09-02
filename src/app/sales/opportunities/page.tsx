@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 import {
@@ -15,13 +15,11 @@ import {
   FiMoreVertical,
   FiMessageSquare,
   FiX,
-  FiChevronDown,
   FiChevronLeft,
   FiChevronRight,
   FiCalendar,
   FiMapPin,
   FiUser,
-  FiBuilding,
   FiMail,
   FiCheckCircle,
   FiClock,
@@ -30,7 +28,6 @@ import {
   FiUploadCloud,
   FiEdit2,
   FiAlertCircle,
-  FiExternalLink,
 } from "react-icons/fi";
 
 interface ProductItem {
@@ -431,32 +428,35 @@ export default function OpportunitiesPage() {
 
   const pageMenuRef = useRef<HTMLDivElement>(null);
 
-  const fetchOpportunities = async (silent = false) => {
-    try {
-      if (silent) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
+  const fetchOpportunities = useCallback(
+    async (silent = false) => {
+      try {
+        if (silent) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
+
+        const res = await api.get("/api/v1/leads/");
+
+        if (res.data?.success) {
+          const list = Array.isArray(res.data.data) ? res.data.data : [];
+
+          setOpps(list.map(mapLeadToOpportunity));
+        } else {
+          setOpps([]);
+        }
+      } catch (error) {
+        console.error("Failed to fetch opportunities:", error);
+
+        addToast("Unable to load opportunities.", "error");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      const res = await api.get("/api/v1/leads/");
-
-      if (res.data?.success) {
-        const list = Array.isArray(res.data.data) ? res.data.data : [];
-
-        setOpps(list.map(mapLeadToOpportunity));
-      } else {
-        setOpps([]);
-      }
-    } catch (error) {
-      console.error("Failed to fetch opportunities:", error);
-
-      addToast("Unable to load opportunities.", "error");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+    },
+    [addToast],
+  );
 
   const fetchSalesUsers = async () => {
     try {
@@ -488,7 +488,7 @@ export default function OpportunitiesPage() {
   useEffect(() => {
     fetchOpportunities();
     fetchSalesUsers();
-  }, []);
+  }, [fetchOpportunities]);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
