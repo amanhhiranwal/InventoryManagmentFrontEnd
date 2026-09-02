@@ -407,7 +407,7 @@ export default function OrdersListPage() {
     orders.forEach((order) => {
       const status = normalizeStatus(order.status);
 
-      if (status in counts && status !== "All Orders") {
+      if (status in counts) {
         counts[status as StatusFilter]++;
       }
     });
