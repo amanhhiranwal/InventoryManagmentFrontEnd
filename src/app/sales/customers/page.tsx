@@ -726,10 +726,7 @@ export default function CustomersPage() {
     const normalized: ContactDrawerCustomer = {
       id: customer.id,
       name: customer.name,
-      contactName:
-        "contactName" in customer
-          ? customer.contactName || customer.name
-          : customer.contactName || customer.name,
+      contactName: customer.contactName || customer.name,
       email: customer.email,
       phone: customer.phone,
       company: "company" in customer ? customer.company : customer.name,
