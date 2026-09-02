@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
-import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import { getUsersApi, User } from "@/features/users/api/users.api";
@@ -28,7 +27,6 @@ export default function CreateLeadPage() {
   const { addToast } = useUIStore();
 
   const [users, setUsers] = useState<User[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Customer Information
@@ -63,7 +61,6 @@ export default function CreateLeadPage() {
 
   const fetchUsersList = useCallback(async () => {
     try {
-      setLoadingUsers(true);
       const res = await getUsersApi();
       const uData = res.data || [];
       setUsers(uData);
@@ -72,8 +69,6 @@ export default function CreateLeadPage() {
       }
     } catch (err) {
       console.error("Failed to load users:", err);
-    } finally {
-      setLoadingUsers(false);
     }
   }, []);
 
