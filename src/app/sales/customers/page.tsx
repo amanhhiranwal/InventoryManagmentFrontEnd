@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "@/lib/axios";
 import { useRouter } from "next/navigation";
 import Card from "@/components/ui/Card";
@@ -13,16 +13,12 @@ import CustomerContactDrawer, {
 } from "@/components/ui/CustomerContactDrawer";
 
 import { useUIStore } from "@/lib/store/ui.store";
-import {
-  createLeadApi,
-  getLeadsApi,
-} from "@/features/workflows/api/workflows.api";
+import { createLeadApi } from "@/features/workflows/api/workflows.api";
 import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
 
 import {
   FiPlus,
   FiSearch,
-  FiFilter,
   FiCalendar,
   FiChevronDown,
   FiUserPlus,
@@ -274,7 +270,7 @@ export default function CustomersPage() {
   // --------------------------------------------------
 
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [invoiceCustomer, setInvoiceCustomer] = useState<Customer | null>(null);
+  const [invoiceCustomer] = useState<Customer | null>(null);
 
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([
     {
@@ -285,7 +281,7 @@ export default function CustomersPage() {
     },
   ]);
 
-  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceNumber] = useState("");
 
   const [showPrintModal, setShowPrintModal] = useState(false);
 
@@ -303,29 +299,29 @@ export default function CustomersPage() {
   // Fetch customers
   // --------------------------------------------------
 
-  const fetchCustomers = async () => {
-    try {
-      setLoading(true);
+  const fetchCustomers = useCallback(async () => {
+  try {
+    setLoading(true);
 
-      const res = await api.get("/api/v1/customers/");
+    const res = await api.get("/api/v1/customers/");
 
-      const list = Array.isArray(res.data?.data)
-        ? res.data.data
-        : Array.isArray(res.data)
-          ? res.data
-          : [];
+    const list = Array.isArray(res.data?.data)
+      ? res.data.data
+      : Array.isArray(res.data)
+        ? res.data
+        : [];
 
-      setCustomers(
-        list.map((item: any, index: number) => normalizeCustomer(item, index)),
-      );
-    } catch (error) {
-      console.error("Failed to fetch customers:", error);
-      setCustomers([]);
-      addToast("Failed to load customers.", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
+    setCustomers(
+      list.map((item: any, index: number) => normalizeCustomer(item, index)),
+    );
+  } catch (error) {
+    console.error("Failed to fetch customers:", error);
+    setCustomers([]);
+    addToast("Failed to load customers.", "error");
+  } finally {
+    setLoading(false);
+  }
+}, [addToast]);
 
   // --------------------------------------------------
   // Page refresh
@@ -357,7 +353,7 @@ export default function CustomersPage() {
     };
 
     loadRoles();
-  }, []);
+  }, [fetchCustomers]);
 
   // --------------------------------------------------
   // Filter options
@@ -460,11 +456,6 @@ export default function CustomersPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [search, dateFrom, dateTo, customerType, assignedTo, status, stateFilter]);
-
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredCustomers.length / PAGE_SIZE),
-  );
 
   const paginatedCustomers = filteredCustomers.slice(
     (currentPage - 1) * PAGE_SIZE,
@@ -877,23 +868,6 @@ ${convertDesc.trim()}`,
   // Invoice
   // --------------------------------------------------
 
-  const openInvoiceBuilder = (customer: Customer) => {
-    setInvoiceCustomer(customer);
-
-    setInvoiceNumber(`INV-${Date.now().toString().slice(-6)}`);
-
-    setInvoiceItems([
-      {
-        description: "Product / Service Supply",
-        qty: 1,
-        price: 50000,
-        gstRate: customer.isRegistered ? 18 : 0,
-      },
-    ]);
-
-    setShowInvoiceModal(true);
-  };
-
   const addInvoiceRow = () => {
     setInvoiceItems((prev) => [
       ...prev,
@@ -972,42 +946,8 @@ ${convertDesc.trim()}`,
   };
 
   // --------------------------------------------------
-  // Delete
-  // --------------------------------------------------
-
-  const handleDeleteCustomer = async (id: string) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this customer profile?",
-    );
-
-    if (!confirmed) return;
-
-    try {
-      const res = await api.delete(`/api/v1/customers/${id}`);
-
-      if (res.data?.success) {
-        addToast("Customer profile removed successfully.", "success");
-
-        fetchCustomers();
-      }
-    } catch (error) {
-      console.error(error);
-
-      addToast("Failed to delete customer.", "error");
-    }
-  };
-
-  // --------------------------------------------------
   // KPI
   // --------------------------------------------------
-
-  const activeCount = customers.filter(
-    (customer) => customer.status === "Active",
-  ).length;
-
-  const gstRegisteredCount = customers.filter(
-    (customer) => customer.isRegistered,
-  ).length;
 
   const activeFilterCount =
     (dateFrom || dateTo ? 1 : 0) +
