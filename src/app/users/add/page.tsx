@@ -9,7 +9,7 @@ import { getCompaniesApi, Company } from "@/features/companies/api/companies.api
 import { getLocationsApi, Location } from "@/features/locations/api/locations.api";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
-import { FiArrowLeft, FiUser, FiMail, FiLock, FiPhone, FiCreditCard, FiMapPin, FiBriefcase, FiShield } from "react-icons/fi";
+import { FiArrowLeft, FiUser, FiBriefcase, FiShield } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 import Link from "next/link";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";

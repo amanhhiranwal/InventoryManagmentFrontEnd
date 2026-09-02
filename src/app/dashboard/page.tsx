@@ -10,8 +10,6 @@ import {
   type SetStateAction,
 } from "react";
 
-import Link from "next/link";
-
 import { FiDownload, FiEye, FiMoreVertical, FiRefreshCw } from "react-icons/fi";
 
 import { getLeadsApi, Lead } from "@/features/workflows/api/workflows.api";
@@ -1222,7 +1220,7 @@ export default function Dashboard() {
      * Keep the downloaded funnel visually consistent
      * with the funnel shown in the dashboard.
      */
-    const funnelWidth = 500;
+    // const funnelWidth = 500;
     const stageHeight = 58;
 
     const topWidths = [500, 420, 340, 260, 180];
@@ -1721,7 +1719,7 @@ export default function Dashboard() {
     );
 
     addToast("Sales activity chart downloaded.", "success");
-  }, [displayedOrders, addToast]);
+  }, [recentOrders, addToast]);
 
   /* ==========================================================
      RECENT ORDERS CHART DOWNLOAD
@@ -1871,7 +1869,7 @@ export default function Dashboard() {
     );
 
     addToast("Orders chart downloaded.", "success");
-  }, [recentOrders, addToast]);
+  }, [recentOrders, displayedOrders, addToast]);
 
   /* ==========================================================
      LOADING

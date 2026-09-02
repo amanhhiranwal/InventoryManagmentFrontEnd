@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "@/lib/axios";
 import { useRouter } from "next/navigation";
 import Card from "@/components/ui/Card";
@@ -13,16 +13,12 @@ import CustomerContactDrawer, {
 } from "@/components/ui/CustomerContactDrawer";
 
 import { useUIStore } from "@/lib/store/ui.store";
-import {
-  createLeadApi,
-  getLeadsApi,
-} from "@/features/workflows/api/workflows.api";
+import { createLeadApi } from "@/features/workflows/api/workflows.api";
 import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
 
 import {
   FiPlus,
   FiSearch,
-  FiFilter,
   FiCalendar,
   FiChevronDown,
   FiUserPlus,
@@ -274,7 +270,7 @@ export default function CustomersPage() {
   // --------------------------------------------------
 
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [invoiceCustomer, setInvoiceCustomer] = useState<Customer | null>(null);
+  const [invoiceCustomer] = useState<Customer | null>(null);
 
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([
     {
@@ -285,7 +281,7 @@ export default function CustomersPage() {
     },
   ]);
 
-  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceNumber] = useState("");
 
   const [showPrintModal, setShowPrintModal] = useState(false);
 
@@ -303,7 +299,7 @@ export default function CustomersPage() {
   // Fetch customers
   // --------------------------------------------------
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -325,7 +321,7 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [addToast]);
 
   // --------------------------------------------------
   // Page refresh
@@ -357,7 +353,7 @@ export default function CustomersPage() {
     };
 
     loadRoles();
-  }, []);
+  }, [fetchCustomers]);
 
   // --------------------------------------------------
   // Filter options
@@ -365,13 +361,21 @@ export default function CustomersPage() {
 
   const assignedOptions = useMemo(() => {
     return Array.from(
-      new Set(customers.map((customer) => customer.assignedTo).filter(Boolean)),
+      new Set(
+        customers
+          .map((customer) => customer.assignedTo)
+          .filter((value): value is string => Boolean(value)),
+      ),
     );
   }, [customers]);
 
   const stateOptions = useMemo(() => {
     return Array.from(
-      new Set(customers.map((customer) => customer.state).filter(Boolean)),
+      new Set(
+        customers
+          .map((customer) => customer.state)
+          .filter((value): value is string => Boolean(value)),
+      ),
     );
   }, [customers]);
 
@@ -460,11 +464,6 @@ export default function CustomersPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [search, dateFrom, dateTo, customerType, assignedTo, status, stateFilter]);
-
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredCustomers.length / PAGE_SIZE),
-  );
 
   const paginatedCustomers = filteredCustomers.slice(
     (currentPage - 1) * PAGE_SIZE,
@@ -735,10 +734,7 @@ export default function CustomersPage() {
     const normalized: ContactDrawerCustomer = {
       id: customer.id,
       name: customer.name,
-      contactName:
-        "contactName" in customer
-          ? customer.contactName || customer.name
-          : customer.contactName || customer.name,
+      contactName: customer.contactName || customer.name,
       email: customer.email,
       phone: customer.phone,
       company: "company" in customer ? customer.company : customer.name,
@@ -877,23 +873,6 @@ ${convertDesc.trim()}`,
   // Invoice
   // --------------------------------------------------
 
-  const openInvoiceBuilder = (customer: Customer) => {
-    setInvoiceCustomer(customer);
-
-    setInvoiceNumber(`INV-${Date.now().toString().slice(-6)}`);
-
-    setInvoiceItems([
-      {
-        description: "Product / Service Supply",
-        qty: 1,
-        price: 50000,
-        gstRate: customer.isRegistered ? 18 : 0,
-      },
-    ]);
-
-    setShowInvoiceModal(true);
-  };
-
   const addInvoiceRow = () => {
     setInvoiceItems((prev) => [
       ...prev,
@@ -972,42 +951,8 @@ ${convertDesc.trim()}`,
   };
 
   // --------------------------------------------------
-  // Delete
-  // --------------------------------------------------
-
-  const handleDeleteCustomer = async (id: string) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this customer profile?",
-    );
-
-    if (!confirmed) return;
-
-    try {
-      const res = await api.delete(`/api/v1/customers/${id}`);
-
-      if (res.data?.success) {
-        addToast("Customer profile removed successfully.", "success");
-
-        fetchCustomers();
-      }
-    } catch (error) {
-      console.error(error);
-
-      addToast("Failed to delete customer.", "error");
-    }
-  };
-
-  // --------------------------------------------------
   // KPI
   // --------------------------------------------------
-
-  const activeCount = customers.filter(
-    (customer) => customer.status === "Active",
-  ).length;
-
-  const gstRegisteredCount = customers.filter(
-    (customer) => customer.isRegistered,
-  ).length;
 
   const activeFilterCount =
     (dateFrom || dateTo ? 1 : 0) +
