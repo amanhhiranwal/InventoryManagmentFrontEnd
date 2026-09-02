@@ -928,7 +928,7 @@ export default function LeadsPage() {
   };
 
   const applyFilters = () => {
-    let next = {
+    const next = {
       ...draftFilters,
     };
 
