@@ -300,28 +300,28 @@ export default function CustomersPage() {
   // --------------------------------------------------
 
   const fetchCustomers = useCallback(async () => {
-  try {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const res = await api.get("/api/v1/customers/");
+      const res = await api.get("/api/v1/customers/");
 
-    const list = Array.isArray(res.data?.data)
-      ? res.data.data
-      : Array.isArray(res.data)
-        ? res.data
-        : [];
+      const list = Array.isArray(res.data?.data)
+        ? res.data.data
+        : Array.isArray(res.data)
+          ? res.data
+          : [];
 
-    setCustomers(
-      list.map((item: any, index: number) => normalizeCustomer(item, index)),
-    );
-  } catch (error) {
-    console.error("Failed to fetch customers:", error);
-    setCustomers([]);
-    addToast("Failed to load customers.", "error");
-  } finally {
-    setLoading(false);
-  }
-}, [addToast]);
+      setCustomers(
+        list.map((item: any, index: number) => normalizeCustomer(item, index)),
+      );
+    } catch (error) {
+      console.error("Failed to fetch customers:", error);
+      setCustomers([]);
+      addToast("Failed to load customers.", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
 
   // --------------------------------------------------
   // Page refresh
@@ -361,13 +361,21 @@ export default function CustomersPage() {
 
   const assignedOptions = useMemo(() => {
     return Array.from(
-      new Set(customers.map((customer) => customer.assignedTo).filter(Boolean)),
+      new Set(
+        customers
+          .map((customer) => customer.assignedTo)
+          .filter((value): value is string => Boolean(value)),
+      ),
     );
   }, [customers]);
 
   const stateOptions = useMemo(() => {
     return Array.from(
-      new Set(customers.map((customer) => customer.state).filter(Boolean)),
+      new Set(
+        customers
+          .map((customer) => customer.state)
+          .filter((value): value is string => Boolean(value)),
+      ),
     );
   }, [customers]);
 
