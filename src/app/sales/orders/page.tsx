@@ -20,12 +20,10 @@ import {
   FiCalendar,
   FiTrash2,
   FiMinus,
-  FiPlusCircle,
   FiBox,
   FiMapPin,
   FiCamera,
   FiUpload,
-  FiChevronDown,
 } from "react-icons/fi";
 
 /* =========================================================
@@ -982,18 +980,6 @@ export default function OrdersListPage() {
   const removeSelectedProduct = (id: string) => {
     setSelectedProducts((current) => current.filter((item) => item.id !== id));
   };
-
-  const selectedProductsTotal = selectedProducts.reduce((sum, item) => {
-    const subtotal = item.price * item.quantity;
-
-    const discount = subtotal * (item.discount / 100);
-
-    const taxable = subtotal - discount;
-
-    const tax = taxable * (item.tax / 100);
-
-    return sum + taxable + tax;
-  }, 0);
 
   /* =======================================================
      CREATE SALES ORDER
