@@ -36,7 +36,7 @@ export interface LeadActivity {
 }
 
 export interface Lead {
-  id: string;
+  id: number | string;
   title: string;
   description?: string;
   status: string;
@@ -51,6 +51,28 @@ export interface Lead {
     qty: number;
     price: number;
   }>;
+
+  contact_name?: string;
+  organization_name?: string;
+  email?: string;
+  mobile_number?: string;
+  website?: string;
+  office_address?: string;
+  city?: string;
+  zip_code?: string;
+  country?: string;
+  gst_number?: string;
+  pan_number?: string;
+  coi_number?: string;
+  designation?: string;
+  remarks?: string;
+
+  customer_type_id?: number | string;
+  customer_type_name?: string;
+  state_id?: number | string;
+  state_name?: string;
+  lead_source_id?: number | string;
+  lead_source_name?: string;
 
   creator_id: string;
   creator_name: string;
@@ -107,6 +129,23 @@ export const createLeadApi = async (payload: {
   title: string;
   description?: string;
   status?: string;
+  contact_name?: string;
+  organization_name?: string;
+  email?: string;
+  mobile_number?: string;
+  website?: string;
+  office_address?: string;
+  city?: string;
+  zip_code?: string;
+  country?: string;
+  gst_number?: string;
+  pan_number?: string;
+  coi_number?: string;
+  designation?: string;
+  remarks?: string;
+  customer_type_id?: number | string;
+  state_id?: number | string;
+  lead_source_id?: number | string;
   assigned_to_id?: string;
 }): Promise<Lead> => {
   const { data } = await api.post("/api/v1/leads/", payload);
@@ -114,11 +153,29 @@ export const createLeadApi = async (payload: {
 };
 
 export const updateLeadApi = async (
-  leadId: string,
+  leadId: number | string,
   payload: {
     title?: string;
     description?: string;
     status?: string;
+    stage?: string;
+    contact_name?: string;
+    organization_name?: string;
+    email?: string;
+    mobile_number?: string;
+    website?: string;
+    office_address?: string;
+    city?: string;
+    zip_code?: string;
+    country?: string;
+    gst_number?: string;
+    pan_number?: string;
+    coi_number?: string;
+    designation?: string;
+    remarks?: string;
+    customer_type_id?: number | string;
+    state_id?: number | string;
+    lead_source_id?: number | string;
     assigned_to_id?: string;
   }
 ): Promise<Lead> => {

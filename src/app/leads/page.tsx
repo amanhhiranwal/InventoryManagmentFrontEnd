@@ -25,6 +25,8 @@ import {
 } from "@/features/workflows/api/workflows.api";
 
 import { getUsersApi, User } from "@/features/users/api/users.api";
+import { getCustomerTypesApi, CustomerTypeModel } from "@/features/inventory/api/inventory.api";
+import { getStatesApi, StateModel } from "@/features/locations/api/locations.api";
 
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
@@ -150,30 +152,9 @@ const EMPTY_FILTERS: LeadFilters = {
   state: "",
 };
 
-const CUSTOMER_TYPES = [
-  "Distributor",
-  "OEM",
-  "End Customer",
-  "Institution",
-  "Corporate",
-];
 
-const STATES = [
-  "Andhra Pradesh",
-  "Delhi",
-  "Gujarat",
-  "Haryana",
-  "Karnataka",
-  "Kerala",
-  "Madhya Pradesh",
-  "Maharashtra",
-  "Punjab",
-  "Rajasthan",
-  "Tamil Nadu",
-  "Telangana",
-  "Uttar Pradesh",
-  "West Bengal",
-];
+
+
 
 const LEAD_SOURCES = ["Marketing", "Cold Calling", "In-bound"];
 
@@ -286,12 +267,36 @@ function parseLeadDescription(description?: string): LeadDetails {
   return result;
 }
 
+function getLeadDetails(lead: Lead): LeadDetails {
+  const parsed = parseLeadDescription(lead.description);
+  return {
+    customerType: lead.customer_type_name || parsed.customerType || "",
+    contactName: lead.contact_name || parsed.contactName || "",
+    organizationName: lead.organization_name || parsed.organizationName || "",
+    website: lead.website || parsed.website || "",
+    address: lead.office_address || parsed.address || "",
+    city: lead.city || parsed.city || "",
+    state: lead.state_name || parsed.state || "",
+    zipCode: lead.zip_code || parsed.zipCode || "",
+    country: lead.country || parsed.country || "India",
+    gstNumber: lead.gst_number || parsed.gstNumber || "",
+    panNumber: lead.pan_number || parsed.panNumber || "",
+    coiNumber: lead.coi_number || parsed.coiNumber || "",
+    designation: lead.designation || parsed.designation || "",
+    mobileNumber: lead.mobile_number || parsed.mobileNumber || "",
+    email: lead.email || parsed.email || "",
+    leadSource: lead.lead_source_name || parsed.leadSource || "",
+    remarks: lead.remarks || parsed.remarks || "",
+    attachments: parsed.attachments || [],
+  };
+}
+
 function serializeLeadDetails(details: LeadDetails) {
   return `CRM_META:${JSON.stringify(details)}`;
 }
 
 function getLeadDisplayName(lead: Lead) {
-  const details = parseLeadDescription(lead.description);
+  const details = getLeadDetails(lead);
 
   return (
     details.contactName ||
@@ -302,9 +307,13 @@ function getLeadDisplayName(lead: Lead) {
 }
 
 function getLeadCompany(lead: Lead) {
-  const details = parseLeadDescription(lead.description);
+  const details = getLeadDetails(lead);
 
   return details.organizationName || lead.title?.match(/\((.*?)\)/)?.[1] || "—";
+}
+
+function getLeadState(lead: Lead) {
+  return getLeadDetails(lead).state || "—";
 }
 
 function getLeadCustomerType(lead: Lead) {
@@ -327,8 +336,9 @@ function formatDate(value?: string) {
   });
 }
 
-function formatLeadId(id: string) {
-  return `#LD-${id.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+function formatLeadId(id: number | string) {
+  const str = String(id);
+  return `#LD-${str.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
 }
 
 function getUserName(user: User) {
@@ -382,6 +392,10 @@ export default function LeadsPage() {
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [customerTypes, setCustomerTypes] = useState<string[]>([]);
+  const [customerTypesList, setCustomerTypesList] = useState<CustomerTypeModel[]>([]);
+  const [dbStates, setDbStates] = useState<string[]>([]);
+  const [statesList, setStatesList] = useState<StateModel[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -400,6 +414,18 @@ export default function LeadsPage() {
   const [draftFilters, setDraftFilters] = useState<LeadFilters>(EMPTY_FILTERS);
 
   const [showExcelModal, setShowExcelModal] = useState(false);
+  const [selectedIntegration, setSelectedIntegration] = useState("");
+  const [showIntegrationModal, setShowIntegrationModal] = useState(false);
+  const [integrationLead, setIntegrationLead] = useState<IntegrationLeadState>({
+    source: "",
+    contactName: "",
+    organizationName: "",
+    email: "",
+    mobileNumber: "",
+    website: "",
+    remarks: "",
+    assignedToId: "",
+  });
 
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [detailsLead, setDetailsLead] = useState<Lead | null>(null);
@@ -412,7 +438,7 @@ export default function LeadsPage() {
 
   const [form, setForm] = useState<LeadFormState>(EMPTY_FORM);
 
-  const [rowMenuLeadId, setRowMenuLeadId] = useState<string | null>(null);
+  const [rowMenuLeadId, setRowMenuLeadId] = useState<number | string | null>(null);
 
   /*
    * Pagination.
@@ -439,11 +465,10 @@ export default function LeadsPage() {
       setLoading(true);
 
       const data = await getLeadsApi();
-
       setLeads(data || []);
-    } catch (error) {
-      console.error(error);
-      addToast("Failed to load leads.", "error");
+    } catch (err) {
+      console.error(err);
+      addToast("Failed to load leads from system.", "error");
     } finally {
       setLoading(false);
     }
@@ -452,17 +477,44 @@ export default function LeadsPage() {
   const fetchUsers = useCallback(async () => {
     try {
       const response = await getUsersApi(1, 100);
-
-      setUsers(response.data || []);
+      if (response && Array.isArray(response.data)) {
+        setUsers(response.data);
+      }
     } catch (error) {
-      console.error(error);
+      console.error("Failed to load users:", error);
+    }
+  }, []);
+
+  const fetchCustomerTypes = useCallback(async () => {
+    try {
+      const response = await getCustomerTypesApi();
+      if (Array.isArray(response)) {
+        setCustomerTypesList(response);
+        setCustomerTypes(response.map((ct) => ct.name));
+      }
+    } catch (error) {
+      console.error("Failed to load customer types:", error);
+    }
+  }, []);
+
+  const fetchStates = useCallback(async () => {
+    try {
+      const response = await getStatesApi();
+      if (Array.isArray(response)) {
+        setStatesList(response);
+        setDbStates(response.map((st) => st.name));
+      }
+    } catch (error) {
+      console.error("Failed to load states:", error);
     }
   }, []);
 
   useEffect(() => {
     fetchLeads();
     fetchUsers();
-  }, [fetchLeads, fetchUsers]);
+    fetchCustomerTypes();
+    fetchStates();
+  }, [fetchLeads, fetchUsers, fetchCustomerTypes, fetchStates]);
 
   /* --------------------------------------------------------------------------
      CLOSE MENUS WHEN CLICKING OUTSIDE
@@ -655,7 +707,7 @@ export default function LeadsPage() {
   };
 
   const openEditPage = (lead: Lead) => {
-    const details = parseLeadDescription(lead.description);
+    const details = getLeadDetails(lead);
 
     setEditingLead(lead);
 
@@ -681,41 +733,27 @@ export default function LeadsPage() {
   -------------------------------------------------------------------------- */
 
   const validateLeadForm = () => {
-    const requiredFields: Array<[keyof LeadFormState, string]> = [
-      ["customerType", "Customer Type"],
-      ["organizationName", "Organization Name"],
-      ["website", "Organization Website"],
-      ["address", "Address"],
-      ["city", "City"],
-      ["state", "State / Province"],
-      ["zipCode", "PIN / ZIP Code"],
-      ["country", "Country"],
-      ["contactName", "Full Name"],
-      ["designation", "Designation"],
-      ["mobileNumber", "Mobile Number"],
-      ["email", "Email Address"],
-      ["leadSource", "Lead Source"],
-      ["assignedToId", "Assigned To"],
-    ];
-
-    for (const [field, label] of requiredFields) {
-      if (!String(form[field] || "").trim()) {
-        addToast(`${label} is required.`, "warning");
-        return false;
-      }
+    if (!form.contactName.trim()) {
+      addToast("Full Name is required.", "warning");
+      return false;
     }
 
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+    if (!form.organizationName.trim()) {
+      addToast("Organization Name is required.", "warning");
+      return false;
+    }
+
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       addToast("Enter a valid email address.", "warning");
       return false;
     }
 
-    const phone = form.mobileNumber.replace(/\D/g, "");
-
-    if (phone.length < 10) {
-      addToast("Enter a valid mobile number.", "warning");
-
-      return false;
+    if (form.mobileNumber.trim()) {
+      const phone = form.mobileNumber.replace(/\D/g, "");
+      if (phone.length < 10) {
+        addToast("Enter a valid mobile number.", "warning");
+        return false;
+      }
     }
 
     return true;
@@ -758,10 +796,28 @@ export default function LeadsPage() {
         attachments: form.attachments,
       };
 
+      const selectedCt = customerTypesList.find((c) => c.name === form.customerType || String(c.id) === String(form.customerType));
+      const selectedSt = statesList.find((s) => s.name === form.state || String(s.id) === String(form.state));
+
       await createLeadApi({
         title: `${details.contactName} (${details.organizationName})`,
-        description: serializeLeadDetails(details),
+        contact_name: details.contactName,
+        organization_name: details.organizationName,
+        email: details.email,
+        mobile_number: details.mobileNumber,
+        website: details.website,
+        office_address: details.address,
+        city: details.city,
+        zip_code: details.zipCode,
+        country: details.country,
+        gst_number: details.gstNumber,
+        pan_number: details.panNumber,
+        coi_number: details.coiNumber,
+        designation: details.designation,
+        remarks: details.remarks,
         status: "new",
+        customer_type_id: selectedCt?.id,
+        state_id: selectedSt?.id,
         assigned_to_id: form.assignedToId || undefined,
       });
 
@@ -818,9 +874,27 @@ export default function LeadsPage() {
         attachments: form.attachments,
       };
 
+      const selectedCt = customerTypesList.find((c) => c.name === form.customerType || String(c.id) === String(form.customerType));
+      const selectedSt = statesList.find((s) => s.name === form.state || String(s.id) === String(form.state));
+
       const updated = await updateLeadApi(editingLead.id, {
         title: `${details.contactName} (${details.organizationName})`,
-        description: serializeLeadDetails(details),
+        contact_name: details.contactName,
+        organization_name: details.organizationName,
+        email: details.email,
+        mobile_number: details.mobileNumber,
+        website: details.website,
+        office_address: details.address,
+        city: details.city,
+        zip_code: details.zipCode,
+        country: details.country,
+        gst_number: details.gstNumber,
+        pan_number: details.panNumber,
+        coi_number: details.coiNumber,
+        designation: details.designation,
+        remarks: details.remarks,
+        customer_type_id: selectedCt?.id,
+        state_id: selectedSt?.id,
         assigned_to_id: form.assignedToId || undefined,
       });
 
@@ -856,7 +930,7 @@ export default function LeadsPage() {
 
   const markLeadDead = async (lead: Lead) => {
     try {
-      await progressLeadApi(lead.id, {
+      await progressLeadApi(String(lead.id), {
         stage: "dead",
         status: "dead",
       });
@@ -876,7 +950,7 @@ export default function LeadsPage() {
 
   const convertToOpportunity = async (lead: Lead) => {
     try {
-      await progressLeadApi(lead.id, {
+      await progressLeadApi(String(lead.id), {
         stage: "opportunity",
         status: "qualified",
       });
@@ -943,7 +1017,7 @@ export default function LeadsPage() {
 
   const availableStates = Array.from(
     new Set([
-      ...STATES,
+      ...dbStates,
       ...leads
         .map((lead) => parseLeadDescription(lead.description).state)
         .filter(Boolean),
@@ -1347,6 +1421,12 @@ export default function LeadsPage() {
 
         const assignedName = get("assigned to");
 
+        const selectedCt = customerTypesList.find(
+          (c) => c.name.toLowerCase().trim() === importedDetails.customerType.toLowerCase().trim()
+        );
+        const selectedSt = statesList.find(
+          (s) => s.name.toLowerCase().trim() === importedDetails.state.toLowerCase().trim() || s.code.toLowerCase().trim() === importedDetails.state.toLowerCase().trim()
+        );
         const matchingUser = users.find(
           (user) =>
             getUserName(user).toLowerCase().trim() ===
@@ -1357,11 +1437,23 @@ export default function LeadsPage() {
           title: `${contactName}${
             organizationName ? ` (${organizationName})` : ""
           }`,
-
-          description: serializeLeadDetails(importedDetails),
-
+          contact_name: contactName,
+          organization_name: organizationName || undefined,
+          email: importedDetails.email || undefined,
+          mobile_number: importedDetails.mobileNumber || undefined,
+          website: importedDetails.website || undefined,
+          office_address: importedDetails.address || undefined,
+          city: importedDetails.city || undefined,
+          zip_code: importedDetails.zipCode || undefined,
+          country: importedDetails.country || "India",
+          gst_number: importedDetails.gstNumber || undefined,
+          pan_number: importedDetails.panNumber || undefined,
+          coi_number: importedDetails.coiNumber || undefined,
+          designation: importedDetails.designation || undefined,
+          remarks: importedDetails.remarks || undefined,
           status: "new",
-
+          customer_type_id: selectedCt?.id,
+          state_id: selectedSt?.id,
           assigned_to_id: matchingUser?.id || undefined,
         });
 
@@ -1424,6 +1516,8 @@ export default function LeadsPage() {
         title={pageMode === "create" ? "New Lead" : "Edit Lead"}
         form={form}
         users={users}
+        customerTypes={customerTypes}
+        states={availableStates}
         saving={saving}
         onChange={updateForm}
         onSubmit={pageMode === "create" ? handleCreateLead : handleUpdateLead}
@@ -1661,6 +1755,7 @@ export default function LeadsPage() {
             <FilterPopover
               filters={draftFilters}
               users={users}
+              customerTypes={customerTypes}
               states={availableStates}
               onChange={(field, value) =>
                 setDraftFilters((previous) => ({
@@ -2249,6 +2344,7 @@ export default function LeadsPage() {
 function FilterPopover({
   filters,
   users,
+  customerTypes,
   states,
   onChange,
   onApply,
@@ -2256,6 +2352,7 @@ function FilterPopover({
 }: {
   filters: LeadFilters;
   users: User[];
+  customerTypes: string[];
   states: string[];
   onChange: <K extends keyof LeadFilters>(
     field: K,
@@ -2336,7 +2433,7 @@ function FilterPopover({
             value={filters.customerType}
             onChange={(value) => onChange("customerType", value)}
             placeholder="All Customer Types"
-            options={CUSTOMER_TYPES}
+            options={customerTypes}
           />
         </FilterField>
 
@@ -2415,6 +2512,8 @@ function LeadFormPage({
   title,
   form,
   users,
+  customerTypes,
+  states,
   saving,
   onChange,
   onSubmit,
@@ -2424,6 +2523,8 @@ function LeadFormPage({
   title: string;
   form: LeadFormState;
   users: User[];
+  customerTypes: string[];
+  states: string[];
   saving: boolean;
   onChange: <K extends keyof LeadFormState>(
     field: K,
@@ -2498,7 +2599,7 @@ function LeadFormPage({
                   required
                   value={form.customerType}
                   onChange={(value) => onChange("customerType", value)}
-                  options={CUSTOMER_TYPES}
+                  options={customerTypes}
                 />
               </div>
 
@@ -2547,7 +2648,7 @@ function LeadFormPage({
                   required
                   value={form.state}
                   onChange={(value) => onChange("state", value)}
-                  options={STATES}
+                  options={states}
                   allowCustom
                 />
 

@@ -59,3 +59,15 @@ export const updateLocationApi = async (locationId: string, payload: Partial<Cre
 export const deleteLocationApi = async (locationId: string): Promise<void> => {
   await api.delete(`/api/v1/locations/${locationId}`);
 };
+
+export interface StateModel {
+  id: number | string;
+  name: string;
+  code: string;
+  country: string;
+}
+
+export const getStatesApi = async (): Promise<StateModel[]> => {
+  const { data } = await api.get("/api/v1/states/");
+  return Array.isArray(data) ? data : data.data || [];
+};

@@ -9,6 +9,8 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import { getUsersApi, User } from "@/features/users/api/users.api";
 import { createLeadApi } from "@/features/workflows/api/workflows.api";
+import { getCustomerTypesApi, CustomerTypeModel } from "@/features/inventory/api/inventory.api";
+import { getStatesApi, StateModel } from "@/features/locations/api/locations.api";
 import {
   FiInfo,
   FiMapPin,
@@ -31,6 +33,7 @@ export default function CreateLeadPage() {
 
   // Customer Information
   const [customerType, setCustomerType] = useState("");
+  const [customerTypesList, setCustomerTypesList] = useState<CustomerTypeModel[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [organizationWebsite, setOrganizationWebsite] = useState("");
@@ -39,6 +42,7 @@ export default function CreateLeadPage() {
   const [officeAddress, setOfficeAddress] = useState("");
   const [city, setCity] = useState("");
   const [stateProvince, setStateProvince] = useState("");
+  const [statesList, setStatesList] = useState<StateModel[]>([]);
   const [zipCode, setZipCode] = useState("");
   const [country, setCountry] = useState("India");
 
@@ -58,6 +62,24 @@ export default function CreateLeadPage() {
   // Requirements & Files
   const [remarks, setRemarks] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
+
+  const fetchCustomerTypes = useCallback(async () => {
+    try {
+      const res = await getCustomerTypesApi();
+      setCustomerTypesList(res || []);
+    } catch (err) {
+      console.error("Failed to fetch customer types:", err);
+    }
+  }, []);
+
+  const fetchStates = useCallback(async () => {
+    try {
+      const res = await getStatesApi();
+      setStatesList(res || []);
+    } catch (err) {
+      console.error("Failed to fetch states:", err);
+    }
+  }, []);
 
   const fetchUsersList = useCallback(async () => {
     try {
@@ -84,9 +106,11 @@ export default function CreateLeadPage() {
   }, []);
 
   useEffect(() => {
+    fetchCustomerTypes();
+    fetchStates();
     fetchUsersList();
     fetchLeadSources();
-  }, [fetchUsersList, fetchLeadSources]);
+  }, [fetchCustomerTypes, fetchStates, fetchUsersList, fetchLeadSources]);
 
   const handleFileUpload = (type: "gst" | "pan" | "coi", e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -119,20 +143,28 @@ export default function CreateLeadPage() {
     try {
       setSubmitting(true);
 
-      const combinedDetails = [
-        `Contact Name: ${customerName.trim()}`,
-        `Email: ${customerName.toLowerCase().replace(/\s+/g, ".")}@${(organizationWebsite || "company.com").replace(/^https?:\/\//, "")}`,
-        `Organization: ${organizationName.trim()}`,
-        `Type: ${customerType || "Standard"}`,
-        `Address: ${officeAddress || "N/A"}, ${city || "N/A"}, ${stateProvince || "N/A"} ${zipCode || ""} ${country || "India"}`.trim(),
-        `GST: ${gstNumber || "N/A"} | PAN: ${panNumber || "N/A"} | COI: ${coiNumber || "N/A"}`,
-        `Lead Source: ${leadSource || "Direct Inbound"}`
-      ].join(" | ");
+      const selectedCustomerType = customerTypesList.find((ct) => ct.name === customerType || String(ct.id) === String(customerType));
+      const selectedState = statesList.find((st) => st.name === stateProvince || String(st.id) === String(stateProvince));
+      const selectedLeadSource = leadSources.find((ls) => ls.name === leadSource || String(ls.id) === String(leadSource));
 
       await createLeadApi({
         title: `${customerName.trim()} (${organizationName.trim()})`,
-        description: combinedDetails,
+        contact_name: customerName.trim(),
+        organization_name: organizationName.trim(),
+        email: `${customerName.toLowerCase().replace(/\s+/g, ".")}@${(organizationWebsite || "company.com").replace(/^https?:\/\//, "")}`,
+        website: organizationWebsite || undefined,
+        office_address: officeAddress || undefined,
+        city: city || undefined,
+        zip_code: zipCode || undefined,
+        country: country || "India",
+        gst_number: gstNumber || undefined,
+        pan_number: panNumber || undefined,
+        coi_number: coiNumber || undefined,
+        remarks: remarks || undefined,
         status: "new",
+        customer_type_id: selectedCustomerType?.id,
+        state_id: selectedState?.id,
+        lead_source_id: selectedLeadSource?.id ? Number(selectedLeadSource.id) : undefined,
         assigned_to_id: assignedToId || undefined
       });
 
@@ -196,11 +228,11 @@ export default function CreateLeadPage() {
                   className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
                 >
                   <option value="">Select the customer type</option>
-                  <option value="Distributor">Distributor</option>
-                  <option value="Retailer">Retailer</option>
-                  <option value="Enterprise">Enterprise</option>
-                  <option value="OEM">OEM Client</option>
-                  <option value="Direct">Direct Customer</option>
+                  {customerTypesList.map((ct) => (
+                    <option key={ct.id} value={ct.name}>
+                      {ct.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -277,11 +309,18 @@ export default function CreateLeadPage() {
                 <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
                   State / Province *
                 </label>
-                <Input
-                  placeholder="State"
+                <select
                   value={stateProvince}
                   onChange={(e) => setStateProvince(e.target.value)}
-                />
+                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 cursor-pointer"
+                >
+                  <option value="">Select State</option>
+                  {statesList.map((st) => (
+                    <option key={st.id} value={st.name}>
+                      {st.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
