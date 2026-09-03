@@ -109,7 +109,7 @@ export const deleteCategoryGroupApi = async (id: string): Promise<void> => {
 
 
 export interface CustomerTypeModel {
-  id: string;
+  id: number | string;
   name: string;
   code: string;
   description?: string;
