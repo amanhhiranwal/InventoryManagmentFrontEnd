@@ -11,7 +11,6 @@ import {
   FiEdit2,
   FiSlash,
   FiActivity,
-  FiChevronRight,
 } from "react-icons/fi";
 
 export interface ContactActivity {
@@ -133,16 +132,12 @@ export default function CustomerContactDrawer({
               <div
                 key={stage}
                 className={`flex-1 h-full flex items-center justify-center gap-2 text-[11px] ${
-                  index === 0
-                    ? "bg-[#fff5cf] text-slate-700"
-                    : "text-slate-500"
+                  index === 0 ? "bg-[#fff5cf] text-slate-700" : "text-slate-500"
                 }`}
               >
                 <span
                   className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${
-                    index === 0
-                      ? "border-[#e8b900]"
-                      : "border-slate-400"
+                    index === 0 ? "border-[#e8b900]" : "border-slate-400"
                   }`}
                 >
                   {index === 0 && (
@@ -152,7 +147,7 @@ export default function CustomerContactDrawer({
 
                 <span>{stage}</span>
               </div>
-            )
+            ),
           )}
         </div>
 

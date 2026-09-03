@@ -59,13 +59,11 @@ import {
   FiBriefcase,
   FiShield,
   FiInfo,
-  FiActivity,
   FiArrowUpRight,
   FiTrendingUp,
   FiTrendingDown,
   FiX,
   FiChevronDown,
-  FiDatabase,
 } from "react-icons/fi";
 
 import { CgSpinner } from "react-icons/cg";
@@ -110,17 +108,6 @@ interface LeadFilters {
   assignedTo: string;
   status: string;
   state: string;
-}
-
-interface IntegrationLeadState {
-  source: string;
-  contactName: string;
-  organizationName: string;
-  email: string;
-  mobileNumber: string;
-  website: string;
-  remarks: string;
-  assignedToId: string;
 }
 
 /* ============================================================================
@@ -442,7 +429,6 @@ export default function LeadsPage() {
 
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [detailsLead, setDetailsLead] = useState<Lead | null>(null);
-  const [showDetailsMenu, setShowDetailsMenu] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
 
   /*
@@ -998,7 +984,7 @@ export default function LeadsPage() {
   };
 
   const applyFilters = () => {
-    let next = {
+    const next = {
       ...draftFilters,
     };
 
@@ -1520,95 +1506,6 @@ export default function LeadsPage() {
     event.target.value = "";
   };
 
-  /* --------------------------------------------------------------------------
-     INTEGRATION
-  -------------------------------------------------------------------------- */
-
-  const openIntegration = (source: string) => {
-    setSelectedIntegration(source);
-
-    setIntegrationLead({
-      source,
-      contactName: "",
-      organizationName: "",
-      email: "",
-      mobileNumber: "",
-      website: "",
-      remarks: "",
-      assignedToId: users[0]?.id || "",
-    });
-  };
-
-  const updateIntegrationLead = <K extends keyof IntegrationLeadState>(
-    field: K,
-    value: IntegrationLeadState[K],
-  ) => {
-    setIntegrationLead((previous) => ({
-      ...previous,
-      [field]: value,
-    }));
-  };
-
-  const importIntegrationLead = async () => {
-    if (!integrationLead.contactName.trim()) {
-      addToast("Full Name is required.", "warning");
-
-      return;
-    }
-
-    if (!integrationLead.organizationName.trim()) {
-      addToast("Organization Name is required.", "warning");
-
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      const details: LeadDetails = {
-        ...EMPTY_FORM,
-
-        customerType: "End Customer",
-
-        contactName: integrationLead.contactName.trim(),
-
-        organizationName: integrationLead.organizationName.trim(),
-
-        website: integrationLead.website.trim(),
-
-        email: integrationLead.email.trim(),
-
-        mobileNumber: integrationLead.mobileNumber.trim(),
-
-        leadSource: integrationLead.source,
-
-        remarks: integrationLead.remarks.trim(),
-
-        attachments: [],
-      };
-
-      await createLeadApi({
-        title: `${details.contactName} (${details.organizationName})`,
-        description: serializeLeadDetails(details),
-        status: "new",
-        assigned_to_id: integrationLead.assignedToId || undefined,
-      });
-
-      addToast("Integration lead added successfully.", "success");
-
-      setShowIntegrationModal(false);
-      setSelectedIntegration("");
-
-      await fetchLeads();
-    } catch (error) {
-      console.error(error);
-
-      addToast("Failed to add integration lead.", "error");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   /* ==========================================================================
      CREATE / EDIT PAGE
   ========================================================================== */
@@ -1934,7 +1831,6 @@ export default function LeadsPage() {
 
                     setDetailsLead(lead);
                     setShowDetailsModal(true);
-                    setShowDetailsMenu(false);
                   } else {
                     addToast("No lead is available to display.", "warning");
                   }
@@ -4472,109 +4368,6 @@ function RowAction({
       {icon}
       {children}
     </button>
-  );
-}
-
-function IntegrationCard({
-  icon,
-  title,
-  description,
-  onClick,
-}: {
-  icon: ReactNode;
-  title: string;
-  description: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="
-        rounded-2xl
-        border
-        border-slate-200
-        p-5
-        text-left
-        transition
-        hover:-translate-y-0.5
-        hover:border-primary/30
-        hover:shadow-md
-        dark:border-[#0d2336]
-      "
-    >
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-500">
-        {icon}
-      </div>
-
-      <h4 className="mt-4 text-xs font-bold text-slate-800 dark:text-white">
-        {title}
-      </h4>
-
-      <p className="mt-1 text-[10px] leading-5 text-slate-400">{description}</p>
-    </button>
-  );
-}
-
-function DetailBox({
-  icon,
-  label,
-  children,
-}: {
-  icon: ReactNode;
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 p-5 dark:border-[#0d2336]">
-      <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-[#0d2336]">
-        <span className="text-slate-400">{icon}</span>
-
-        <h3 className="text-xs font-bold text-slate-800 dark:text-white">
-          {label}
-        </h3>
-      </div>
-
-      <div className="space-y-3">{children}</div>
-    </div>
-  );
-}
-
-function DetailLine({ label, value }: { label: string; value?: string }) {
-  return (
-    <div className="flex justify-between gap-5 text-xs">
-      <span className="text-slate-400">{label}</span>
-
-      <span className="max-w-[65%] text-right font-semibold text-slate-700 dark:text-slate-200">
-        {value || "—"}
-      </span>
-    </div>
-  );
-}
-
-function ActivityItem({
-  title,
-  description,
-  date,
-}: {
-  title: string;
-  description: string;
-  date: string;
-}) {
-  return (
-    <div className="flex gap-3">
-      <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
-
-      <div>
-        <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
-          {title}
-        </p>
-
-        <p className="mt-1 text-[11px] text-slate-400">{description}</p>
-
-        <p className="mt-1 text-[10px] text-slate-400">{formatDate(date)}</p>
-      </div>
-    </div>
   );
 }
 

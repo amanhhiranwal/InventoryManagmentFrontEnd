@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
@@ -20,12 +20,10 @@ import {
   FiCalendar,
   FiTrash2,
   FiMinus,
-  FiPlusCircle,
   FiBox,
   FiMapPin,
   FiCamera,
   FiUpload,
-  FiChevronDown,
 } from "react-icons/fi";
 
 /* =========================================================
@@ -132,6 +130,8 @@ const CUSTOMER_TYPES = [
   "Institution",
   "Corporate",
 ];
+
+const COUNTRIES = ["India", "United States", "China", "Malaysia", "Indonesia"];
 
 const STATES = [
   "Delhi",
@@ -301,6 +301,11 @@ export default function OrdersListPage() {
 
   const [creatingOrder, setCreatingOrder] = useState(false);
 
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+
   const [newOrder, setNewOrder] = useState({
     // Order Information
     salesOrderId: "",
@@ -402,7 +407,7 @@ export default function OrdersListPage() {
     orders.forEach((order) => {
       const status = normalizeStatus(order.status);
 
-      if (status in counts && status !== "All Orders") {
+      if (status in counts) {
         counts[status as StatusFilter]++;
       }
     });
@@ -802,6 +807,94 @@ export default function OrdersListPage() {
     }));
   };
 
+  const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+
+  const ALLOWED_ATTACHMENT_TYPES = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ];
+
+  const addAttachments = (files: File[]) => {
+    const validFiles: File[] = [];
+
+    files.forEach((file) => {
+      if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+        addToast(
+          `${file.name}: Only PDF, DOC, DOCX, XLS and XLSX files are allowed.`,
+          "warning",
+        );
+        return;
+      }
+
+      if (file.size > MAX_ATTACHMENT_SIZE) {
+        addToast(`${file.name}: File size must be 10MB or less.`, "warning");
+        return;
+      }
+
+      validFiles.push(file);
+    });
+
+    if (validFiles.length > 0) {
+      setAttachments((current) => {
+        const existingNames = new Set(
+          current.map((file) => `${file.name}-${file.size}`),
+        );
+
+        const newFiles = validFiles.filter(
+          (file) => !existingNames.has(`${file.name}-${file.size}`),
+        );
+
+        return [...current, ...newFiles];
+      });
+    }
+  };
+
+  const handleAttachmentChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = Array.from(event.target.files || []);
+
+    if (files.length > 0) {
+      addAttachments(files);
+    }
+
+    // Allows selecting the same file again after removing it.
+    event.target.value = "";
+  };
+
+  const handleAttachmentDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    setIsDraggingFiles(false);
+
+    const files = Array.from(event.dataTransfer.files || []);
+
+    if (files.length > 0) {
+      addAttachments(files);
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((current) =>
+      current.filter((_, fileIndex) => fileIndex !== index),
+    );
+  };
+
+  const formatFileSize = (size: number) => {
+    if (size < 1024) {
+      return `${size} B`;
+    }
+
+    if (size < 1024 * 1024) {
+      return `${(size / 1024).toFixed(1)} KB`;
+    }
+
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   const openCreateOrder = () => {
     const now = new Date();
 
@@ -814,12 +907,16 @@ export default function OrdersListPage() {
     setShowCreateOrder(true);
     setShowFilters(false);
     setSelectedProducts([]);
+    setAttachments([]);
+    setIsDraggingFiles(false);
   };
 
   const closeCreateOrder = () => {
     setShowCreateOrder(false);
     setShowProductModal(false);
     setSelectedProducts([]);
+    setAttachments([]);
+    setIsDraggingFiles(false);
   };
 
   /* =======================================================
@@ -883,18 +980,6 @@ export default function OrdersListPage() {
   const removeSelectedProduct = (id: string) => {
     setSelectedProducts((current) => current.filter((item) => item.id !== id));
   };
-
-  const selectedProductsTotal = selectedProducts.reduce((sum, item) => {
-    const subtotal = item.price * item.quantity;
-
-    const discount = subtotal * (item.discount / 100);
-
-    const taxable = subtotal - discount;
-
-    const tax = taxable * (item.tax / 100);
-
-    return sum + taxable + tax;
-  }, 0);
 
   /* =======================================================
      CREATE SALES ORDER
@@ -1159,8 +1244,8 @@ export default function OrdersListPage() {
 
             <div className="bg-white rounded-xl p-5">
               {/* =================================================
-                ORDER INFORMATION
-            ================================================= */}
+                      ORDER INFORMATION
+                  ================================================= */}
 
               <div>
                 <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
@@ -1176,7 +1261,9 @@ export default function OrdersListPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">
-                  {/* Sales Order ID */}
+                  {/* =================================================
+                          ROW 1 - SALES ORDER ID
+                      ================================================= */}
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
@@ -1188,7 +1275,9 @@ export default function OrdersListPage() {
                     </span>
                   </div>
 
-                  {/* Opportunity ID */}
+                  {/* =================================================
+                          ROW 1 - OPPORTUNITY ID
+                      ================================================= */}
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
@@ -1205,7 +1294,9 @@ export default function OrdersListPage() {
                     />
                   </div>
 
-                  {/* Order Date */}
+                  {/* =================================================
+                          ROW 2 - ORDER DATE
+                      ================================================= */}
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
@@ -1217,7 +1308,15 @@ export default function OrdersListPage() {
                     </span>
                   </div>
 
-                  {/* Assigned To */}
+                  {/* =================================================
+                      ROW 2 - EMPTY COLUMN
+                      ================================================= */}
+
+                  <div />
+
+                  {/* =================================================
+                          ROW 3 - ASSIGNED TO
+                      ================================================= */}
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
@@ -1240,7 +1339,9 @@ export default function OrdersListPage() {
                     </div>
                   </div>
 
-                  {/* Sales Executive */}
+                  {/* =================================================
+                          ROW 3 - SALES EXECUTIVE
+                      ================================================= */}
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
@@ -1313,7 +1414,7 @@ export default function OrdersListPage() {
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
-                      Organization:
+                      Organization Name:
                     </span>
 
                     <input
@@ -1360,13 +1461,13 @@ export default function OrdersListPage() {
 
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
-                      CIN:
+                      COI Number:
                     </span>
 
                     <input
                       value={newOrder.cin}
                       onChange={(e) => updateNewOrder("cin", e.target.value)}
-                      placeholder="CIN number"
+                      placeholder="COI number"
                       className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
                   </div>
@@ -1527,10 +1628,15 @@ export default function OrdersListPage() {
                         >
                           <option value="">Select here</option>
 
-                          <option value="India">India</option>
+                          {COUNTRIES.map((country) => (
+                            <option key={country} value={country}>
+                              {country}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
+                      {/* State / Province */}
                       <div>
                         <label className="block text-[11px] text-slate-500 mb-1.5">
                           State / Province *
@@ -1651,10 +1757,15 @@ export default function OrdersListPage() {
                         >
                           <option value="">Select here</option>
 
-                          <option value="India">India</option>
+                          {COUNTRIES.map((country) => (
+                            <option key={country} value={country}>
+                              {country}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
+                      {/* State / Province */}
                       <div>
                         <label className="block text-[11px] text-slate-500 mb-1.5">
                           State / Province *
@@ -2056,26 +2167,124 @@ export default function OrdersListPage() {
                 />
 
                 {/* Attachments */}
-
                 <div className="mt-5">
                   <p className="text-[11px] font-medium text-slate-500 mb-2">
                     Attachments
                   </p>
 
-                  <button
-                    type="button"
-                    className="w-full h-28 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-center hover:bg-slate-50 transition-colors"
+                  {/* Hidden File Input */}
+
+                  <input
+                    ref={attachmentInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx"
+                    onChange={handleAttachmentChange}
+                    className="hidden"
+                  />
+
+                  {/* Drag & Drop Area */}
+
+                  <div
+                    onClick={() => attachmentInputRef.current?.click()}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setIsDraggingFiles(true);
+                    }}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setIsDraggingFiles(true);
+                    }}
+                    onDragLeave={(event) => {
+                      event.preventDefault();
+
+                      if (
+                        !event.currentTarget.contains(
+                          event.relatedTarget as Node,
+                        )
+                      ) {
+                        setIsDraggingFiles(false);
+                      }
+                    }}
+                    onDrop={handleAttachmentDrop}
+                    className={`
+                      w-full
+                      min-h-28
+                      rounded-xl
+                      border
+                      border-dashed
+                      flex
+                      flex-col
+                      items-center
+                      justify-center
+                      text-center
+                      cursor-pointer
+                      transition-colors
+                      ${
+                        isDraggingFiles
+                          ? "border-[#24395f] bg-slate-50"
+                          : "border-slate-300 bg-white hover:bg-slate-50"
+                      }
+                    `}
                   >
-                    <FiUpload size={18} className="text-slate-400 mb-2" />
+                    <FiUpload
+                      size={18}
+                      className={`mb-2 ${
+                        isDraggingFiles ? "text-[#24395f]" : "text-slate-400"
+                      }`}
+                    />
 
                     <p className="text-[11px] text-slate-500">
-                      Drop files or click to upload
+                      {isDraggingFiles
+                        ? "Drop files here"
+                        : "Drop files or click to upload"}
                     </p>
 
                     <p className="text-[9px] text-slate-400 mt-1">
-                      PDF, DOC, XLS up to 10MB
+                      PDF, DOC, DOCX, XLS, XLSX up to 10MB
                     </p>
-                  </button>
+                  </div>
+
+                  {/* Selected Attachments */}
+
+                  {attachments.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {attachments.map((file, index) => (
+                        <div
+                          key={`${file.name}-${file.size}-${index}`}
+                          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-8 h-8 rounded-md bg-white border border-slate-200 flex items-center justify-center shrink-0">
+                              <FiUpload size={14} className="text-slate-500" />
+                            </div>
+
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-medium text-slate-700 truncate">
+                                {file.name}
+                              </p>
+
+                              <p className="text-[9px] text-slate-400">
+                                {formatFileSize(file.size)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              removeAttachment(index);
+                            }}
+                            className="w-7 h-7 rounded-md flex items-center justify-center text-rose-500 hover:bg-rose-50 shrink-0"
+                            title="Remove attachment"
+                          >
+                            <FiX size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2083,8 +2292,8 @@ export default function OrdersListPage() {
         </div>
 
         {/* =================================================
-          FIXED FOOTER
-      ================================================= */}
+                FIXED FOOTER
+           ================================================= */}
 
         <div className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-[#f8f8f8] border-t border-slate-200 flex items-center justify-end gap-2 px-5">
           <button
@@ -2115,8 +2324,8 @@ export default function OrdersListPage() {
         </div>
 
         {/* =================================================
-          ADD PRODUCT MODAL
-      ================================================= */}
+              ADD PRODUCT MODAL
+           ================================================= */}
 
         {showProductModal && (
           <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-5">
@@ -2391,15 +2600,11 @@ export default function OrdersListPage() {
                                 }
                                 className="w-full h-9 rounded-md border border-slate-200 px-2 text-xs bg-white"
                               >
-                                <option value={0}>0%</option>
-
-                                <option value={5}>5%</option>
-
-                                <option value={12}>12%</option>
-
                                 <option value={18}>18%</option>
 
-                                <option value={28}>28%</option>
+                                <option value={15}>15%</option>
+
+                                <option value={12}>12%</option>
                               </select>
                             </div>
                           </div>
