@@ -82,7 +82,7 @@ export default function CustomerTypesPage() {
     if (!typeToDelete) return;
     try {
       setDeleting(true);
-      await deleteCustomerTypeApi(typeToDelete.id);
+      await deleteCustomerTypeApi(String(typeToDelete.id));
       addToast("Customer Type deleted successfully.", "success");
       setShowDeleteModal(false);
       setTypeToDelete(null);
