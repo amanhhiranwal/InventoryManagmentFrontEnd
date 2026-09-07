@@ -48,3 +48,21 @@ export interface AuthUser {
 
   permissions?: Permission[];
 }
+
+export interface ForgotPasswordResponse {
+  success: boolean;
+
+  message: string;
+
+  /**
+   * Only returned by the API in non-production environments when SMTP is
+   * not configured, so the flow can be tested without a mail server.
+   */
+  reset_link?: string;
+}
+
+export interface ResetPasswordResponse {
+  success: boolean;
+
+  message: string;
+}

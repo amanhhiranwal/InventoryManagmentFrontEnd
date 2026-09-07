@@ -7,7 +7,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   
   // Auth paths where sidebar & navbar should be hidden
-  const authPaths = ["/login", "/register", "/forgot-password"];
+  const authPaths = ["/login", "/register", "/forgot-password", "/reset-password"];
   
   if (authPaths.includes(pathname)) {
     return <>{children}</>;

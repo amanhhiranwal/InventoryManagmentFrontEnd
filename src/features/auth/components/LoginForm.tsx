@@ -1,14 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import Image from "next/image";
+import { useEffect, useState } from "react";
 import { AxiosError } from "axios";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { loginApi, meApi } from "../api/auth.api";
 import { useAuthStore } from "../store/auth.store";
 import { CgSpinner } from "react-icons/cg";
 import { FiMail, FiLock } from "react-icons/fi";
+import AuthField from "./AuthField";
+
+const REMEMBERED_EMAIL_KEY = "remembered-email";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -16,8 +19,20 @@ export default function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Restore the previously remembered email address
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(REMEMBERED_EMAIL_KEY);
+      if (saved) {
+        setEmail(saved);
+        setRememberMe(true);
+      }
+    } catch {}
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +65,14 @@ export default function LoginForm() {
         exp: me.data.exp,
       });
 
+      try {
+        if (rememberMe) {
+          localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
+        } else {
+          localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+        }
+      } catch {}
+
       router.replace("/dashboard");
     } catch (err: unknown) {
       console.error(err);
@@ -72,136 +95,65 @@ export default function LoginForm() {
   return (
     <form
       onSubmit={submit}
-      className="w-full space-y-6 rounded-2xl p-6 sm:p-8"
+      className="w-full space-y-6 rounded-xl border border-slate-200/70 bg-white p-8 shadow-sm sm:p-10 dark:border-[#0d2336] dark:bg-[#051422]"
     >
       <div className="text-center">
-        {/* Branding accent */}
-        <div className="mx-auto mb-6 flex justify-center select-none">
-          <Image
-            src="/logo-light.png"
-            alt="Synergy Global"
-            width={180}
-            height={50}
-            priority
-            className="dark:hidden object-contain"
-          />
-          <Image
-            src="/logo-dark.png"
-            alt="Synergy Global"
-            width={180}
-            height={50}
-            priority
-            className="hidden dark:block object-contain"
-          />
-        </div>
-
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 dark:text-white tracking-tight">
-          Welcome Back
+        <h1 className="text-2xl font-semibold tracking-tight text-primary dark:text-white">
+          Sign In To Sales CRM
         </h1>
 
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Sign in to access your inventory management workspace
+          Access your sales workspace &amp; manage your pipeline.
         </p>
       </div>
 
       {errorMsg && (
-        <div className="rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 p-3 text-sm text-red-600 dark:text-red-400 animate-shake">
+        <div className="animate-shake rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-400">
           {errorMsg}
         </div>
       )}
 
       <div className="space-y-4">
-        {/* Email Field */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-            Email Address
-          </label>
+        <AuthField
+          id="email"
+          label="Work Email"
+          type="email"
+          value={email}
+          onChange={setEmail}
+          placeholder="name@company.com"
+          icon={<FiMail />}
+          autoComplete="email"
+        />
 
-          <div className="relative">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-              <FiMail />
-            </span>
-            <input
-              type="email"
-              required
-              className="
-                w-full
-                rounded-xl
-                border
-                border-slate-200
-                dark:border-[#0d2336]
-                bg-slate-50/50
-                dark:bg-[#071929]/50
-                pl-10
-                pr-4
-                py-3
-                text-sm
-                text-slate-900
-                dark:text-white
-                placeholder:text-slate-400
-                outline-none
-                transition-all
-                focus:border-primary
-                focus:bg-white
-                focus:ring-2
-                focus:ring-primary/10
-                dark:focus:border-primary-hover
-                dark:focus:bg-[#071929]
-                dark:focus:ring-primary/20
-              "
-              placeholder="name@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
+        <div className="space-y-2">
+          <AuthField
+            id="password"
+            label="Password"
+            type="password"
+            value={password}
+            onChange={setPassword}
+            placeholder="••••••••"
+            icon={<FiLock />}
+            autoComplete="current-password"
+          />
+
+          <Link
+            href="/forgot-password"
+            className="inline-block text-xs text-slate-500 transition-colors hover:text-primary dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            Forgot password?
+          </Link>
         </div>
 
-        {/* Password Field */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Password
-            </label>
-          </div>
-
-          <div className="relative">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-400">
-              <FiLock />
-            </span>
-            <input
-              type="password"
-              required
-              className="
-                w-full
-                rounded-xl
-                border
-                border-slate-200
-                dark:border-[#0d2336]
-                bg-slate-50/50
-                dark:bg-[#071929]/50
-                pl-10
-                pr-4
-                py-3
-                text-sm
-                text-slate-900
-                dark:text-white
-                placeholder:text-slate-400
-                outline-none
-                transition-all
-                focus:border-primary
-                focus:bg-white
-                focus:ring-2
-                focus:ring-primary/10
-                dark:focus:border-primary-hover
-                dark:focus:bg-[#071929]
-                dark:focus:ring-primary/20
-              "
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-        </div>
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+            className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-primary dark:border-[#0d2336]"
+          />
+          Remember me
+        </label>
       </div>
 
       <button
@@ -210,24 +162,24 @@ export default function LoginForm() {
         className="
           flex
           w-full
+          cursor-pointer
           items-center
           justify-center
           gap-2
-          rounded-xl
+          rounded-lg
           bg-primary
-          hover:bg-primary-hover
           px-4
           py-3
+          text-sm
           font-semibold
+          tracking-wide
           text-white
-          shadow-lg
-          shadow-primary/15
-          hover:shadow-primary/25
+          uppercase
           transition-all
           duration-150
+          hover:bg-primary-hover
           disabled:cursor-not-allowed
           disabled:opacity-50
-          cursor-pointer
         "
       >
         {loading ? (
