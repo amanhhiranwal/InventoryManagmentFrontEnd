@@ -14,15 +14,25 @@ import {
   updateSalesOrderStatusApi,
 } from "@/features/salesOrders/api/salesOrders.api";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
+import StatCard from "@/components/crm/StatCard";
+import Pagination from "@/components/crm/Pagination";
+import { StatusPill } from "@/components/crm/Pill";
+import FormPageHeader, {
+  CancelButton,
+  DraftButton,
+  SubmitButton,
+} from "@/components/crm/FormPageHeader";
+import {
+  ListToolbar,
+  PrimaryAction,
+  StatGrid,
+} from "@/components/crm/ListPageShell";
 
 import {
   FiRefreshCw,
   FiSearch,
-  FiSliders,
   FiPlus,
   FiMoreVertical,
-  FiChevronLeft,
-  FiChevronRight,
   FiDownload,
   FiBarChart2,
   FiX,
@@ -413,6 +423,14 @@ export default function OrdersListPage() {
      STATUS COUNTS
   ======================================================= */
 
+  const activeFilterCount = useMemo(
+    () =>
+      Object.values(appliedFilters).filter(
+        (value) => value && value !== "All",
+      ).length,
+    [appliedFilters],
+  );
+
   const statusCounts = useMemo(() => {
     const counts: Record<StatusFilter, number> = {
       "All Orders": orders.length,
@@ -796,27 +814,6 @@ export default function OrdersListPage() {
     });
   };
 
-  const getStatusClass = (status: string) => {
-    switch (status) {
-      case "Completed":
-        return "bg-emerald-50 text-emerald-600";
-
-      case "Confirmed":
-        return "bg-blue-50 text-blue-600";
-
-      case "Released":
-        return "bg-indigo-50 text-indigo-600";
-
-      case "On Hold":
-        return "bg-rose-50 text-rose-600";
-
-      case "Cancelled":
-        return "bg-slate-100 text-slate-500";
-
-      default:
-        return "bg-amber-50 text-amber-600";
-    }
-  };
 
   /* =======================================================
      CREATE ORDER HELPERS
@@ -1244,24 +1241,34 @@ export default function OrdersListPage() {
 
   if (showCreateOrder) {
     return (
-      <div className="min-h-full bg-[#f5f5f5] -m-5 pb-20">
+      <div className="min-h-full pb-8">
         {/* =================================================
           PAGE HEADER
       ================================================= */}
 
-        <div className="px-5 pt-2 pb-4">
-          <h1 className="text-lg font-semibold text-slate-800">
-            New Sales Order
-          </h1>
+        <FormPageHeader
+          title="New Sales Order"
+          parentLabel="Sales Order"
+          actions={
+            <>
+              <CancelButton onClick={closeCreateOrder} />
 
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-[11px] text-slate-500">Sales Order</span>
+              <DraftButton
+                withIcon
+                disabled={creatingOrder}
+                onClick={() => createSalesOrder(true)}
+              />
 
-            <span className="text-[11px] text-slate-400">›</span>
-
-            <span className="text-[11px] text-slate-500">New</span>
-          </div>
-        </div>
+              <SubmitButton
+                withIcon
+                disabled={creatingOrder}
+                onClick={() => createSalesOrder(false)}
+              >
+                {creatingOrder ? "Sending..." : "Send For Approval"}
+              </SubmitButton>
+            </>
+          }
+        />
 
         {/* =================================================
           MAIN GRID
@@ -1273,20 +1280,20 @@ export default function OrdersListPage() {
               LEFT CONTENT
           ================================================= */}
 
-            <div className="bg-white rounded-xl p-5">
+            <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 dark:border-[#17304a] dark:bg-[#071929]">
               {/* =================================================
                       ORDER INFORMATION
                   ================================================= */}
 
               <div>
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
                   <div className="w-5 h-5 rounded-full border border-slate-500 flex items-center justify-center">
                     <span className="text-[10px] font-semibold text-slate-600">
                       i
                     </span>
                   </div>
 
-                  <h3 className="text-sm font-semibold text-slate-700">
+                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
                     Order Information
                   </h3>
                 </div>
@@ -1402,14 +1409,14 @@ export default function OrdersListPage() {
             ================================================= */}
 
               <div className="border-t border-slate-100 mt-6 pt-5">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
                   <div className="w-5 h-5 rounded-full border border-slate-500 flex items-center justify-center">
                     <span className="text-[10px] font-semibold text-slate-600">
                       i
                     </span>
                   </div>
 
-                  <h3 className="text-sm font-semibold text-slate-700">
+                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
                     Customer Information
                   </h3>
                 </div>
@@ -1611,10 +1618,10 @@ export default function OrdersListPage() {
             ================================================= */}
 
               <div className="border-t border-slate-100 mt-6 pt-5">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
                   <FiMapPin size={16} className="text-slate-600" />
 
-                  <h3 className="text-sm font-semibold text-slate-700">
+                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
                     Billing & Shipping
                   </h3>
                 </div>
@@ -1857,7 +1864,7 @@ export default function OrdersListPage() {
                   <div className="flex items-center gap-2">
                     <FiMapPin size={16} className="text-slate-600" />
 
-                    <h3 className="text-sm font-semibold text-slate-700">
+                    <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
                       Products & Order Items
                     </h3>
                   </div>
@@ -2028,11 +2035,11 @@ export default function OrdersListPage() {
                 ORDER SUMMARY
             ================================================= */}
 
-              <div className="bg-white rounded-xl p-4">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+              <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 dark:border-[#17304a] dark:bg-[#071929]">
+                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
                   <FiCamera size={16} className="text-slate-600" />
 
-                  <h3 className="text-sm font-semibold text-slate-700">
+                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
                     Order Summary
                   </h3>
                 </div>
@@ -2175,11 +2182,11 @@ export default function OrdersListPage() {
                 REQUIREMENTS & FILES
             ================================================= */}
 
-              <div className="bg-white rounded-xl p-4">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-4">
+              <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 dark:border-[#17304a] dark:bg-[#071929]">
+                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
                   <FiUpload size={16} className="text-slate-600" />
 
-                  <h3 className="text-sm font-semibold text-slate-700">
+                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
                     Requirements & Files
                   </h3>
                 </div>
@@ -2326,33 +2333,6 @@ export default function OrdersListPage() {
                 FIXED FOOTER
            ================================================= */}
 
-        <div className="fixed bottom-0 left-0 right-0 z-40 h-16 bg-[#f8f8f8] border-t border-slate-200 flex items-center justify-end gap-2 px-5">
-          <button
-            type="button"
-            onClick={closeCreateOrder}
-            className="h-9 px-4 rounded-md border border-slate-300 bg-white text-xs font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            disabled={creatingOrder}
-            onClick={() => createSalesOrder(true)}
-            className="h-9 px-4 rounded-md border border-slate-300 bg-white text-xs font-medium text-slate-700 disabled:opacity-50"
-          >
-            Save as Draft
-          </button>
-
-          <button
-            type="button"
-            disabled={creatingOrder}
-            onClick={() => createSalesOrder(false)}
-            className="h-9 px-4 rounded-md bg-[#24395f] text-white text-xs font-semibold disabled:opacity-50"
-          >
-            {creatingOrder ? "Creating..." : "Create Sales Order"}
-          </button>
-        </div>
 
         {/* =================================================
               ADD PRODUCT MODAL
@@ -2505,7 +2485,7 @@ export default function OrdersListPage() {
                   <div className="flex items-center gap-2 pb-3 border-b border-slate-200">
                     <FiBox size={17} className="text-slate-600" />
 
-                    <h3 className="text-sm font-semibold text-slate-700">
+                    <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
                       Selected Products
                     </h3>
                   </div>
@@ -2660,7 +2640,7 @@ export default function OrdersListPage() {
 
               {/* Modal Footer */}
 
-              <div className="h-16 bg-[#f8f8f8] border-t border-slate-200 flex items-center justify-end gap-2 px-5">
+              <div className="flex h-16 items-center justify-end gap-2 border-t border-slate-200 bg-white px-5">
                 <button
                   type="button"
                   onClick={() => setShowProductModal(false)}
@@ -2697,7 +2677,9 @@ export default function OrdersListPage() {
 
       <div className="relative flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold text-slate-800">Sales Order</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+            Sales Order
+          </h1>
 
           <button
             type="button"
@@ -2757,116 +2739,51 @@ export default function OrdersListPage() {
           KPI
       ================================================= */}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <p className="text-xs text-slate-500">Total Proposal</p>
+      <StatGrid>
+        <StatCard
+          label="Total Proposal"
+          value={kpis.totalProposal}
+          change="12.4%"
+          positive
+        />
 
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-2xl font-semibold text-[#24395f]">
-              {kpis.totalProposal.toLocaleString()}
-            </p>
+        <StatCard
+          label="Order Value"
+          value={money(kpis.orderValue)}
+          change="8.7%"
+          positive
+        />
 
-            <span className="text-[10px] px-2 py-1 rounded bg-emerald-50 text-emerald-500">
-              ↗ 12.4%
-            </span>
-          </div>
+        <StatCard
+          label="Pending Orders"
+          value={kpis.pendingOrders}
+          caption=""
+        />
 
-          <p className="text-[10px] text-emerald-500 mt-1">vs last month</p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <p className="text-xs text-slate-500">Order Value</p>
-
-          <div className="flex items-center justify-between mt-2">
-            <p className="text-2xl font-semibold text-[#24395f]">
-              {money(kpis.orderValue)}
-            </p>
-
-            <span className="text-[10px] px-2 py-1 rounded bg-emerald-50 text-emerald-500">
-              ↗ 8.7%
-            </span>
-          </div>
-
-          <p className="text-[10px] text-emerald-500 mt-1">vs last month</p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <p className="text-xs text-slate-500">Pending Orders</p>
-
-          <p className="text-2xl font-semibold text-[#24395f] mt-2">
-            {kpis.pendingOrders}
-          </p>
-        </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <p className="text-xs text-slate-500">Completed Orders</p>
-
-          <p className="text-2xl font-semibold text-[#24395f] mt-2">
-            {kpis.completedOrders}
-          </p>
-        </div>
-      </div>
+        <StatCard
+          label="Completed Orders"
+          value={kpis.completedOrders}
+          caption=""
+        />
+      </StatGrid>
 
       {/* =================================================
           SEARCH / FILTER / ADD
       ================================================= */}
 
       <div className="relative">
-        <div className="flex items-center gap-3">
-          {/* SEARCH */}
-
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search Order"
-              className="w-full h-10 rounded-md border border-slate-200 bg-white pl-3 pr-10 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400"
-            />
-
-            <FiSearch
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-              size={15}
-            />
-          </div>
-
-          {/* FILTER */}
-
-          <button
-            type="button"
-            onClick={() => setShowFilters((value) => !value)}
-            className={`
-              h-10
-              w-12
-              rounded-md
-              border
-              bg-white
-              flex
-              items-center
-              justify-center
-              transition-colors
-              ${
-                showFilters
-                  ? "border-[#24395f] text-[#24395f] bg-slate-50"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
-              }
-            `}
-            title="Filter Orders"
-          >
-            <FiSliders size={16} />
-          </button>
-
-          {/* ADD NEW ORDER */}
-
-          <button
-            type="button"
-            onClick={openCreateOrder}
-            className="h-10 px-4 rounded-md bg-[#24395f] text-white text-xs font-semibold flex items-center gap-2 hover:bg-[#1d304f] transition-colors whitespace-nowrap"
-          >
-            <FiPlus size={15} />
-            Add New Order
-          </button>
-        </div>
+        <ListToolbar
+          search={search}
+          onSearchChange={setSearch}
+          placeholder="Search Order"
+          activeFilterCount={activeFilterCount}
+          onToggleFilters={() => setShowFilters((value) => !value)}
+          trailing={
+            <PrimaryAction onClick={openCreateOrder} icon={<FiPlus size={15} />}>
+              Add New Order
+            </PrimaryAction>
+          }
+        />
 
         {/* =================================================
             FILTER POPOVER
@@ -3213,19 +3130,7 @@ export default function OrdersListPage() {
                       </td>
 
                       <td className="px-3 py-3">
-                        <span
-                          className={`
-                              inline-flex
-                              px-2.5
-                              py-1
-                              rounded
-                              text-[10px]
-                              font-medium
-                              ${getStatusClass(status)}
-                            `}
-                        >
-                          {status}
-                        </span>
+                        <StatusPill status={order.status} label={status} />
                       </td>
 
                       <td className="px-3 py-3 relative">
@@ -3304,60 +3209,14 @@ export default function OrdersListPage() {
             PAGINATION
         ================================================= */}
 
-        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
-          <p className="text-[11px] text-slate-500">
-            Showing{" "}
-            {filteredOrders.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}-
-            {Math.min(page * PAGE_SIZE, filteredOrders.length)} of{" "}
-            {filteredOrders.length}
-          </p>
-
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              disabled={page === 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="w-7 h-7 rounded flex items-center justify-center disabled:text-slate-300 text-slate-600 hover:bg-slate-100"
-            >
-              <FiChevronLeft size={13} />
-            </button>
-
-            {Array.from(
-              {
-                length: Math.min(totalPages, 3),
-              },
-              (_, index) => index + 1,
-            ).map((number) => (
-              <button
-                key={number}
-                type="button"
-                onClick={() => setPage(number)}
-                className={`
-                    w-7
-                    h-7
-                    rounded
-                    text-[11px]
-                    ${
-                      page === number
-                        ? "bg-[#24395f] text-white"
-                        : "border border-slate-200 text-slate-600"
-                    }
-                  `}
-              >
-                {number}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="w-7 h-7 rounded flex items-center justify-center disabled:text-slate-300 text-slate-600 hover:bg-slate-100"
-            >
-              <FiChevronRight size={13} />
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          totalItems={filteredOrders.length}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          noun="orders"
+        />
       </div>
 
       {/* =================================================

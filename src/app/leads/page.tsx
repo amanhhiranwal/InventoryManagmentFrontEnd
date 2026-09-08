@@ -26,6 +26,15 @@ import {
 
 import { useRouter } from "next/navigation";
 import { getUsersApi, User } from "@/features/users/api/users.api";
+import StatCard from "@/components/crm/StatCard";
+import Pagination from "@/components/crm/Pagination";
+import { StatusPill } from "@/components/crm/Pill";
+import { FormCard, FormSectionBlock } from "@/components/crm/FormCard";
+import FormPageHeader, {
+  CancelButton,
+  DraftButton,
+  SubmitButton,
+} from "@/components/crm/FormPageHeader";
 import { getCustomerTypesApi, CustomerTypeModel } from "@/features/inventory/api/inventory.api";
 import { getStatesApi, StateModel } from "@/features/locations/api/locations.api";
 
@@ -53,8 +62,6 @@ import {
   FiCheckCircle,
   FiPhoneCall,
   FiXCircle,
-  FiChevronLeft,
-  FiChevronRight,
   FiUploadCloud,
   FiPaperclip,
   FiUser,
@@ -62,8 +69,6 @@ import {
   FiShield,
   FiInfo,
   FiArrowUpRight,
-  FiTrendingUp,
-  FiTrendingDown,
   FiX,
   FiChevronDown,
 } from "react-icons/fi";
@@ -85,6 +90,7 @@ interface LeadDetails {
   state: string;
   zipCode: string;
   country: string;
+
 
   gstNumber: string;
   panNumber: string;
@@ -143,6 +149,7 @@ const EMPTY_FORM: LeadFormState = {
   zipCode: "",
   country: "India",
 
+
   gstNumber: "",
   panNumber: "",
   coiNumber: "",
@@ -200,6 +207,7 @@ function parseLeadDescription(description?: string): LeadDetails {
     state: "",
     zipCode: "",
     country: "India",
+
 
     gstNumber: "",
     panNumber: "",
@@ -303,6 +311,7 @@ function getLeadDetails(lead: Lead): LeadDetails {
     state: lead.state_name || parsed.state || "",
     zipCode: lead.zip_code || parsed.zipCode || "",
     country: lead.country || parsed.country || "India",
+
     gstNumber: lead.gst_number || parsed.gstNumber || "",
     panNumber: lead.pan_number || parsed.panNumber || "",
     coiNumber: lead.coi_number || parsed.coiNumber || "",
@@ -673,36 +682,6 @@ export default function LeadsPage() {
     return filteredLeads.slice(start, start + PAGE_SIZE);
   }, [filteredLeads, safeCurrentPage]);
 
-  const paginationPages = useMemo(() => {
-    if (totalPages <= 5) {
-      return Array.from({ length: totalPages }, (_, index) => index + 1);
-    }
-
-    const pages: number[] = [];
-
-    if (safeCurrentPage <= 3) {
-      pages.push(1, 2, 3, 4, 5);
-    } else if (safeCurrentPage >= totalPages - 2) {
-      pages.push(
-        totalPages - 4,
-        totalPages - 3,
-        totalPages - 2,
-        totalPages - 1,
-        totalPages,
-      );
-    } else {
-      pages.push(
-        safeCurrentPage - 2,
-        safeCurrentPage - 1,
-        safeCurrentPage,
-        safeCurrentPage + 1,
-        safeCurrentPage + 2,
-      );
-    }
-
-    return pages;
-  }, [safeCurrentPage, totalPages]);
-
   /* --------------------------------------------------------------------------
      FORM
   -------------------------------------------------------------------------- */
@@ -810,6 +789,7 @@ export default function LeadsPage() {
         zipCode: form.zipCode.trim(),
         country: form.country,
 
+
         gstNumber: form.gstNumber.trim(),
         panNumber: form.panNumber.trim(),
         coiNumber: form.coiNumber.trim(),
@@ -887,6 +867,7 @@ export default function LeadsPage() {
         state: form.state.trim(),
         zipCode: form.zipCode.trim(),
         country: form.country,
+
 
         gstNumber: form.gstNumber.trim(),
         panNumber: form.panNumber.trim(),
@@ -1458,6 +1439,7 @@ export default function LeadsPage() {
 
           zipCode: get("pin / zip code", "pin", "zip", "zip code"),
 
+
           country: get("country") || "India",
 
           gstNumber: get("gst number", "gst"),
@@ -1603,16 +1585,8 @@ export default function LeadsPage() {
       {/* HEADER */}
 
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1
-            className="
-              text-2xl
-              font-extrabold
-              tracking-tight
-              text-slate-900
-              dark:text-white
-            "
-          >
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
             Leads
           </h1>
 
@@ -1620,21 +1594,9 @@ export default function LeadsPage() {
             type="button"
             title="Refresh Leads"
             onClick={fetchLeads}
-            className="
-              rounded-xl
-              border
-              border-slate-200
-              bg-slate-100/70
-              p-2
-              text-slate-500
-              transition
-              hover:bg-slate-200
-              dark:border-[#0d2336]
-              dark:bg-[#071929]
-              dark:text-slate-300
-            "
+            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
           >
-            <FiRefreshCw className={loading ? "animate-spin" : ""} />
+            <FiRefreshCw size={12} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
 
@@ -1676,36 +1638,22 @@ export default function LeadsPage() {
       {/* KPI */}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          label="Total Leads"
-          value={totalLeads}
-          percentage="+12%"
-          positive
-          icon={<FiTrendingUp />}
-        />
+        <StatCard label="Total Leads" value={totalLeads} change="12%" positive />
 
-        <KpiCard
-          label="New"
-          value={newLeads}
-          percentage="+8"
-          positive
-          icon={<FiTrendingUp />}
-        />
+        <StatCard label="New" value={newLeads} change="8" positive />
 
-        <KpiCard
+        <StatCard
           label="Qualified"
           value={qualifiedLeads}
-          percentage="-5%"
+          change="5%"
           positive={false}
-          icon={<FiTrendingDown />}
         />
 
-        <KpiCard
+        <StatCard
           label="Dead"
           value={deadLeads}
-          percentage="-5%"
+          change="5%"
           positive={false}
-          icon={<FiTrendingDown />}
         />
       </div>
 
@@ -1726,17 +1674,17 @@ export default function LeadsPage() {
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Field Text"
+            placeholder="Search Leads"
             className="
-              h-12
+              h-11
               w-full
-              rounded-xl
+              rounded-lg
               border
               border-slate-200
               bg-white
               pl-11
               pr-4
-              text-sm
+              text-xs
               text-slate-800
               outline-none
               transition
@@ -1761,40 +1709,44 @@ export default function LeadsPage() {
             type="button"
             onClick={openFilters}
             className="
+              relative
               flex
-              h-12
+              h-11
+              w-11
+              shrink-0
               items-center
               justify-center
-              gap-2
-              rounded-xl
+              rounded-lg
               border
               border-slate-200
               bg-white
-              px-4
-              text-xs
-              font-bold
-              text-slate-700
-              shadow-sm
+              text-slate-600
+              transition
               hover:bg-slate-50
-              dark:border-[#0d2336]
-              dark:bg-[#051422]
-              dark:text-slate-200
+              dark:border-[#17304a]
+              dark:bg-[#071929]
+              dark:text-slate-300
+              dark:hover:bg-[#0b2034]
             "
+            aria-label="Filters"
           >
-            <FiSliders />
-            Filter
+            <FiSliders size={16} />
             {hasActiveFilters && (
               <span
                 className="
+                  absolute
+                  -right-1
+                  -top-1
                   flex
-                  h-5
-                  min-w-5
+                  h-4
+                  min-w-4
                   items-center
                   justify-center
                   rounded-full
-                  bg-[#1d2b45]
-                  px-1.5
+                  bg-[#233353]
+                  px-1
                   text-[9px]
+                  font-bold
                   text-white
                 "
               >
@@ -1841,19 +1793,19 @@ export default function LeadsPage() {
             onClick={() => setShowAddMenu((previous) => !previous)}
             className="
               flex
-              h-12
+              h-11
               w-full
               items-center
               justify-center
               gap-2
-              rounded-xl
-              bg-[#1d2b45]
+              rounded-lg
+              bg-[#233353]
               px-5
               text-xs
               font-bold
               text-white
               shadow-sm
-              hover:bg-[#162238]
+              hover:bg-[#18243a]
               lg:w-auto
             "
           >
@@ -2261,119 +2213,14 @@ export default function LeadsPage() {
             </div>
 
             {/* PAGINATION */}
-
-            <div
-              className="
-                flex
-                flex-col
-                gap-4
-                border-t
-                border-slate-200
-                bg-slate-50/40
-                px-5
-                py-4
-                sm:flex-row
-                sm:items-center
-                sm:justify-between
-                dark:border-[#0d2336]
-                dark:bg-[#051422]
-              "
-            >
-              <p className="text-xs text-slate-500">
-                Showing{" "}
-                <span className="font-bold text-slate-700 dark:text-slate-200">
-                  {filteredLeads.length === 0
-                    ? 0
-                    : (safeCurrentPage - 1) * PAGE_SIZE + 1}
-                </span>
-                -
-                <span className="font-bold text-slate-700 dark:text-slate-200">
-                  {Math.min(safeCurrentPage * PAGE_SIZE, filteredLeads.length)}
-                </span>{" "}
-                of{" "}
-                <span className="font-bold text-slate-700 dark:text-slate-200">
-                  {filteredLeads.length}
-                </span>{" "}
-                leads
-              </p>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={safeCurrentPage === 1}
-                  onClick={() =>
-                    setCurrentPage((page) => Math.max(1, page - 1))
-                  }
-                  className="
-                    flex
-                    h-8
-                    w-8
-                    items-center
-                    justify-center
-                    rounded-lg
-                    text-slate-500
-                    transition
-                    hover:bg-white
-                    disabled:cursor-not-allowed
-                    disabled:opacity-30
-                    dark:hover:bg-[#071929]
-                  "
-                >
-                  <FiChevronLeft />
-                </button>
-
-                {paginationPages.map((page) => (
-                  <button
-                    key={page}
-                    type="button"
-                    onClick={() => setCurrentPage(page)}
-                    className={`
-                        flex
-                        h-8
-                        min-w-8
-                        items-center
-                        justify-center
-                        rounded-lg
-                        px-2
-                        text-xs
-                        font-bold
-                        transition
-                        ${
-                          safeCurrentPage === page
-                            ? "bg-[#1d2b45] text-white"
-                            : "text-slate-500 hover:bg-white dark:hover:bg-[#071929]"
-                        }
-                      `}
-                  >
-                    {page}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  disabled={safeCurrentPage === totalPages}
-                  onClick={() =>
-                    setCurrentPage((page) => Math.min(totalPages, page + 1))
-                  }
-                  className="
-                    flex
-                    h-8
-                    w-8
-                    items-center
-                    justify-center
-                    rounded-lg
-                    text-slate-500
-                    transition
-                    hover:bg-white
-                    disabled:cursor-not-allowed
-                    disabled:opacity-30
-                    dark:hover:bg-[#071929]
-                  "
-                >
-                  <FiChevronRight />
-                </button>
-              </div>
-            </div>
+            <Pagination
+              page={safeCurrentPage}
+              pageSize={PAGE_SIZE}
+              totalItems={filteredLeads.length}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              noun="leads"
+            />
           </>
         )}
       </div>
@@ -2622,48 +2469,29 @@ function LeadFormPage({
     <div className="min-h-full pb-8">
       {/* PAGE HEADER */}
 
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-            {title}
-          </h1>
+      <FormPageHeader
+        title={title}
+        parentLabel="Leads"
+        currentLabel={title === "Edit Lead" ? "Edit" : "New"}
+        actions={
+          <>
+            <CancelButton onClick={onClose} />
 
-          <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
-            <button
-              type="button"
-              onClick={onClose}
-              className="hover:text-primary"
-            >
-              Leads
-            </button>
+            <DraftButton disabled={saving} onClick={onClose} />
 
-            <span>›</span>
-
-            <span>{title === "Edit Lead" ? "Edit" : "New"}</span>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="
-            rounded-xl
-            border
-            border-slate-200
-            bg-white
-            p-2
-            text-slate-500
-            hover:bg-slate-50
-            dark:border-[#0d2336]
-            dark:bg-[#051422]
-            dark:text-slate-300
-          "
-        >
-          <FiX />
-        </button>
-      </div>
+            <SubmitButton formId="lead-form" disabled={saving}>
+              {saving
+                ? "Creating..."
+                : title === "Edit Lead"
+                  ? "Save Lead"
+                  : "Create Lead"}
+            </SubmitButton>
+          </>
+        }
+      />
 
       <form
+        id="lead-form"
         onSubmit={onSubmit}
         className="
     grid
@@ -2674,8 +2502,8 @@ function LeadFormPage({
       >
         {/* LEFT */}
 
-        <div className="space-y-4">
-          <FormSection icon={<FiInfo />} title="Customer Information">
+        <FormCard>
+          <FormSectionBlock first icon={<FiInfo />} title="Customer Information">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="md:col-span-2">
                 <FormSelect
@@ -2702,31 +2530,19 @@ function LeadFormPage({
                 onChange={(value) => onChange("website", value)}
               />
             </div>
-          </FormSection>
+          </FormSectionBlock>
 
-          <FormSection icon={<FiMapPin />} title="Organization Details">
+          <FormSectionBlock icon={<FiMapPin />} title="Organization Details">
             <div className="space-y-4">
-              {/* First row: Address + City */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <FormInput
-                  label="Address"
+                  label="Street Address"
                   required
                   value={form.address}
                   placeholder="Street Address, Building, Suite"
                   onChange={(value) => onChange("address", value)}
                 />
 
-                <FormInput
-                  label="City"
-                  required
-                  value={form.city}
-                  placeholder="Enter city"
-                  onChange={(value) => onChange("city", value)}
-                />
-              </div>
-
-              {/* Second row: State + PIN + Country */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <FormSelect
                   label="State / Province"
                   required
@@ -2735,13 +2551,15 @@ function LeadFormPage({
                   options={states}
                   allowCustom
                 />
+              </div>
 
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <FormInput
-                  label="PIN / ZIP Code"
+                  label="City"
                   required
-                  value={form.zipCode}
-                  placeholder="Enter PIN / ZIP code"
-                  onChange={(value) => onChange("zipCode", value)}
+                  value={form.city}
+                  placeholder="Type or select"
+                  onChange={(value) => onChange("city", value)}
                 />
 
                 <FormSelect
@@ -2752,10 +2570,18 @@ function LeadFormPage({
                   options={COUNTRIES}
                 />
               </div>
-            </div>
-          </FormSection>
 
-          <FormSection icon={<FiShield />} title="Registration & Compliance">
+              <FormInput
+                label="PIN / ZIP Code"
+                required
+                value={form.zipCode}
+                placeholder="Pin Code"
+                onChange={(value) => onChange("zipCode", value)}
+              />
+            </div>
+          </FormSectionBlock>
+
+          <FormSectionBlock icon={<FiShield />} title="Registration & Compliance">
             <div className="space-y-4">
               <DocumentField
                 label="GST Number"
@@ -2778,9 +2604,9 @@ function LeadFormPage({
                 onFile={onAttachment}
               />
             </div>
-          </FormSection>
+          </FormSectionBlock>
 
-          <FormSection icon={<FiUser />} title="Primary Contact">
+          <FormSectionBlock icon={<FiUser />} title="Primary Contact">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormInput
                 label="Full Name"
@@ -2813,13 +2639,13 @@ function LeadFormPage({
                 onChange={(value) => onChange("email", value)}
               />
             </div>
-          </FormSection>
-        </div>
+          </FormSectionBlock>
+        </FormCard>
 
         {/* RIGHT */}
 
-        <div className="space-y-4">
-          <FormSection icon={<FiBriefcase />} title="Sales Information">
+        <FormCard className="h-fit">
+          <FormSectionBlock first icon={<FiBriefcase />} title="Sales Information">
             <div className="space-y-4">
               <FormSelect
                 label="Lead Source"
@@ -2837,9 +2663,9 @@ function LeadFormPage({
                 onChange={(value) => onChange("assignedToId", value)}
               />
             </div>
-          </FormSection>
+          </FormSectionBlock>
 
-          <FormSection icon={<FiFileText />} title="Requirements & Files">
+          <FormSectionBlock icon={<FiFileText />} title="Requirements & Files">
             <div className="space-y-5">
               {/* Remarks */}
               <div>
@@ -2949,46 +2775,8 @@ function LeadFormPage({
                 </div>
               )}
             </div>
-          </FormSection>
-          <div
-            className="
-            grid
-            grid-cols-2
-            gap-3
-            rounded-2xl
-            border
-            border-slate-200
-            bg-white
-            p-4
-            dark:border-[#0d2336]
-            dark:bg-[#051422]
-          "
-          >
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="w-full justify-center"
-            >
-              Cancel
-            </Button>
-
-            <Button
-              type="submit"
-              disabled={saving}
-              className="w-full justify-center"
-            >
-              {saving ? (
-                <span className="flex items-center justify-center gap-2">
-                  <CgSpinner className="animate-spin" />
-                  Saving...
-                </span>
-              ) : (
-                "Save Lead"
-              )}
-            </Button>
-          </div>
-        </div>
+          </FormSectionBlock>
+        </FormCard>
       </form>
     </div>
   );
@@ -3788,140 +3576,20 @@ function ActivityTimelineCard({
    UI COMPONENTS
 ============================================================================ */
 
-function KpiCard({
-  label,
-  value,
-  percentage,
-  positive,
-  icon,
-}: {
-  label: string;
-  value: number;
-  percentage: string;
-  positive: boolean;
-  icon: ReactNode;
-}) {
-  return (
-    <div
-      className="
-        rounded-2xl
-        border
-        border-slate-200/80
-        bg-white
-        p-5
-        shadow-sm
-        dark:border-[#0d2336]
-        dark:bg-[#051422]
-      "
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-          {label}
-        </span>
-
-        <span
-          className={`
-            inline-flex
-            items-center
-            gap-1
-            rounded-md
-            px-2
-            py-1
-            text-[10px]
-            font-bold
-            ${
-              positive
-                ? "bg-emerald-500/10 text-emerald-600"
-                : "bg-rose-500/10 text-rose-500"
-            }
-          `}
-        >
-          {icon}
-          {percentage}
-        </span>
-      </div>
-
-      <div className="mt-4">
-        <p className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-          {value.toLocaleString("en-IN")}
-        </p>
-
-        <p
-          className={`
-            mt-1
-            text-[10px]
-            font-bold
-            ${positive ? "text-emerald-500" : "text-rose-500"}
-          `}
-        >
-          vs last month
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function StatusBadge({ status, stage }: { status: string; stage: string }) {
-  let label = status || "Unknown";
+  /* Leads carry a legacy `stage` alongside the canonical status; fall back to
+     it so older rows still render, then let the shared pill pick the colour so
+     the badge matches Opportunity and Sales Order. */
+  const canonical =
+    status ||
+    (stage === "dead"
+      ? "LOST"
+      : stage === "opportunity" || stage === "quotation"
+        ? "CONVERTED"
+        : "NEW");
 
-  let className =
-    "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300";
-
-  if (status === "NEW" || stage === "lead") {
-    label = "New";
-
-    className =
-      "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300";
-  }
-
-  if (status === "CONTACTED") {
-    label = "Contacted";
-
-    className = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
-  }
-
-  if (status === "QUALIFIED" || status === "CONVERTED" || stage === "opportunity") {
-    label = "Qualified";
-
-    className = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
-  }
-
-  if (stage === "quotation") {
-    label = "Quotation";
-
-    className = "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400";
-  }
-
-  if (status === "LOST" || stage === "dead") {
-    label = "Dead";
-
-    className = "bg-rose-500/10 text-rose-600 dark:text-rose-400";
-  }
-
-  if (status === "won") {
-    label = "Won";
-
-    className = "bg-emerald-500/10 text-emerald-600";
-  }
-
-  return (
-    <span
-      className={`
-        inline-flex
-        rounded-lg
-        px-2.5
-        py-1.5
-        text-[10px]
-        font-bold
-        capitalize
-        ${className}
-      `}
-    >
-      {label}
-    </span>
-  );
+  return <StatusPill status={canonical} />;
 }
-
 function TableHeader({ label }: { label: string }) {
   return (
     <span className="flex items-center gap-2">
@@ -4084,30 +3752,6 @@ const filterInput = `
   dark:bg-[#071929]
   dark:text-white
 `;
-
-function FormSection({
-  icon,
-  title,
-  children,
-}: {
-  icon: ReactNode;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="rounded-2xl border border-slate-200/80 bg-white p-5 dark:border-[#0d2336] dark:bg-[#051422]">
-      <div className="mb-5 flex items-center gap-2.5 border-b border-slate-100 pb-3 dark:border-[#0d2336]">
-        <span className="text-slate-500">{icon}</span>
-
-        <h3 className="text-sm font-bold text-slate-800 dark:text-white">
-          {title}
-        </h3>
-      </div>
-
-      {children}
-    </section>
-  );
-}
 
 function FormInput({
   label,

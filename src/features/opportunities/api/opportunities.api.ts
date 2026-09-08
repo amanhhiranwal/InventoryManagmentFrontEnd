@@ -105,6 +105,12 @@ export interface OpportunityModel {
   pan_number?: string | null;
   coi_number?: string | null;
 
+  shipping_address?: string | null;
+  shipping_city?: string | null;
+  shipping_state?: string | null;
+  shipping_zip_code?: string | null;
+  shipping_country?: string | null;
+
   requirements?: string | null;
   remarks?: string | null;
   demo_status?: string | null;
@@ -150,6 +156,12 @@ export interface CreateOpportunityPayload {
   gst_number?: string;
   pan_number?: string;
   coi_number?: string;
+
+  shipping_address?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_zip_code?: string;
+  shipping_country?: string;
 
   requirements?: string;
   remarks?: string;
