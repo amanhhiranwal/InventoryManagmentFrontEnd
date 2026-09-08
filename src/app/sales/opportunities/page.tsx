@@ -12,6 +12,23 @@ import { useSearchParams } from "next/navigation";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 import { Lead, getLeadsApi } from "@/features/workflows/api/workflows.api";
+import StatCard from "@/components/crm/StatCard";
+import Pagination from "@/components/crm/Pagination";
+import { PriorityPill, StatusPill } from "@/components/crm/Pill";
+import {
+  BillingShippingHeader,
+  FormCard,
+  FormSectionBlock,
+} from "@/components/crm/FormCard";
+import FormPageHeader, {
+  CancelButton,
+  DraftButton,
+  SubmitButton,
+} from "@/components/crm/FormPageHeader";
+import {
+  ListToolbar,
+  PrimaryAction,
+} from "@/components/crm/ListPageShell";
 import {
   OPPORTUNITY_STATUS,
   OPPORTUNITY_STATUS_LABEL,
@@ -30,13 +47,10 @@ import {
   FiList,
   FiDownload,
   FiRefreshCw,
-  FiSliders,
   FiPhone,
   FiMoreVertical,
   FiMessageSquare,
   FiX,
-  FiChevronLeft,
-  FiChevronRight,
   FiCalendar,
   FiMapPin,
   FiUser,
@@ -799,6 +813,12 @@ function OpportunitiesPageInner() {
         zip_code: payload.pinCode,
         country: payload.country,
 
+        shipping_address: payload.shippingAddress,
+        shipping_city: payload.shippingCity,
+        shipping_state: payload.shippingState,
+        shipping_zip_code: payload.shippingPinCode,
+        shipping_country: payload.shippingCountry,
+
         gst_number: payload.gstNumber,
         pan_number: payload.panNumber,
         coi_number: payload.coiNumber,
@@ -1141,14 +1161,13 @@ function OpportunitiesPageInner() {
   }
 
   return (
-    <div className="min-h-full bg-[#f5f6f8] dark:bg-[#020b14] text-slate-800 dark:text-white">
-      <div className="space-y-5 p-1">
+    <div className="min-h-full space-y-5 pb-8">
         {/* =========================================================
             PAGE HEADER
         ========================================================= */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h1 className="text-[18px] font-semibold text-slate-900 dark:text-white">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
               Opportunity
             </h1>
 
@@ -1157,7 +1176,7 @@ function OpportunitiesPageInner() {
               onClick={handleRefresh}
               disabled={refreshing}
               title="Refresh opportunities"
-              className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
+              className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
             >
               <FiRefreshCw
                 className={refreshing ? "animate-spin" : ""}
@@ -1219,23 +1238,23 @@ function OpportunitiesPageInner() {
         {/* =========================================================
             KPI CARDS
         ========================================================= */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <KpiCard
-            title="Total Orders"
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <StatCard
+            label="Total Orders"
             value={totalOrders}
             change="18.0%"
             positive
           />
 
-          <KpiCard
-            title="Total Negotiation"
+          <StatCard
+            label="Total Negotiation"
             value={negotiationCount}
             change="12%"
             positive={false}
           />
 
-          <KpiCard
-            title="Closed Won Today"
+          <StatCard
+            label="Closed Won Today"
             value={closedWonToday}
             change="15.0%"
             positive
@@ -1245,81 +1264,50 @@ function OpportunitiesPageInner() {
         {/* =========================================================
             SEARCH + VIEW + FILTER + ADD
         ========================================================= */}
-        <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <FiSearch
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-              size={15}
-            />
-
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(1);
-              }}
-              placeholder="Search Opportunities"
-              className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-11 pr-4 text-xs outline-none placeholder:text-slate-400 focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="flex h-11 items-center rounded-lg border border-slate-200 bg-white p-1 dark:border-[#17304a] dark:bg-[#071929]">
-              <button
-                type="button"
-                onClick={() => setViewMode("list")}
-                className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold ${
-                  viewMode === "list"
-                    ? "bg-[#f1f2f4] text-slate-900 shadow-sm dark:bg-[#10243a] dark:text-white"
-                    : "text-slate-500"
-                }`}
-              >
-                <FiList size={14} />
-                List
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode("board")}
-                className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold ${
-                  viewMode === "board"
-                    ? "bg-[#f1f2f4] text-slate-900 shadow-sm dark:bg-[#10243a] dark:text-white"
-                    : "text-slate-500"
-                }`}
-              >
-                <FiGrid size={14} />
-                Board
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowFilters((value) => !value)}
-              className={`relative flex h-11 w-11 items-center justify-center rounded-lg border bg-white ${
-                showFilters || activeFilterCount > 0
-                  ? "border-[#233353] text-[#233353]"
-                  : "border-slate-200 text-slate-600"
-              } dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300`}
-            >
-              <FiSliders size={17} />
-
-              {activeFilterCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#233353] px-1 text-[8px] font-bold text-white">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={openLeadPicker}
-              className="flex h-11 items-center gap-2 rounded-lg bg-[#233353] px-5 text-xs font-bold text-white shadow-sm hover:bg-[#18243a]"
-            >
-              <FiPlus size={16} />
+        <div className="relative">
+        <ListToolbar
+          search={search}
+          onSearchChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
+          placeholder="Search Opportunities"
+          activeFilterCount={activeFilterCount}
+          onToggleFilters={() => setShowFilters((value) => !value)}
+          trailing={
+            <PrimaryAction onClick={openLeadPicker} icon={<FiPlus size={16} />}>
               Add New Opportunity
+            </PrimaryAction>
+          }
+        >
+          <div className="flex h-11 shrink-0 items-center rounded-lg border border-slate-200 bg-white p-1 dark:border-[#17304a] dark:bg-[#071929]">
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold ${
+                viewMode === "list"
+                  ? "bg-slate-100 text-slate-900 shadow-sm dark:bg-[#10243a] dark:text-white"
+                  : "text-slate-500"
+              }`}
+            >
+              <FiList size={14} />
+              List
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode("board")}
+              className={`flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold ${
+                viewMode === "board"
+                  ? "bg-slate-100 text-slate-900 shadow-sm dark:bg-[#10243a] dark:text-white"
+                  : "text-slate-500"
+              }`}
+            >
+              <FiGrid size={14} />
+              Board
             </button>
           </div>
+        </ListToolbar>
 
           {/* =====================================================
               FILTER POPOVER
@@ -1415,7 +1403,6 @@ function OpportunitiesPageInner() {
             onAdvance={() => handleAdvanceStage(selectedOpportunity)}
           />
         )}
-      </div>
     </div>
   );
 }
@@ -1423,38 +1410,6 @@ function OpportunitiesPageInner() {
 /* ================================================================
    KPI CARD
 ================================================================ */
-
-function KpiCard({
-  title,
-  value,
-  change,
-  positive,
-}: {
-  title: string;
-  value: number;
-  change: string;
-  positive: boolean;
-}) {
-  return (
-    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-[#17304a] dark:bg-[#071929]">
-      <div
-        className={`absolute right-3 top-3 rounded px-2 py-1 text-[10px] font-bold ${
-          positive
-            ? "bg-emerald-50 text-emerald-500"
-            : "bg-rose-50 text-rose-500"
-        }`}
-      >
-        {positive ? "↗" : "↘"} {change}
-      </div>
-
-      <p className="text-xs text-slate-500 dark:text-slate-400">{title}</p>
-
-      <h2 className="mt-2 text-[27px] font-semibold tracking-tight text-[#233353] dark:text-white">
-        {value.toLocaleString("en-IN")}
-      </h2>
-    </div>
-  );
-}
 
 /* ================================================================
    FILTER POPOVER
@@ -1771,7 +1726,7 @@ function OpportunityBoardCard({
   const progress = STAGE_PROGRESS[opportunity.stage];
 
   return (
-    <div className="relative rounded-xl border border-slate-200 bg-[#f8f8f8] p-3 shadow-sm transition hover:shadow-md dark:border-[#17304a] dark:bg-[#0b1d2e]">
+    <div className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md dark:border-[#17304a] dark:bg-[#0b1d2e]">
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"
@@ -1866,10 +1821,6 @@ function ListView({
   onMarkDead: (opportunity: Opportunity) => void;
   onAdvance: (opportunity: Opportunity) => void;
 }) {
-  const start = filteredCount === 0 ? 0 : (page - 1) * pageSize + 1;
-
-  const end = Math.min(page * pageSize, filteredCount);
-
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#17304a] dark:bg-[#071929]">
       <div className="overflow-x-auto">
@@ -2012,52 +1963,14 @@ function ListView({
         </table>
       </div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 dark:border-[#17304a]">
-        <p className="text-[10px] text-slate-500">
-          Showing {start}-{end} of {filteredCount} opportunities
-        </p>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            disabled={page === 1}
-            onClick={() => onPageChange(Math.max(1, page - 1))}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 disabled:opacity-30"
-          >
-            <FiChevronLeft size={14} />
-          </button>
-
-          {Array.from(
-            {
-              length: Math.min(totalPages, 3),
-            },
-            (_, index) => index + 1,
-          ).map((pageNumber) => (
-            <button
-              key={pageNumber}
-              type="button"
-              onClick={() => onPageChange(pageNumber)}
-              className={`flex h-7 w-7 items-center justify-center rounded-md text-[10px] font-semibold ${
-                page === pageNumber
-                  ? "bg-[#233353] text-white"
-                  : "border border-slate-200 bg-white text-slate-600 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
-              }`}
-            >
-              {pageNumber}
-            </button>
-          ))}
-
-          <button
-            type="button"
-            disabled={page === totalPages}
-            onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 disabled:opacity-30"
-          >
-            <FiChevronRight size={14} />
-          </button>
-        </div>
-      </div>
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={filteredCount}
+        totalPages={totalPages}
+        onPageChange={onPageChange}
+        noun="opportunities"
+      />
     </div>
   );
 }
@@ -2651,6 +2564,13 @@ function NewOpportunityPage({
 
   const [country, setCountry] = useState(lead?.country || "India");
 
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [shippingCity, setShippingCity] = useState("");
+  const [shippingState, setShippingState] = useState("");
+  const [shippingPinCode, setShippingPinCode] = useState("");
+  const [shippingCountry, setShippingCountry] = useState("India");
+  const [sameAsBilling, setSameAsBilling] = useState(false);
+
   const [gstNumber, setGstNumber] = useState(lead?.gst_number || "");
 
   const [panNumber, setPanNumber] = useState(lead?.pan_number || "");
@@ -2762,6 +2682,12 @@ function NewOpportunityPage({
       await onSubmit({
         leadId: lead?.id,
 
+        shippingAddress: sameAsBilling ? officeAddress : shippingAddress,
+        shippingCity: sameAsBilling ? city : shippingCity,
+        shippingState: sameAsBilling ? state : shippingState,
+        shippingPinCode: sameAsBilling ? pinCode : shippingPinCode,
+        shippingCountry: sameAsBilling ? country : shippingCountry,
+
         customerType,
         organizationName,
         organizationWebsite,
@@ -2792,43 +2718,33 @@ function NewOpportunityPage({
   };
 
   return (
-    <div className="min-h-[calc(100vh-60px)] bg-[#f5f6f8] text-slate-800 dark:bg-[#020b14] dark:text-white">
+    <div className="min-h-full pb-8">
       {/* =========================================================
           PAGE HEADER
       ========================================================= */}
 
-      <div className="border-b border-slate-200 bg-white px-5 py-4 dark:border-[#17304a] dark:bg-[#071929]">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-[18px] font-semibold text-slate-900 dark:text-white">
-              New Opportunity
-            </h1>
+      <FormPageHeader
+        title="New Opportunity"
+        parentLabel="Opportunity"
+        actions={
+          <>
+            <CancelButton onClick={onClose} />
 
-            <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400">
-              <span>Opportunity</span>
+            <DraftButton disabled={submitting} onClick={onClose} />
 
-              <span>›</span>
-
-              <span>New</span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-[#10243a]"
-            title="Close"
-          >
-            <FiX size={17} />
-          </button>
-        </div>
-      </div>
+            <SubmitButton formId="new-opportunity-form" disabled={submitting}>
+              {submitting ? "Creating..." : "Create Opportunity"}
+            </SubmitButton>
+          </>
+        }
+      />
 
       {/* =========================================================
           FORM
       ========================================================= */}
 
       <form
+        id="new-opportunity-form"
         onSubmit={handleSubmit}
         className="flex min-h-[calc(100vh-138px)] flex-col"
       >
@@ -2842,12 +2758,13 @@ function NewOpportunityPage({
                 LEFT COLUMN
             =================================================== */}
 
-            <div className="space-y-3">
+            <FormCard>
               {/* =================================================
                   CUSTOMER INFORMATION
               ================================================= */}
 
-              <FormSection
+              <FormSectionBlock
+                first
                 icon={<FiUser size={17} />}
                 title="Customer Information"
               >
@@ -2875,71 +2792,123 @@ function NewOpportunityPage({
                     />
                   </div>
                 </div>
-              </FormSection>
+              </FormSectionBlock>
 
               {/* =================================================
                   ORGANIZATION DETAILS
               ================================================= */}
 
-              <FormSection
+              <FormSectionBlock
                 icon={<FiMapPin size={17} />}
                 title="Organization Details"
               >
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
-                  {/* First Row */}
-                  <div className="md:col-span-3">
-                    <FormInput
-                      label="Office Address *"
-                      value={officeAddress}
-                      onChange={setOfficeAddress}
-                      placeholder="42, MG Road, Building A, Suite 304"
-                    />
-                  </div>
+                <div className="space-y-4">
+                  <BillingShippingHeader
+                    sameAsBilling={sameAsBilling}
+                    onToggle={(value: boolean) => {
+                      setSameAsBilling(value);
 
-                  <div className="md:col-span-3">
-                    <FormInput
-                      label="City *"
-                      value={city}
-                      onChange={setCity}
-                      placeholder="Bengaluru"
-                    />
-                  </div>
+                      if (value) {
+                        setShippingAddress(officeAddress);
+                        setShippingCity(city);
+                        setShippingState(state);
+                        setShippingPinCode(pinCode);
+                        setShippingCountry(country);
+                      }
+                    }}
+                  />
 
-                  {/* Second Row */}
-                  <div className="md:col-span-2">
-                    <FormInput
-                      label="State / Province *"
-                      value={state}
-                      onChange={setState}
-                      placeholder="Karnataka"
-                    />
-                  </div>
+                  <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <FormInput
+                          label="Street Address *"
+                          value={officeAddress}
+                          onChange={setOfficeAddress}
+                          placeholder="Street Address, Building, Suite"
+                        />
 
-                  <div className="md:col-span-2">
-                    <FormInput
-                      label="PIN / ZIP Code *"
-                      value={pinCode}
-                      onChange={setPinCode}
-                      placeholder="560001"
-                    />
-                  </div>
+                        <FormInput
+                          label="State / Province *"
+                          value={state}
+                          onChange={setState}
+                          placeholder="State"
+                        />
+                      </div>
 
-                  <div className="md:col-span-2">
-                    <FormInput
-                      label="Country *"
-                      value={country}
-                      onChange={setCountry}
-                      placeholder="India"
-                    />
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <FormInput
+                          label="City *"
+                          value={city}
+                          onChange={setCity}
+                          placeholder="Type or select"
+                        />
+
+                        <FormInput
+                          label="Country *"
+                          value={country}
+                          onChange={setCountry}
+                          placeholder="India"
+                        />
+
+                        <FormInput
+                          label="PIN / ZIP Code *"
+                          value={pinCode}
+                          onChange={setPinCode}
+                          placeholder="Pin Code"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <FormInput
+                          label="Street Address *"
+                          value={shippingAddress}
+                          onChange={setShippingAddress}
+                          placeholder="Street Address, Building, Suite"
+                        />
+
+                        <FormInput
+                          label="State / Province *"
+                          value={shippingState}
+                          onChange={setShippingState}
+                          placeholder="State"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <FormInput
+                          label="City *"
+                          value={shippingCity}
+                          onChange={setShippingCity}
+                          placeholder="Type or select"
+                        />
+
+                        <FormInput
+                          label="Country *"
+                          value={shippingCountry}
+                          onChange={setShippingCountry}
+                          placeholder="India"
+                        />
+
+                        <FormInput
+                          label="PIN / ZIP Code *"
+                          value={shippingPinCode}
+                          onChange={setShippingPinCode}
+                          placeholder="Pin Code"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </FormSection>
+              </FormSectionBlock>
 
               {/* =================================================
                   REGISTRATION & COMPLIANCE
               ================================================= */}
 
-              <FormSection
+              <FormSectionBlock
                 icon={<FiCheckCircle size={17} />}
                 title="Registration & Compliance"
               >
@@ -2965,13 +2934,13 @@ function NewOpportunityPage({
                     placeholder="COI Number"
                   />
                 </div>
-              </FormSection>
+              </FormSectionBlock>
 
               {/* =================================================
                   PRIMARY CONTACT
               ================================================= */}
 
-              <FormSection icon={<FiUser size={17} />} title="Primary Contact">
+              <FormSectionBlock icon={<FiUser size={17} />} title="Primary Contact">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <FormInput
                     label="Full Name *"
@@ -3017,19 +2986,94 @@ function NewOpportunityPage({
                     type="email"
                   />
                 </div>
-              </FormSection>
-            </div>
+              </FormSectionBlock>
+            </FormCard>
 
             {/* ===================================================
                 RIGHT COLUMN
             =================================================== */}
 
-            <div className="space-y-3">
+            <FormCard className="h-fit">
               {/* =================================================
                       PRODUCT INTEREST
                   ================================================= */}
 
-              <FormSection
+              <FormSectionBlock
+                icon={<FiUser size={17} />}
+                title="Sales Information"
+              >
+                <div className="space-y-3">
+                  <FormSelect
+                    label="Lead Source *"
+                    value={leadSource}
+                    options={["Marketing", "Cold Calling", "In-bound"]}
+                    onChange={setLeadSource}
+                  />
+
+                  <FormSelect
+                    label="Assigned to *"
+                    value={assignedTo}
+                    options={["Sales Team"]}
+                    onChange={setAssignedTo}
+                  />
+
+                  {/* Priority */}
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
+                      Priority
+                    </label>
+
+                    <div className="flex gap-2">
+                      {(["High", "Medium", "Low"] as Priority[]).map((item) => {
+                        const isSelected = priority === item;
+
+                        return (
+                          <button
+                            type="button"
+                            key={item}
+                            onClick={() => setPriority(item)}
+                            className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${
+                              isSelected
+                                ? item === "High"
+                                  ? "border border-rose-100 bg-rose-50 text-rose-500 shadow-sm"
+                                  : item === "Medium"
+                                    ? "border border-amber-100 bg-amber-50 text-amber-600 shadow-sm"
+                                    : "border border-slate-200 bg-white text-slate-700 shadow-sm"
+                                : "border border-transparent bg-slate-100 text-slate-500 dark:bg-[#10243a] dark:text-slate-400"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
+                      Expected Closing Date
+                    </label>
+
+                    <div className="relative">
+                      <FiCalendar
+                        size={15}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+                      />
+
+                      <input
+                        type="date"
+                        value={expectedClosingDate}
+                        onChange={(event) =>
+                          setExpectedClosingDate(event.target.value)
+                        }
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-[10px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </FormSectionBlock>
+
+              <FormSectionBlock
                 icon={<FiShoppingCart size={17} />}
                 title="Product Interest"
               >
@@ -3134,92 +3178,18 @@ function NewOpportunityPage({
                     onChange={setPurchaseTimeline}
                   />
                 </div>
-              </FormSection>
+              </FormSectionBlock>
 
               {/* =================================================
                   SALES INFORMATION
               ================================================= */}
 
-              <FormSection
-                icon={<FiUser size={17} />}
-                title="Sales Information"
-              >
-                <div className="space-y-3">
-                  <FormSelect
-                    label="Lead Source *"
-                    value={leadSource}
-                    options={["Marketing", "Cold Calling", "In-bound"]}
-                    onChange={setLeadSource}
-                  />
-
-                  <FormSelect
-                    label="Assigned to *"
-                    value={assignedTo}
-                    options={["Sales Team"]}
-                    onChange={setAssignedTo}
-                  />
-
-                  {/* Priority */}
-                  <div>
-                    <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-                      Priority
-                    </label>
-
-                    <div className="flex gap-2">
-                      {(["High", "Medium", "Low"] as Priority[]).map((item) => {
-                        const isSelected = priority === item;
-
-                        return (
-                          <button
-                            type="button"
-                            key={item}
-                            onClick={() => setPriority(item)}
-                            className={`rounded-md px-3 py-1.5 text-[10px] font-semibold transition ${
-                              isSelected
-                                ? item === "High"
-                                  ? "border border-rose-100 bg-rose-50 text-rose-500 shadow-sm"
-                                  : item === "Medium"
-                                    ? "border border-amber-100 bg-amber-50 text-amber-600 shadow-sm"
-                                    : "border border-slate-200 bg-white text-slate-700 shadow-sm"
-                                : "border border-transparent bg-slate-100 text-slate-500 dark:bg-[#10243a] dark:text-slate-400"
-                            }`}
-                          >
-                            {item}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-                      Expected Closing Date
-                    </label>
-
-                    <div className="relative">
-                      <FiCalendar
-                        size={15}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-                      />
-
-                      <input
-                        type="date"
-                        value={expectedClosingDate}
-                        onChange={(event) =>
-                          setExpectedClosingDate(event.target.value)
-                        }
-                        className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-[10px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </FormSection>
 
               {/* =================================================
                   REQUIREMENTS & FILES
               ================================================= */}
 
-              <FormSection
+              <FormSectionBlock
                 icon={<FiFileText size={17} />}
                 title="Requirements & Files"
               >
@@ -3262,8 +3232,8 @@ function NewOpportunityPage({
                     />
                   </label>
                 </div>
-              </FormSection>
-            </div>
+              </FormSectionBlock>
+            </FormCard>
           </div>
         </div>
 
@@ -3271,32 +3241,6 @@ function NewOpportunityPage({
             FOOTER
         ======================================================= */}
 
-        <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-6 py-3.5 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] dark:border-[#17304a] dark:bg-[#071929]">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            disabled={submitting}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
-          >
-            Save as Draft
-          </button>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-lg bg-[#233353] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {submitting ? "Saving..." : "Save Opportunity"}
-          </button>
-        </div>
       </form>
     </div>
   );
@@ -3428,28 +3372,6 @@ function EditOpportunityModal({
    FORM COMPONENTS
 ================================================================ */
 
-function FormSection({
-  icon,
-  title,
-  children,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-[#17304a] dark:bg-[#071929]">
-      <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-[#17304a]">
-        <span className="text-slate-600 dark:text-slate-300">{icon}</span>
-
-        <h3 className="text-[13px] font-semibold">{title}</h3>
-      </div>
-
-      {children}
-    </section>
-  );
-}
-
 function FormInput({
   label,
   value,
@@ -3569,43 +3491,13 @@ function Avatar({ name }: { name: string }) {
 }
 
 function PriorityBadge({ priority }: { priority: Priority }) {
-  const styles =
-    priority === "High"
-      ? "border-rose-400 text-rose-500"
-      : priority === "Low"
-        ? "border-amber-400 text-amber-500"
-        : "border-blue-400 text-blue-500";
-
-  return (
-    <span
-      className={`inline-flex rounded-full border px-2 py-0.5 text-[9px] font-semibold ${styles}`}
-    >
-      {priority}
-    </span>
-  );
+  return <PriorityPill priority={priority} />;
 }
 
 function StatusBadge({ status }: { status: OpportunityStage }) {
-  const styles =
-    status === "Negotiation"
-      ? "bg-slate-100 text-slate-600"
-      : status === "Proposal Sent"
-        ? "bg-slate-100 text-slate-600"
-        : status === "Demo Scheduled"
-          ? "bg-slate-100 text-slate-600"
-          : status === "Closed Won"
-            ? "bg-emerald-50 text-emerald-600"
-            : status === "Dead"
-              ? "bg-rose-50 text-rose-500"
-              : "bg-slate-100 text-slate-600";
-
-  return (
-    <span
-      className={`inline-flex rounded-md px-2 py-1 text-[9px] font-medium ${styles}`}
-    >
-      {status}
-    </span>
-  );
+  /* The board/list work in display labels; map back to the canonical
+     status so the shared pill picks the right colour. */
+  return <StatusPill status={STAGE_TO_STATUS[status]} label={status} />;
 }
 
 /* ================================================================

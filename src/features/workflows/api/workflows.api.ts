@@ -126,6 +126,7 @@ export const getLeadsApi = async (): Promise<Lead[]> => {
 };
 
 export const createLeadApi = async (payload: {
+
   title: string;
   description?: string;
   status?: string;
