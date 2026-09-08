@@ -24,6 +24,7 @@ import {
   Lead,
 } from "@/features/workflows/api/workflows.api";
 
+import { useRouter } from "next/navigation";
 import { getUsersApi, User } from "@/features/users/api/users.api";
 import { getCustomerTypesApi, CustomerTypeModel } from "@/features/inventory/api/inventory.api";
 import { getStatesApi, StateModel } from "@/features/locations/api/locations.api";
@@ -50,6 +51,7 @@ import {
   FiMessageSquare,
   FiEdit3,
   FiCheckCircle,
+  FiPhoneCall,
   FiXCircle,
   FiChevronLeft,
   FiChevronRight,
@@ -98,6 +100,19 @@ interface LeadDetails {
 }
 
 interface LeadFormState extends LeadDetails {
+  assignedToId: string;
+}
+
+/* Shape of the third-party integration capture form. The type was referenced
+   but never declared, which left the project unable to type-check or build. */
+interface IntegrationLeadState {
+  source: string;
+  contactName: string;
+  organizationName: string;
+  email: string;
+  mobileNumber: string;
+  website: string;
+  remarks: string;
   assignedToId: string;
 }
 
@@ -155,6 +170,15 @@ const EMPTY_FILTERS: LeadFilters = {
 
 
 
+
+/* Canonical lead pipeline shown in the details drawer. LOST is rendered as
+   a separate terminal cell because it is an outcome, not a step. */
+const LEAD_PIPELINE: { label: string; status: string }[] = [
+  { label: "New", status: "NEW" },
+  { label: "Contacted", status: "CONTACTED" },
+  { label: "Qualified", status: "QUALIFIED" },
+  { label: "Converted", status: "CONVERTED" },
+];
 
 const LEAD_SOURCES = ["Marketing", "Cold Calling", "In-bound"];
 
@@ -358,19 +382,20 @@ function getInitials(value?: string) {
 }
 
 function isLeadDead(lead: Lead) {
-  return lead.status === "dead" || lead.stage === "dead";
+  return lead.status === "LOST" || lead.stage === "dead";
 }
 
 function isLeadQualified(lead: Lead) {
   return (
-    lead.status === "qualified" ||
+    lead.status === "QUALIFIED" ||
+    lead.status === "CONVERTED" ||
     lead.stage === "opportunity" ||
     lead.stage === "quotation"
   );
 }
 
 function isLeadNew(lead: Lead) {
-  return lead.status === "new" || lead.stage === "lead";
+  return lead.status === "NEW" || lead.stage === "lead";
 }
 
 function formatDateInput(value: string) {
@@ -389,6 +414,8 @@ function formatDateInput(value: string) {
 
 export default function LeadsPage() {
   const { addToast } = useUIStore();
+
+  const router = useRouter();
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -815,7 +842,7 @@ export default function LeadsPage() {
         coi_number: details.coiNumber,
         designation: details.designation,
         remarks: details.remarks,
-        status: "new",
+        status: "NEW",
         customer_type_id: selectedCt?.id,
         state_id: selectedSt?.id,
         assigned_to_id: form.assignedToId || undefined,
@@ -928,11 +955,35 @@ export default function LeadsPage() {
      LEAD ACTIONS
   -------------------------------------------------------------------------- */
 
+  /* Move a lead one step along NEW -> CONTACTED -> QUALIFIED. Without
+     this there was no way to reach those states from the UI at all. */
+  const advanceLeadStatus = async (lead: Lead, next: string) => {
+    try {
+      await progressLeadApi(String(lead.id), {
+        stage: "lead",
+        status: next,
+      });
+
+      addToast(`Lead marked as ${next.toLowerCase()}.`, "success");
+
+      setRowMenuLeadId(null);
+
+      await fetchLeads();
+    } catch (error: any) {
+      console.error(error);
+
+      addToast(
+        error?.response?.data?.detail || "Failed to update lead status.",
+        "error",
+      );
+    }
+  };
+
   const markLeadDead = async (lead: Lead) => {
     try {
       await progressLeadApi(String(lead.id), {
         stage: "dead",
-        status: "dead",
+        status: "LOST",
       });
 
       addToast("Lead marked as dead.", "success");
@@ -948,24 +999,33 @@ export default function LeadsPage() {
     }
   };
 
-  const convertToOpportunity = async (lead: Lead) => {
-    try {
-      await progressLeadApi(String(lead.id), {
-        stage: "opportunity",
-        status: "qualified",
-      });
-
-      addToast("Lead converted to opportunity.", "success");
-
-      setRowMenuLeadId(null);
-      setShowDetailsModal(false);
-
-      await fetchLeads();
-    } catch (error) {
-      console.error(error);
-
-      addToast("Failed to convert lead.", "error");
+  /* Opens the New Opportunity page prefilled from this lead. The
+     opportunity (and the lead's move to CONVERTED) is created when that
+     form is saved, not here. */
+  const convertToOpportunity = (lead: Lead) => {
+    if (lead.status === "CONVERTED") {
+      addToast("This lead has already been converted.", "info");
+      return;
     }
+
+    if (lead.status === "LOST") {
+      addToast("A lost lead cannot be converted.", "error");
+      return;
+    }
+
+    /* Qualification is the gate into the opportunity pipeline. */
+    if (lead.status !== "QUALIFIED") {
+      addToast(
+        "Mark this lead as Qualified before converting it.",
+        "warning",
+      );
+      return;
+    }
+
+    setRowMenuLeadId(null);
+    setShowDetailsModal(false);
+
+    router.push(`/sales/opportunities?leadId=${lead.id}`);
   };
 
   const openLeadDetails = (lead: Lead) => {
@@ -1451,7 +1511,7 @@ export default function LeadsPage() {
           coi_number: importedDetails.coiNumber || undefined,
           designation: importedDetails.designation || undefined,
           remarks: importedDetails.remarks || undefined,
-          status: "new",
+          status: "NEW",
           customer_type_id: selectedCt?.id,
           state_id: selectedSt?.id,
           assigned_to_id: matchingUser?.id || undefined,
@@ -2149,6 +2209,28 @@ export default function LeadsPage() {
                                     Edit
                                   </RowAction>
 
+                                  {lead.status === "NEW" && (
+                                    <RowAction
+                                      icon={<FiPhoneCall />}
+                                      onClick={() =>
+                                        advanceLeadStatus(lead, "CONTACTED")
+                                      }
+                                    >
+                                      Mark as Contacted
+                                    </RowAction>
+                                  )}
+
+                                  {lead.status === "CONTACTED" && (
+                                    <RowAction
+                                      icon={<FiCheckCircle />}
+                                      onClick={() =>
+                                        advanceLeadStatus(lead, "QUALIFIED")
+                                      }
+                                    >
+                                      Mark as Qualified
+                                    </RowAction>
+                                  )}
+
                                   <RowAction
                                     icon={<FiXCircle />}
                                     danger
@@ -2157,13 +2239,15 @@ export default function LeadsPage() {
                                     Mark as Dead
                                   </RowAction>
 
-                                  <RowAction
-                                    icon={<FiArrowUpRight />}
-                                    success
-                                    onClick={() => convertToOpportunity(lead)}
-                                  >
-                                    Convert to Opportunity
-                                  </RowAction>
+                                  {lead.status === "QUALIFIED" && (
+                                    <RowAction
+                                      icon={<FiArrowUpRight />}
+                                      success
+                                      onClick={() => convertToOpportunity(lead)}
+                                    >
+                                      Convert to Opportunity
+                                    </RowAction>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -3156,17 +3240,12 @@ function LeadDetailsModal({
 
   if (!isOpen) return null;
 
-  const isDead = lead.status === "dead" || lead.stage === "dead";
-  const isQualified =
-    lead.status === "qualified" || lead.stage === "opportunity";
-
-  const currentStage = isDead
-    ? "closed"
-    : isQualified
-      ? "openDeal"
-      : lead.status === "contacted"
-        ? "inProgress"
-        : "open";
+  const isDead = lead.status === "LOST" || lead.stage === "dead";
+  /* Index of this lead along the canonical NEW -> CONVERTED path.
+     LOST is a terminal outcome shown in its own cell, not a step. */
+  const pipelineIndex = LEAD_PIPELINE.findIndex(
+    (step) => step.status === lead.status,
+  );
 
   return (
     <div className="fixed inset-0 z-[100]">
@@ -3241,7 +3320,7 @@ function LeadDetailsModal({
           <button
             type="button"
             onClick={onConvert}
-            disabled={isDead}
+            disabled={lead.status !== "QUALIFIED"}
             className="
               rounded-lg
               bg-[#1d2b45]
@@ -3272,38 +3351,17 @@ function LeadDetailsModal({
             dark:border-[#0d2336]
           "
         >
-          <LeadStage
-            label="New"
-            active={currentStage === "open" || currentStage === "inProgress"}
-            completed={currentStage !== "open" && !isDead}
-            first
-          />
+          {LEAD_PIPELINE.map((step, index) => (
+            <LeadStage
+              key={step.status}
+              label={step.label}
+              active={!isDead && index === pipelineIndex}
+              completed={!isDead && pipelineIndex > -1 && index < pipelineIndex}
+              first={index === 0}
+            />
+          ))}
 
-          <LeadStage
-            label="Open"
-            active={currentStage === "open"}
-            completed={
-              currentStage === "inProgress" || currentStage === "openDeal"
-            }
-          />
-
-          <LeadStage
-            label="In Progress"
-            active={currentStage === "inProgress"}
-            completed={currentStage === "openDeal"}
-          />
-
-          <LeadStage
-            label="Open Deal"
-            active={currentStage === "openDeal"}
-            completed={false}
-          />
-
-          <LeadStage
-            label="Closed"
-            active={currentStage === "closed"}
-            completed={false}
-          />
+          <LeadStage label="Lost" active={isDead} completed={false} />
         </div>
 
         {/* CONTENT */}
@@ -3809,20 +3867,20 @@ function StatusBadge({ status, stage }: { status: string; stage: string }) {
   let className =
     "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300";
 
-  if (status === "new" || stage === "lead") {
+  if (status === "NEW" || stage === "lead") {
     label = "New";
 
     className =
       "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300";
   }
 
-  if (status === "contacted") {
+  if (status === "CONTACTED") {
     label = "Contacted";
 
     className = "bg-amber-500/10 text-amber-600 dark:text-amber-400";
   }
 
-  if (status === "qualified" || stage === "opportunity") {
+  if (status === "QUALIFIED" || status === "CONVERTED" || stage === "opportunity") {
     label = "Qualified";
 
     className = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
@@ -3834,7 +3892,7 @@ function StatusBadge({ status, stage }: { status: string; stage: string }) {
     className = "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400";
   }
 
-  if (status === "dead" || stage === "dead") {
+  if (status === "LOST" || stage === "dead") {
     label = "Dead";
 
     className = "bg-rose-500/10 text-rose-600 dark:text-rose-400";

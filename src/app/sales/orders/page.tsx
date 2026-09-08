@@ -2,8 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
+import {
+  SALES_ORDER_STATUS,
+  SALES_ORDER_STATUS_LABEL,
+  SalesOrderStatus as CanonicalSalesOrderStatus,
+  createSalesOrderApi,
+  getSalesOrdersApi,
+  nextSalesOrderStatuses,
+  salesOrderStatusLabel,
+  updateSalesOrderStatusApi,
+} from "@/features/salesOrders/api/salesOrders.api";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
 
 import {
@@ -75,11 +84,12 @@ interface Order {
 
 type StatusFilter =
   | "All Orders"
-  | "Pending Approval"
+  | "Draft"
   | "Confirmed"
-  | "Payment Pending"
-  | "Processing"
-  | "Completed";
+  | "On Hold"
+  | "Released"
+  | "Completed"
+  | "Cancelled";
 
 interface FilterState {
   orderDateFrom: string;
@@ -116,11 +126,12 @@ const PAGE_SIZE = 10;
 
 const STATUS_TABS: StatusFilter[] = [
   "All Orders",
-  "Pending Approval",
+  "Draft",
   "Confirmed",
-  "Payment Pending",
-  "Processing",
+  "On Hold",
+  "Released",
   "Completed",
+  "Cancelled",
 ];
 
 const CUSTOMER_TYPES = [
@@ -209,29 +220,8 @@ const money = (value: number) =>
     maximumFractionDigits: 0,
   })}`;
 
-const normalizeStatus = (status?: string) => {
-  if (!status) return "Processing";
-
-  const normalized = status.toLowerCase();
-
-  if (normalized.includes("pending approval")) {
-    return "Pending Approval";
-  }
-
-  if (normalized.includes("payment")) {
-    return "Payment Pending";
-  }
-
-  if (normalized.includes("confirm")) {
-    return "Confirmed";
-  }
-
-  if (normalized.includes("complete")) {
-    return "Completed";
-  }
-
-  return "Processing";
-};
+/* Backend statuses are canonical; this maps one to its display label. */
+const normalizeStatus = (status?: string) => salesOrderStatusLabel(status);
 
 const getOrderDate = (order: Order) =>
   order.order_date || order.created_at || new Date().toISOString();
@@ -361,11 +351,9 @@ export default function OrdersListPage() {
           setLoading(true);
         }
 
-        const res = await api.get("/api/v1/orders/");
+        const list = await getSalesOrdersApi();
 
-        if (res.data?.success) {
-          setOrders(res.data.data || []);
-        }
+        setOrders(list as unknown as Order[]);
       } catch (error) {
         console.error(error);
 
@@ -373,6 +361,37 @@ export default function OrdersListPage() {
       } finally {
         setLoading(false);
         setRefreshing(false);
+      }
+    },
+    [addToast],
+  );
+
+  /* Persist a sales order status change. The previous implementation had
+     no path at all for this - status never reached the backend. */
+  const changeOrderStatus = useCallback(
+    async (order: Order, status: CanonicalSalesOrderStatus) => {
+      try {
+        const updated = await updateSalesOrderStatusApi(order._id, status);
+
+        setOrders((current) =>
+          current.map((item) =>
+            item._id === order._id ? (updated as unknown as Order) : item,
+          ),
+        );
+
+        setOpenMenu(null);
+
+        addToast(
+          `Order moved to ${SALES_ORDER_STATUS_LABEL[status]}.`,
+          "success",
+        );
+      } catch (error: any) {
+        console.error(error);
+
+        addToast(
+          error?.response?.data?.detail || "Failed to update order status.",
+          "error",
+        );
       }
     },
     [addToast],
@@ -397,11 +416,12 @@ export default function OrdersListPage() {
   const statusCounts = useMemo(() => {
     const counts: Record<StatusFilter, number> = {
       "All Orders": orders.length,
-      "Pending Approval": 0,
+      Draft: 0,
       Confirmed: 0,
-      "Payment Pending": 0,
-      Processing: 0,
+      "On Hold": 0,
+      Released: 0,
       Completed: 0,
+      Cancelled: 0,
     };
 
     orders.forEach((order) => {
@@ -528,7 +548,7 @@ export default function OrdersListPage() {
     const pendingOrders = orders.filter((order) => {
       const status = normalizeStatus(order.status);
 
-      return status === "Pending Approval" || status === "Payment Pending";
+      return status === "Draft" || status === "On Hold";
     }).length;
 
     const completedOrders = orders.filter(
@@ -640,19 +660,21 @@ export default function OrdersListPage() {
     const height = 500;
 
     const values = [
-      statusCounts["Pending Approval"],
+      statusCounts["Draft"],
       statusCounts["Confirmed"],
-      statusCounts["Payment Pending"],
-      statusCounts["Processing"],
+      statusCounts["On Hold"],
+      statusCounts["Released"],
       statusCounts["Completed"],
+      statusCounts["Cancelled"],
     ];
 
     const labels = [
-      "Pending Approval",
+      "Draft",
       "Confirmed",
-      "Payment Pending",
-      "Processing",
+      "On Hold",
+      "Released",
       "Completed",
+      "Cancelled",
     ];
 
     const max = Math.max(...values, 1);
@@ -782,11 +804,14 @@ export default function OrdersListPage() {
       case "Confirmed":
         return "bg-blue-50 text-blue-600";
 
-      case "Pending Approval":
+      case "Released":
+        return "bg-indigo-50 text-indigo-600";
+
+      case "On Hold":
         return "bg-rose-50 text-rose-600";
 
-      case "Payment Pending":
-        return "bg-rose-50 text-rose-600";
+      case "Cancelled":
+        return "bg-slate-100 text-slate-500";
 
       default:
         return "bg-amber-50 text-amber-600";
@@ -1035,7 +1060,9 @@ export default function OrdersListPage() {
 
         sales_executive: newOrder.salesExecutive,
 
-        opportunity_id: newOrder.opportunityId,
+        opportunity_id: newOrder.opportunityId
+          ? Number(newOrder.opportunityId)
+          : null,
 
         sales_order_id: newOrder.salesOrderId,
 
@@ -1043,7 +1070,9 @@ export default function OrdersListPage() {
 
         order_date: newOrder.orderDate || new Date().toISOString(),
 
-        status: asDraft ? "Pending Approval" : "Processing",
+        status: asDraft
+          ? SALES_ORDER_STATUS.DRAFT
+          : SALES_ORDER_STATUS.CONFIRMED,
 
         items: selectedProducts.map((item) => ({
           product_id: item.id,
@@ -1102,9 +1131,11 @@ export default function OrdersListPage() {
         },
       };
 
-      const res = await api.post("/api/v1/orders/", payload);
+      const created = await createSalesOrderApi(
+        payload as Parameters<typeof createSalesOrderApi>[0],
+      );
 
-      if (res.data?.success) {
+      if (created) {
         addToast(
           asDraft
             ? "Sales order saved as draft."
@@ -3237,6 +3268,26 @@ export default function OrdersListPage() {
                               >
                                 View Order
                               </Link>
+
+                              {nextSalesOrderStatuses(order.status).length >
+                                0 && (
+                                <div className="my-1 border-t border-slate-100" />
+                              )}
+
+                              {nextSalesOrderStatuses(order.status).map(
+                                (next) => (
+                                  <button
+                                    key={next}
+                                    type="button"
+                                    onClick={() =>
+                                      changeOrderStatus(order, next)
+                                    }
+                                    className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50"
+                                  >
+                                    Mark {SALES_ORDER_STATUS_LABEL[next]}
+                                  </button>
+                                ),
+                              )}
                             </div>
                           </>
                         )}

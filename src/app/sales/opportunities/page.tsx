@@ -1,8 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useSearchParams } from "next/navigation";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
+import { Lead, getLeadsApi } from "@/features/workflows/api/workflows.api";
+import {
+  OPPORTUNITY_STATUS,
+  OPPORTUNITY_STATUS_LABEL,
+  OpportunityStatus as CanonicalOpportunityStatus,
+  canTransitionOpportunity,
+  createOpportunityApi,
+  getOpportunitiesApi,
+  getOpportunityApi,
+  updateOpportunityApi,
+  updateOpportunityStatusApi,
+} from "@/features/opportunities/api/opportunities.api";
 import {
   FiPlus,
   FiSearch,
@@ -41,11 +61,52 @@ type CustomerType =
 
 type OpportunityStage =
   | "Qualified"
+  | "Requirement"
   | "Demo Scheduled"
   | "Proposal Sent"
   | "Negotiation"
   | "Closed Won"
   | "Dead";
+
+/* Display label <-> canonical backend status. The labels below are the
+   existing UI wording; only the persisted values are canonical. */
+const STAGE_TO_STATUS: Record<OpportunityStage, CanonicalOpportunityStatus> = {
+  Qualified: OPPORTUNITY_STATUS.QUALIFICATION,
+  Requirement: OPPORTUNITY_STATUS.REQUIREMENT,
+  "Demo Scheduled": OPPORTUNITY_STATUS.DEMO,
+  "Proposal Sent": OPPORTUNITY_STATUS.PROPOSAL,
+  Negotiation: OPPORTUNITY_STATUS.NEGOTIATION,
+  "Closed Won": OPPORTUNITY_STATUS.WON,
+  Dead: OPPORTUNITY_STATUS.LOST,
+};
+
+/* Next step along the pipeline, or WON after NEGOTIATION. */
+function nextStatusOf(
+  current: CanonicalOpportunityStatus,
+): CanonicalOpportunityStatus | null {
+  const order: CanonicalOpportunityStatus[] = [
+    OPPORTUNITY_STATUS.QUALIFICATION,
+    OPPORTUNITY_STATUS.REQUIREMENT,
+    OPPORTUNITY_STATUS.DEMO,
+    OPPORTUNITY_STATUS.PROPOSAL,
+    OPPORTUNITY_STATUS.NEGOTIATION,
+    OPPORTUNITY_STATUS.WON,
+  ];
+
+  const index = order.indexOf(current);
+
+  if (index === -1 || index === order.length - 1) {
+    return null;
+  }
+
+  return order[index + 1];
+}
+
+function statusToStage(status?: string | null): OpportunityStage {
+  return (OPPORTUNITY_STATUS_LABEL[
+    (status || "QUALIFICATION") as CanonicalOpportunityStatus
+  ] || "Qualified") as OpportunityStage;
+}
 
 type OpportunityStatus = "Active" | "Inactive";
 
@@ -141,15 +202,27 @@ const STATES = [
 
 const BOARD_STAGES: OpportunityStage[] = [
   "Qualified",
+  "Requirement",
   "Demo Scheduled",
   "Proposal Sent",
   "Negotiation",
 ];
 
+/* Pipeline shown in the details drawer, in canonical order. */
+const DRAWER_PIPELINE: { label: string; stage: OpportunityStage }[] = [
+  { label: "Qualified", stage: "Qualified" },
+  { label: "Requirement", stage: "Requirement" },
+  { label: "Demo", stage: "Demo Scheduled" },
+  { label: "Proposal", stage: "Proposal Sent" },
+  { label: "Negotiation", stage: "Negotiation" },
+  { label: "Closed Won", stage: "Closed Won" },
+];
+
 const STAGE_PROGRESS: Record<OpportunityStage, number> = {
-  Qualified: 25,
-  "Demo Scheduled": 50,
-  "Proposal Sent": 75,
+  Qualified: 20,
+  Requirement: 40,
+  "Demo Scheduled": 60,
+  "Proposal Sent": 80,
   Negotiation: 90,
   "Closed Won": 100,
   Dead: 0,
@@ -221,9 +294,10 @@ function normalizePriority(value: any): Priority {
 }
 
 function normalizeStatus(value: any): OpportunityStatus {
-  const status = String(value || "").toLowerCase();
+  /* Terminal opportunities read as Inactive in the existing UI. */
+  const status = String(value || "").toUpperCase();
 
-  if (status === "inactive" || status === "dead" || status === "closed") {
+  if (status === OPPORTUNITY_STATUS.LOST || status === OPPORTUNITY_STATUS.WON) {
     return "Inactive";
   }
 
@@ -241,38 +315,8 @@ function normalizeCustomerType(value: any): CustomerType {
   return "Distributor";
 }
 
-function normalizeStage(lead: any): OpportunityStage {
-  const stage = String(lead.stage || lead.status || "").toLowerCase();
-
-  if (stage === "won" || stage === "closed won" || stage === "closed_won") {
-    return "Closed Won";
-  }
-
-  if (stage === "dead" || stage === "lost" || stage === "inactive") {
-    return "Dead";
-  }
-
-  if (stage === "negotiation" || lead.demo_status === "given") {
-    return "Negotiation";
-  }
-
-  if (
-    stage === "quotation" ||
-    stage === "proposal" ||
-    stage === "proposal sent"
-  ) {
-    return "Proposal Sent";
-  }
-
-  if (
-    stage === "demo" ||
-    stage === "demo_scheduled" ||
-    stage === "demo scheduled"
-  ) {
-    return "Demo Scheduled";
-  }
-
-  return "Qualified";
+function normalizeStage(record: any): OpportunityStage {
+  return statusToStage(record?.status);
 }
 
 function getLeadId(lead: any) {
@@ -304,6 +348,7 @@ function getDealValue(lead: any) {
 }
 
 function mapLeadToOpportunity(lead: any): Opportunity {
+  /* Accepts an OpportunityModel from /api/v1/opportunities. */
   const customerName =
     lead.customer_name ||
     lead.contact_name ||
@@ -330,7 +375,7 @@ function mapLeadToOpportunity(lead: any): Opportunity {
 
   return {
     id: String(lead.id),
-    leadId: String(getLeadId(lead)),
+    leadId: String(lead.lead_id ?? getLeadId(lead)),
 
     customerName,
     email: lead.email || lead.email_address || "",
@@ -344,7 +389,9 @@ function mapLeadToOpportunity(lead: any): Opportunity {
 
     country: lead.country || "India",
 
-    customerType: normalizeCustomerType(lead.customer_type),
+    customerType: normalizeCustomerType(
+      lead.customer_type_name || lead.customer_type,
+    ),
 
     stage,
 
@@ -380,9 +427,11 @@ function mapLeadToOpportunity(lead: any): Opportunity {
 
     remarks: lead.remarks || lead.notes || "",
 
-    productItems: Array.isArray(lead.quotation_items)
-      ? lead.quotation_items
-      : [],
+    productItems: Array.isArray(lead.product_items)
+      ? lead.product_items
+      : Array.isArray(lead.quotation_items)
+        ? lead.quotation_items
+        : [],
 
     activityHistory: Array.isArray(lead.activity_history)
       ? lead.activity_history
@@ -390,8 +439,10 @@ function mapLeadToOpportunity(lead: any): Opportunity {
   };
 }
 
-export default function OpportunitiesPage() {
+function OpportunitiesPageInner() {
   const { addToast } = useUIStore();
+
+  const searchParams = useSearchParams();
 
   const [opps, setOpps] = useState<Opportunity[]>([]);
   const [salesUsers, setSalesUsers] = useState<SalesUser[]>([]);
@@ -416,6 +467,12 @@ export default function OpportunitiesPage() {
 
   const [showAddModal, setShowAddModal] = useState(false);
 
+  /* Lead-driven creation: pick a lead, then open the prefilled form. */
+  const [showLeadPicker, setShowLeadPicker] = useState(false);
+  const [convertibleLeads, setConvertibleLeads] = useState<Lead[]>([]);
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [sourceLead, setSourceLead] = useState<Lead | null>(null);
+
   const [selectedOpportunity, setSelectedOpportunity] =
     useState<Opportunity | null>(null);
 
@@ -437,15 +494,9 @@ export default function OpportunitiesPage() {
           setLoading(true);
         }
 
-        const res = await api.get("/api/v1/leads/");
+        const list = await getOpportunitiesApi();
 
-        if (res.data?.success) {
-          const list = Array.isArray(res.data.data) ? res.data.data : [];
-
-          setOpps(list.map(mapLeadToOpportunity));
-        } else {
-          setOpps([]);
-        }
+        setOpps(list.map(mapLeadToOpportunity));
       } catch (error) {
         console.error("Failed to fetch opportunities:", error);
 
@@ -485,10 +536,96 @@ export default function OpportunitiesPage() {
     }
   };
 
+  /* Only QUALIFIED leads may become an opportunity: a lead has to pass the
+     qualification checklist first. Leads already carrying an opportunity are
+     excluded too. */
+  const loadConvertibleLeads = useCallback(async () => {
+    setLoadingLeads(true);
+
+    try {
+      const [leads, existing] = await Promise.all([
+        getLeadsApi(),
+        getOpportunitiesApi(),
+      ]);
+
+      const taken = new Set(
+        existing
+          .map((opportunity) => opportunity.lead_id)
+          .filter((id): id is number => id !== null && id !== undefined)
+          .map(String),
+      );
+
+      setConvertibleLeads(
+        leads.filter(
+          (lead) =>
+            lead.status === "QUALIFIED" && !taken.has(String(lead.id)),
+        ),
+      );
+    } catch (error) {
+      console.error(error);
+
+      addToast("Unable to load leads.", "error");
+      setConvertibleLeads([]);
+    } finally {
+      setLoadingLeads(false);
+    }
+  }, [addToast]);
+
+  const openLeadPicker = () => {
+    setShowLeadPicker(true);
+    loadConvertibleLeads();
+  };
+
+  const startFromLead = (lead: Lead | null) => {
+    setSourceLead(lead);
+    setShowLeadPicker(false);
+    setShowAddModal(true);
+  };
+
   useEffect(() => {
     fetchOpportunities();
     fetchSalesUsers();
   }, [fetchOpportunities]);
+
+  /* Arriving from the Leads page via "Convert To Opportunity". */
+  const handledLeadParam = useRef(false);
+
+  useEffect(() => {
+    const leadId = searchParams.get("leadId");
+
+    if (!leadId || handledLeadParam.current) return;
+
+    handledLeadParam.current = true;
+
+    (async () => {
+      try {
+        const leads = await getLeadsApi();
+        const match = leads.find((lead) => String(lead.id) === String(leadId));
+
+        if (!match) {
+          addToast("That lead could not be found.", "error");
+          return;
+        }
+
+        if (match.status === "CONVERTED") {
+          addToast("This lead has already been converted.", "info");
+          return;
+        }
+
+        setSourceLead(match);
+        setShowAddModal(true);
+      } catch (error) {
+        console.error(error);
+        addToast("Unable to load that lead.", "error");
+      } finally {
+        /* Drop the param so a refresh does not reopen the form. A plain
+           history replace is used rather than router.replace: the latter
+           re-runs the Suspense boundary and remounts this page, which would
+           discard the state we just set. */
+        window.history.replaceState({}, "", "/sales/opportunities");
+      }
+    })();
+  }, [searchParams, addToast]);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -649,83 +786,42 @@ export default function OpportunitiesPage() {
     try {
       setLoading(true);
 
-      const createRes = await api.post("/api/v1/leads/", {
-        title: payload.contactName || payload.organizationName,
+      await createOpportunityApi({
+        ...(payload.leadId ? { lead_id: Number(payload.leadId) } : {}),
 
+        title: payload.contactName || payload.organizationName,
         description: payload.organizationName,
 
-        status: "active",
-
-        customer_type: payload.customerType,
-
         organization_name: payload.organizationName,
-
-        organization_website: payload.organizationWebsite,
-
+        website: payload.organizationWebsite,
         office_address: payload.officeAddress,
-
         city: payload.city,
-
-        state: payload.state,
-
-        pin_code: payload.pinCode,
-
+        zip_code: payload.pinCode,
         country: payload.country,
 
         gst_number: payload.gstNumber,
-
         pan_number: payload.panNumber,
-
         coi_number: payload.coiNumber,
 
         contact_name: payload.contactName,
-
         designation: payload.designation,
-
         mobile_number: payload.mobileNumber,
-
         email: payload.email,
 
         priority: payload.priority,
-
-        expected_closing_date: payload.expectedClosingDate,
+        expected_closing_date: payload.expectedClosingDate || null,
+        deal_value: Number(payload.dealValue) || 0,
 
         requirements: payload.remarks,
-
         remarks: payload.remarks,
-      });
 
-      if (!createRes.data?.success) {
-        throw new Error("Lead creation failed.");
-      }
-
-      const newLead = createRes.data.data;
-
-      /*
-       * Advance newly created lead into
-       * opportunity stage.
-       */
-      await api.put(`/api/v1/leads/${newLead.id}/progress`, {
-        stage: "opportunity",
-        status: "active",
-        demo_status: "skipped",
-
-        customer_type: payload.customerType,
-
-        priority: payload.priority,
-
-        expected_closing_date: payload.expectedClosingDate,
-
-        requirements: payload.remarks,
-
-        quotation_type: "quotation",
-
-        quotation_items: payload.productItems || [],
+        product_items: payload.productItems || [],
       });
 
       addToast("Opportunity created successfully.", "success");
 
       setShowAddModal(false);
+      setSourceLead(null);
 
       /*
        * IMPORTANT:
@@ -912,13 +1008,49 @@ export default function OpportunitiesPage() {
      * remains usable.
      */
     try {
-      const res = await api.get(`/api/v1/leads/${opp.id}`);
+      const fresh = await getOpportunityApi(opp.id);
 
-      if (res.data?.success) {
-        setSelectedOpportunity(mapLeadToOpportunity(res.data.data));
-      }
+      setSelectedOpportunity(mapLeadToOpportunity(fresh));
     } catch {
       // Keep current opportunity data.
+    }
+  };
+
+  /* Advance an opportunity one step along the canonical pipeline.
+     This is what previously never reached the backend. */
+  const handleAdvanceStage = async (opp: Opportunity) => {
+    const current = STAGE_TO_STATUS[opp.stage];
+    const next = nextStatusOf(current);
+
+    if (!next || !canTransitionOpportunity(current, next)) {
+      return;
+    }
+
+    try {
+      const updated = await updateOpportunityStatusApi(opp.id, next);
+
+      setOpps((current) =>
+        current.map((item) =>
+          item.id === opp.id ? mapLeadToOpportunity(updated) : item,
+        ),
+      );
+
+      setSelectedOpportunity((currentSelected) =>
+        currentSelected && currentSelected.id === opp.id
+          ? mapLeadToOpportunity(updated)
+          : currentSelected,
+      );
+
+      setOpenActionMenu(null);
+
+      addToast(`Opportunity moved to ${statusToStage(next)}.`, "success");
+    } catch (error: any) {
+      console.error(error);
+
+      addToast(
+        error?.response?.data?.detail || "Failed to update opportunity stage.",
+        "error",
+      );
     }
   };
 
@@ -928,10 +1060,7 @@ export default function OpportunitiesPage() {
        * Change this endpoint/body if your backend
        * uses a dedicated "mark dead" endpoint.
        */
-      await api.put(`/api/v1/leads/${opp.id}/progress`, {
-        stage: "dead",
-        status: "inactive",
-      });
+      await updateOpportunityStatusApi(opp.id, OPPORTUNITY_STATUS.LOST);
 
       setOpps((current) =>
         current.map((item) =>
@@ -961,24 +1090,21 @@ export default function OpportunitiesPage() {
     }
 
     try {
-      /*
-       * Change this endpoint/body to match your API.
-       */
-      const res = await api.put(`/api/v1/leads/${editingOpportunity.id}`, {
+      const updated = await updateOpportunityApi(editingOpportunity.id, {
         title: payload.customerName,
 
         organization_name: payload.company,
-
-        customer_type: payload.customerType,
 
         priority: payload.priority,
 
         assigned_to_id: payload.ownerId,
 
-        expected_closing_date: payload.expectedClosingDate,
+        expected_closing_date: payload.expectedClosingDate || null,
+
+        deal_value: payload.dealValue,
       });
 
-      if (res.data?.success !== false) {
+      if (updated) {
         setOpps((current) =>
           current.map((item) =>
             item.id === editingOpportunity.id
@@ -1004,7 +1130,11 @@ export default function OpportunitiesPage() {
   if (showAddModal) {
     return (
       <NewOpportunityPage
-        onClose={() => setShowAddModal(false)}
+        lead={sourceLead}
+        onClose={() => {
+          setShowAddModal(false);
+          setSourceLead(null);
+        }}
         onSubmit={handleCreateOpportunity}
       />
     );
@@ -1183,7 +1313,7 @@ export default function OpportunitiesPage() {
 
             <button
               type="button"
-              onClick={() => setShowAddModal(true)}
+              onClick={openLeadPicker}
               className="flex h-11 items-center gap-2 rounded-lg bg-[#233353] px-5 text-xs font-bold text-white shadow-sm hover:bg-[#18243a]"
             >
               <FiPlus size={16} />
@@ -1221,6 +1351,7 @@ export default function OpportunitiesPage() {
               setOpenActionMenu(null);
             }}
             onMarkDead={handleMarkDead}
+            onAdvance={handleAdvanceStage}
           />
         ) : (
           <ListView
@@ -1238,6 +1369,19 @@ export default function OpportunitiesPage() {
               setOpenActionMenu(null);
             }}
             onMarkDead={handleMarkDead}
+            onAdvance={handleAdvanceStage}
+          />
+        )}
+
+        {/* =========================================================
+            SELECT LEAD TO CONVERT
+        ========================================================= */}
+        {showLeadPicker && (
+          <LeadPickerModal
+            leads={convertibleLeads}
+            loading={loadingLeads}
+            onClose={() => setShowLeadPicker(false)}
+            onSelect={startFromLead}
           />
         )}
 
@@ -1268,6 +1412,7 @@ export default function OpportunitiesPage() {
               setShowDetails(false);
               handleMarkDead(selectedOpportunity);
             }}
+            onAdvance={() => handleAdvanceStage(selectedOpportunity)}
           />
         )}
       </div>
@@ -1526,6 +1671,7 @@ function BoardView({
   setOpenActionMenu,
   onEdit,
   onMarkDead,
+  onAdvance,
 }: {
   opportunities: Opportunity[];
   onDetails: (opportunity: Opportunity) => void;
@@ -1533,6 +1679,7 @@ function BoardView({
   setOpenActionMenu: (id: string | null) => void;
   onEdit: (opportunity: Opportunity) => void;
   onMarkDead: (opportunity: Opportunity) => void;
+  onAdvance: (opportunity: Opportunity) => void;
 }) {
   return (
     <div className="overflow-x-auto pb-5">
@@ -1582,6 +1729,7 @@ function BoardView({
                     setOpenActionMenu={setOpenActionMenu}
                     onEdit={onEdit}
                     onMarkDead={onMarkDead}
+                    onAdvance={onAdvance}
                   />
                 ))}
 
@@ -1610,6 +1758,7 @@ function OpportunityBoardCard({
   setOpenActionMenu,
   onEdit,
   onMarkDead,
+  onAdvance,
 }: {
   opportunity: Opportunity;
   onDetails: (opportunity: Opportunity) => void;
@@ -1617,6 +1766,7 @@ function OpportunityBoardCard({
   setOpenActionMenu: (id: string | null) => void;
   onEdit: (opportunity: Opportunity) => void;
   onMarkDead: (opportunity: Opportunity) => void;
+  onAdvance: (opportunity: Opportunity) => void;
 }) {
   const progress = STAGE_PROGRESS[opportunity.stage];
 
@@ -1647,6 +1797,7 @@ function OpportunityBoardCard({
           }
           onEdit={() => onEdit(opportunity)}
           onMarkDead={() => onMarkDead(opportunity)}
+          onAdvance={() => onAdvance(opportunity)}
         />
       </div>
 
@@ -1700,6 +1851,7 @@ function ListView({
   setOpenActionMenu,
   onEdit,
   onMarkDead,
+  onAdvance,
 }: {
   opportunities: Opportunity[];
   filteredCount: number;
@@ -1712,6 +1864,7 @@ function ListView({
   setOpenActionMenu: (id: string | null) => void;
   onEdit: (opportunity: Opportunity) => void;
   onMarkDead: (opportunity: Opportunity) => void;
+  onAdvance: (opportunity: Opportunity) => void;
 }) {
   const start = filteredCount === 0 ? 0 : (page - 1) * pageSize + 1;
 
@@ -1835,6 +1988,7 @@ function ListView({
                       }
                       onEdit={() => onEdit(opp)}
                       onMarkDead={() => onMarkDead(opp)}
+                      onAdvance={() => onAdvance(opp)}
                     />
                   </div>
                 </td>
@@ -1936,12 +2090,14 @@ function ActionMenu({
   onToggle,
   onEdit,
   onMarkDead,
+  onAdvance,
 }: {
   opportunity: Opportunity;
   open: boolean;
   onToggle: () => void;
   onEdit: () => void;
   onMarkDead: () => void;
+  onAdvance: () => void;
 }) {
   return (
     <div className="relative">
@@ -1969,6 +2125,26 @@ function ActionMenu({
             <FiEdit2 size={12} />
             Edit
           </button>
+
+          {(() => {
+            const next = nextStatusOf(STAGE_TO_STATUS[opportunity.stage]);
+
+            if (!next) return null;
+
+            return (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAdvance();
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] font-medium hover:bg-slate-50 dark:hover:bg-[#0b2034]"
+              >
+                <FiCheckCircle size={12} />
+                Move to {statusToStage(next)}
+              </button>
+            );
+          })()}
 
           {opportunity.stage !== "Dead" && (
             <button
@@ -1998,11 +2174,13 @@ function LeadDetailsDrawer({
   onClose,
   onEdit,
   onMarkDead,
+  onAdvance,
 }: {
   opportunity: Opportunity;
   onClose: () => void;
   onEdit: () => void;
   onMarkDead: () => void;
+  onAdvance: () => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
 
@@ -2067,32 +2245,51 @@ function LeadDetailsDrawer({
             </button>
           </div>
 
-          {/* Pipeline Progress */}
-          <div className="grid grid-cols-5 border-t border-slate-200 dark:border-[#17304a]">
-            {["New", "Open", "In Progress", "Open Deal", "Closed"].map(
-              (stage, index) => (
-                <div
-                  key={stage}
-                  className={`flex h-8 items-center justify-center gap-1 text-[9px] ${
-                    index < 3
-                      ? "bg-emerald-50 text-emerald-600"
-                      : index === 3
-                        ? "bg-amber-50 text-amber-600"
-                        : "bg-slate-50 text-slate-400"
-                  }`}
-                >
-                  {index < 3 ? (
-                    <FiCheckCircle size={11} />
-                  ) : index === 3 ? (
-                    <FiClock size={11} />
-                  ) : (
-                    <span className="h-2.5 w-2.5 rounded-full border border-slate-400" />
-                  )}
+          {/* Pipeline Progress - reflects the opportunity's real status */}
+          <div className="grid grid-cols-6 border-t border-slate-200 dark:border-[#17304a]">
+            {(() => {
+              const isLost = opportunity.stage === "Dead";
 
-                  {stage}
-                </div>
-              ),
-            )}
+              const currentIndex = DRAWER_PIPELINE.findIndex(
+                (step) => step.stage === opportunity.stage,
+              );
+
+              return DRAWER_PIPELINE.map((step, index) => {
+                const done = !isLost && currentIndex > -1 && index < currentIndex;
+                const current = !isLost && index === currentIndex;
+
+                /* The final cell doubles as the outcome: Closed Won
+                   normally, Dead when the opportunity was lost. */
+                const isOutcomeCell = index === DRAWER_PIPELINE.length - 1;
+                const label = isOutcomeCell && isLost ? "Dead" : step.label;
+
+                return (
+                  <div
+                    key={step.stage}
+                    title={label}
+                    className={`flex h-8 items-center justify-center gap-1 px-1 text-center text-[9px] ${
+                      isOutcomeCell && isLost
+                        ? "bg-rose-50 text-rose-600 dark:bg-rose-950/20"
+                        : current
+                          ? "bg-amber-50 text-amber-600 dark:bg-amber-950/20"
+                          : done
+                            ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20"
+                            : "bg-slate-50 text-slate-400 dark:bg-[#051422]"
+                    }`}
+                  >
+                    {done ? (
+                      <FiCheckCircle size={11} className="shrink-0" />
+                    ) : current || (isOutcomeCell && isLost) ? (
+                      <FiClock size={11} className="shrink-0" />
+                    ) : (
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-slate-400" />
+                    )}
+
+                    <span className="truncate">{label}</span>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
 
@@ -2168,6 +2365,28 @@ function LeadDetailsDrawer({
                     <FiEdit2 size={12} />
                     Edit
                   </button>
+
+                  {(() => {
+                    const next = nextStatusOf(
+                      STAGE_TO_STATUS[opportunity.stage],
+                    );
+
+                    if (!next) return null;
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMenu(false);
+                          onAdvance();
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] hover:bg-slate-50 dark:hover:bg-[#0b2034]"
+                      >
+                        <FiCheckCircle size={12} />
+                        Move to {statusToStage(next)}
+                      </button>
+                    );
+                  })()}
 
                   <button
                     type="button"
@@ -2259,52 +2478,206 @@ function InfoBox({ label, value }: { label: string; value: string }) {
    NEW OPPORTUNITY PAGE
 ================================================================ */
 
+/* ================================================================
+   SELECT LEAD TO CONVERT
+================================================================ */
+
+function LeadPickerModal({
+  leads,
+  loading,
+  onClose,
+  onSelect,
+}: {
+  leads: Lead[];
+  loading: boolean;
+  onClose: () => void;
+  onSelect: (lead: Lead | null) => void;
+}) {
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const term = query.trim().toLowerCase();
+
+    if (!term) return leads;
+
+    return leads.filter((lead) =>
+      [
+        lead.title,
+        lead.contact_name,
+        lead.organization_name,
+        lead.email,
+        String(lead.id),
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term)),
+    );
+  }, [leads, query]);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-[#17304a] dark:bg-[#071929]">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-[#17304a]">
+          <div>
+            <h2 className="text-[15px] font-semibold text-slate-900 dark:text-white">
+              Select a Lead
+            </h2>
+            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+              Qualified leads only. Details carry over to the new
+              opportunity.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-[#0b2034]"
+          >
+            <FiX size={16} />
+          </button>
+        </div>
+
+        <div className="border-b border-slate-200 px-5 py-3 dark:border-[#17304a]">
+          <div className="relative">
+            <FiSearch
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search leads"
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-primary dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {loading ? (
+            <p className="py-10 text-center text-xs text-slate-400">
+              Loading leads...
+            </p>
+          ) : filtered.length === 0 ? (
+            <p className="py-10 text-center text-xs text-slate-400">
+              No qualified leads waiting. Mark a lead as Qualified on the
+              Leads page first.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {filtered.map((lead) => (
+                <button
+                  key={String(lead.id)}
+                  type="button"
+                  onClick={() => onSelect(lead)}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 px-4 py-3 text-left transition hover:border-primary hover:bg-slate-50 dark:border-[#17304a] dark:hover:bg-[#0b2034]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-semibold text-slate-800 dark:text-white">
+                      {lead.contact_name || lead.title}
+                    </p>
+                    <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                      {lead.organization_name || "—"}
+                      {lead.email ? ` · ${lead.email}` : ""}
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-[#0b2034] dark:text-slate-300">
+                      {lead.status}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      #LD-{lead.id}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-5 py-3 dark:border-[#17304a]">
+          <button
+            type="button"
+            onClick={() => onSelect(null)}
+            className="text-[11px] font-semibold text-slate-500 underline hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            Continue without a lead
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-300 dark:hover:bg-[#0b2034]"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NewOpportunityPage({
+  lead,
   onClose,
   onSubmit,
 }: {
+  /** When present, the form opens prefilled from this lead and saving it
+      converts the lead rather than creating a standalone opportunity. */
+  lead?: Lead | null;
   onClose: () => void;
   onSubmit: (payload: Record<string, any>) => Promise<void>;
 }) {
-  const [customerType, setCustomerType] = useState<CustomerType>("Distributor");
+  const [customerType, setCustomerType] = useState<CustomerType>(
+    normalizeCustomerType(lead?.customer_type_name),
+  );
 
-  const [organizationName, setOrganizationName] = useState("");
+  const [organizationName, setOrganizationName] = useState(
+    lead?.organization_name || "",
+  );
 
-  const [organizationWebsite, setOrganizationWebsite] = useState("");
+  const [organizationWebsite, setOrganizationWebsite] = useState(
+    lead?.website || "",
+  );
 
-  const [officeAddress, setOfficeAddress] = useState("");
+  const [officeAddress, setOfficeAddress] = useState(
+    lead?.office_address || "",
+  );
 
-  const [city, setCity] = useState("");
+  const [city, setCity] = useState(lead?.city || "");
 
-  const [state, setState] = useState("");
+  const [state, setState] = useState(lead?.state_name || "");
 
-  const [pinCode, setPinCode] = useState("");
+  const [pinCode, setPinCode] = useState(lead?.zip_code || "");
 
-  const [country, setCountry] = useState("India");
+  const [country, setCountry] = useState(lead?.country || "India");
 
-  const [gstNumber, setGstNumber] = useState("");
+  const [gstNumber, setGstNumber] = useState(lead?.gst_number || "");
 
-  const [panNumber, setPanNumber] = useState("");
+  const [panNumber, setPanNumber] = useState(lead?.pan_number || "");
 
-  const [coiNumber, setCoiNumber] = useState("");
+  const [coiNumber, setCoiNumber] = useState(lead?.coi_number || "");
 
-  const [contactName, setContactName] = useState("");
+  const [contactName, setContactName] = useState(lead?.contact_name || "");
 
-  const [designation, setDesignation] = useState("");
+  const [designation, setDesignation] = useState(lead?.designation || "");
 
-  const [mobileNumber, setMobileNumber] = useState("");
+  const [mobileNumber, setMobileNumber] = useState(lead?.mobile_number || "");
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(lead?.email || "");
 
   const [priority, setPriority] = useState<Priority>("Medium");
 
   const [expectedClosingDate, setExpectedClosingDate] = useState("");
 
-  const [remarks, setRemarks] = useState("");
+  const [remarks, setRemarks] = useState(
+    lead?.remarks || lead?.requirements || "",
+  );
 
   const [purchaseTimeline, setPurchaseTimeline] = useState("");
 
-  const [leadSource, setLeadSource] = useState("Marketing");
+  const [leadSource, setLeadSource] = useState(
+    lead?.lead_source_name || "Marketing",
+  );
 
   const [assignedTo, setAssignedTo] = useState("");
 
@@ -2387,6 +2760,8 @@ function NewOpportunityPage({
 
     try {
       await onSubmit({
+        leadId: lead?.id,
+
         customerType,
         organizationName,
         organizationWebsite,
@@ -3251,5 +3626,13 @@ function LoadingState() {
         </span>
       </div>
     </div>
+  );
+}
+
+export default function OpportunitiesPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <OpportunitiesPageInner />
+    </Suspense>
   );
 }
