@@ -37,13 +37,19 @@ const STATUS_TONE: Record<string, string> = {
   NEGOTIATION: AMBER,
   WON: GREEN,
 
-  // Sales order
+  // Sales order. DRAFT is shared with Quotation.
   DRAFT: NEUTRAL,
   CONFIRMED: BLUE,
   ON_HOLD: ROSE,
   RELEASED: INDIGO,
   COMPLETED: GREEN,
   CANCELLED: NEUTRAL,
+
+  // Quotation
+  SENT: AMBER,
+  ACCEPTED: GREEN,
+  REJECTED: ROSE,
+  EXPIRED: NEUTRAL,
 };
 
 /** Display labels keyed off the same canonical values. */
@@ -67,6 +73,11 @@ const STATUS_LABEL: Record<string, string> = {
   RELEASED: "Released",
   COMPLETED: "Completed",
   CANCELLED: "Cancelled",
+
+  SENT: "Sent",
+  ACCEPTED: "Accepted",
+  REJECTED: "Rejected",
+  EXPIRED: "Expired",
 };
 
 export function StatusPill({

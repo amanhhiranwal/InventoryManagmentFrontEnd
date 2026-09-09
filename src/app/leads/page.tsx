@@ -187,6 +187,35 @@ const LEAD_PIPELINE: { label: string; status: string }[] = [
   { label: "Converted", status: "CONVERTED" },
 ];
 
+/* Mirrors LEAD_TRANSITIONS in app/core/workflow_status.py. Kept here so the
+   UI only ever offers a step the backend will accept, rather than firing the
+   call and surfacing a 400. CONVERTED and LOST are terminal. */
+const LEAD_NEXT_STATUSES: Record<string, string[]> = {
+  NEW: ["CONTACTED", "LOST"],
+  CONTACTED: ["QUALIFIED", "LOST"],
+  QUALIFIED: ["CONVERTED", "LOST"],
+  CONVERTED: [],
+  LOST: [],
+};
+
+const LEAD_STATUS_LABELS: Record<string, string> = {
+  NEW: "New",
+  CONTACTED: "Contacted",
+  QUALIFIED: "Qualified",
+  CONVERTED: "Converted",
+  LOST: "Dead",
+};
+
+function leadStatusLabel(status?: string) {
+  if (!status) return "New";
+
+  return LEAD_STATUS_LABELS[status] || status;
+}
+
+function canAdvanceLead(lead: Lead, target: string) {
+  return (LEAD_NEXT_STATUSES[lead.status] || []).includes(target);
+}
+
 const LEAD_SOURCES = ["Marketing", "Cold Calling", "In-bound"];
 
 const COUNTRIES = ["India", "United States", "China", "Malaysia", "Indonesia"];
@@ -349,8 +378,18 @@ function getLeadState(lead: Lead) {
   return getLeadDetails(lead).state || "—";
 }
 
+/* Shown under the email in the Customer Name column: the most specific
+   place we hold for the lead, widening out to the country. */
+function formatLeadLocation(details: LeadDetails) {
+  const parts = [details.city, details.state, details.zipCode].filter(Boolean);
+
+  if (parts.length) return parts.join(", ");
+
+  return details.address || details.country || "No address";
+}
+
 function getLeadCustomerType(lead: Lead) {
-  return parseLeadDescription(lead.description).customerType || "—";
+  return getLeadDetails(lead).customerType || "—";
 }
 
 function formatDate(value?: string) {
@@ -476,6 +515,12 @@ export default function LeadsPage() {
 
   const [rowMenuLeadId, setRowMenuLeadId] = useState<number | string | null>(null);
 
+  /* Id of the lead whose status call is in flight, so the row and the drawer
+     can disable their actions instead of allowing a double submit. */
+  const [statusUpdatingId, setStatusUpdatingId] = useState<
+    number | string | null
+  >(null);
+
   /*
    * Pagination.
    */
@@ -570,6 +615,17 @@ export default function LeadsPage() {
 
       if (addMenuRef.current && !addMenuRef.current.contains(target)) {
         setShowAddMenu(false);
+      }
+
+      /* Only close the row menu when the click landed outside it. Closing
+         unconditionally here unmounted the menu on mousedown, which fires
+         before click — so the row actions never received their click and
+         appeared to do nothing. */
+      if (
+        target instanceof Element &&
+        target.closest("[data-row-menu]")
+      ) {
+        return;
       }
 
       setRowMenuLeadId(null);
@@ -939,13 +995,31 @@ export default function LeadsPage() {
   /* Move a lead one step along NEW -> CONTACTED -> QUALIFIED. Without
      this there was no way to reach those states from the UI at all. */
   const advanceLeadStatus = async (lead: Lead, next: string) => {
+    /* Guard here as well as in the menu so the drawer, the row menu and any
+       future caller all report the same reason instead of relying on the
+       backend to reject the transition. */
+    const allowed = LEAD_NEXT_STATUSES[lead.status] || [];
+
+    if (!allowed.includes(next)) {
+      addToast(
+        `A lead that is ${leadStatusLabel(lead.status)} cannot be moved to ${leadStatusLabel(next)}.`,
+        "warning",
+      );
+      return;
+    }
+
+    setStatusUpdatingId(lead.id);
+
     try {
       await progressLeadApi(String(lead.id), {
         stage: "lead",
         status: next,
       });
 
-      addToast(`Lead marked as ${next.toLowerCase()}.`, "success");
+      addToast(
+        `${getLeadDisplayName(lead)} is now ${leadStatusLabel(next)}.`,
+        "success",
+      );
 
       setRowMenuLeadId(null);
 
@@ -957,26 +1031,47 @@ export default function LeadsPage() {
         error?.response?.data?.detail || "Failed to update lead status.",
         "error",
       );
+    } finally {
+      setStatusUpdatingId(null);
     }
   };
 
   const markLeadDead = async (lead: Lead) => {
+    if (lead.status === "LOST") {
+      addToast("This lead is already marked as dead.", "info");
+      return;
+    }
+
+    if (lead.status === "CONVERTED") {
+      addToast(
+        "A converted lead cannot be marked as dead. Close its opportunity instead.",
+        "warning",
+      );
+      return;
+    }
+
+    setStatusUpdatingId(lead.id);
+
     try {
       await progressLeadApi(String(lead.id), {
         stage: "dead",
         status: "LOST",
       });
 
-      addToast("Lead marked as dead.", "success");
+      addToast(`${getLeadDisplayName(lead)} was marked as dead.`, "success");
 
       setRowMenuLeadId(null);
-      setShowDetailsModal(false);
 
       await fetchLeads();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
 
-      addToast("Failed to mark lead as dead.", "error");
+      addToast(
+        error?.response?.data?.detail || "Failed to mark lead as dead.",
+        "error",
+      );
+    } finally {
+      setStatusUpdatingId(null);
     }
   };
 
@@ -1014,6 +1109,19 @@ export default function LeadsPage() {
     setShowDetailsModal(true);
     setRowMenuLeadId(null);
   };
+
+  /* The drawer must render the lead as it exists in the freshly fetched
+     list, not the snapshot captured when it was opened. Without this the
+     status strip kept showing the status the lead had on open, even though
+     the change had already been saved. */
+  const liveDetailsLead = useMemo(() => {
+    if (!detailsLead) return null;
+
+    return (
+      leads.find((item) => String(item.id) === String(detailsLead.id)) ||
+      detailsLead
+    );
+  }, [leads, detailsLead]);
 
   /* --------------------------------------------------------------------------
      FILTERS
@@ -2005,7 +2113,11 @@ export default function LeadsPage() {
 
                 <tbody className="divide-y divide-slate-100 dark:divide-[#0d2336]/70">
                   {paginatedLeads.map((lead) => {
-                    const details = parseLeadDescription(lead.description);
+                    /* getLeadDetails reads the real columns first and only
+                       falls back to the legacy description blob. Using the
+                       parser alone meant email, state and customer type were
+                       always blank for rows created through the API. */
+                    const details = getLeadDetails(lead);
 
                     return (
                       <tr
@@ -2043,12 +2155,10 @@ export default function LeadsPage() {
                               {details.email || "No email"}
                             </p>
 
-                            {details.state && (
-                              <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-400">
-                                <FiMapPin />
-                                {details.state}
-                              </p>
-                            )}
+                            <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-400">
+                              <FiMapPin />
+                              {formatLeadLocation(details)}
+                            </p>
                           </button>
                         </td>
 
@@ -2113,7 +2223,7 @@ export default function LeadsPage() {
                               <FiPhone />
                             </button>
 
-                            <div className="relative">
+                            <div className="relative" data-row-menu>
                               <button
                                 type="button"
                                 title="More Actions"
@@ -2161,9 +2271,10 @@ export default function LeadsPage() {
                                     Edit
                                   </RowAction>
 
-                                  {lead.status === "NEW" && (
+                                  {canAdvanceLead(lead, "CONTACTED") && (
                                     <RowAction
                                       icon={<FiPhoneCall />}
+                                      disabled={statusUpdatingId === lead.id}
                                       onClick={() =>
                                         advanceLeadStatus(lead, "CONTACTED")
                                       }
@@ -2172,9 +2283,10 @@ export default function LeadsPage() {
                                     </RowAction>
                                   )}
 
-                                  {lead.status === "CONTACTED" && (
+                                  {canAdvanceLead(lead, "QUALIFIED") && (
                                     <RowAction
                                       icon={<FiCheckCircle />}
+                                      disabled={statusUpdatingId === lead.id}
                                       onClick={() =>
                                         advanceLeadStatus(lead, "QUALIFIED")
                                       }
@@ -2183,18 +2295,24 @@ export default function LeadsPage() {
                                     </RowAction>
                                   )}
 
-                                  <RowAction
-                                    icon={<FiXCircle />}
-                                    danger
-                                    onClick={() => markLeadDead(lead)}
-                                  >
-                                    Mark as Dead
-                                  </RowAction>
+                                  {/* Terminal leads have nowhere left to go,
+                                      so offering these only produced a 400. */}
+                                  {canAdvanceLead(lead, "LOST") && (
+                                    <RowAction
+                                      icon={<FiXCircle />}
+                                      danger
+                                      disabled={statusUpdatingId === lead.id}
+                                      onClick={() => markLeadDead(lead)}
+                                    >
+                                      Mark as Dead
+                                    </RowAction>
+                                  )}
 
-                                  {lead.status === "QUALIFIED" && (
+                                  {canAdvanceLead(lead, "CONVERTED") && (
                                     <RowAction
                                       icon={<FiArrowUpRight />}
                                       success
+                                      disabled={statusUpdatingId === lead.id}
                                       onClick={() => convertToOpportunity(lead)}
                                     >
                                       Convert to Opportunity
@@ -2254,14 +2372,15 @@ export default function LeadsPage() {
           DETAILS
       ====================================================================== */}
 
-      {detailsLead && (
+      {liveDetailsLead && (
         <LeadDetailsModal
-          lead={detailsLead}
+          lead={liveDetailsLead}
           isOpen={showDetailsModal}
           onClose={() => setShowDetailsModal(false)}
-          onEdit={() => openEditPage(detailsLead)}
-          onMarkDead={() => markLeadDead(detailsLead)}
-          onConvert={() => convertToOpportunity(detailsLead)}
+          onEdit={() => openEditPage(liveDetailsLead)}
+          onAdvance={(next) => advanceLeadStatus(liveDetailsLead, next)}
+          onMarkDead={() => markLeadDead(liveDetailsLead)}
+          onConvert={() => convertToOpportunity(liveDetailsLead)}
         />
       )}
     </div>
@@ -3006,6 +3125,7 @@ function LeadDetailsModal({
   isOpen,
   onClose,
   onEdit,
+  onAdvance,
   onMarkDead,
   onConvert,
 }: {
@@ -3013,10 +3133,11 @@ function LeadDetailsModal({
   isOpen: boolean;
   onClose: () => void;
   onEdit: () => void;
+  onAdvance: (next: string) => void;
   onMarkDead: () => void;
   onConvert: () => void;
 }) {
-  const details = parseLeadDescription(lead.description);
+  const details = getLeadDetails(lead);
 
   const [showMenu, setShowMenu] = useState(false);
 
@@ -3332,31 +3453,85 @@ function LeadDetailsModal({
                       Edit
                     </button>
 
-                    <button
-                      type="button"
-                      disabled={isDead}
-                      onClick={() => {
-                        setShowMenu(false);
-                        onMarkDead();
-                      }}
-                      className="
-                        flex
-                        w-full
-                        items-center
-                        px-4
-                        py-2.5
-                        text-left
-                        text-xs
-                        font-medium
-                        text-rose-500
-                        hover:bg-rose-50
-                        disabled:cursor-not-allowed
-                        disabled:opacity-40
-                        dark:hover:bg-rose-950/20
-                      "
-                    >
-                      Mark as Dead
-                    </button>
+                    {/* The drawer previously offered no way to move a lead
+                        forward, so the pipeline strip above it could never
+                        change from here. */}
+                    {canAdvanceLead(lead, "CONTACTED") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMenu(false);
+                          onAdvance("CONTACTED");
+                        }}
+                        className="
+                          flex
+                          w-full
+                          items-center
+                          px-4
+                          py-2.5
+                          text-left
+                          text-xs
+                          font-medium
+                          text-slate-700
+                          hover:bg-slate-50
+                          dark:text-slate-200
+                          dark:hover:bg-[#0d2336]
+                        "
+                      >
+                        Mark as Contacted
+                      </button>
+                    )}
+
+                    {canAdvanceLead(lead, "QUALIFIED") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMenu(false);
+                          onAdvance("QUALIFIED");
+                        }}
+                        className="
+                          flex
+                          w-full
+                          items-center
+                          px-4
+                          py-2.5
+                          text-left
+                          text-xs
+                          font-medium
+                          text-slate-700
+                          hover:bg-slate-50
+                          dark:text-slate-200
+                          dark:hover:bg-[#0d2336]
+                        "
+                      >
+                        Mark as Qualified
+                      </button>
+                    )}
+
+                    {canAdvanceLead(lead, "LOST") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowMenu(false);
+                          onMarkDead();
+                        }}
+                        className="
+                          flex
+                          w-full
+                          items-center
+                          px-4
+                          py-2.5
+                          text-left
+                          text-xs
+                          font-medium
+                          text-rose-500
+                          hover:bg-rose-50
+                          dark:hover:bg-rose-950/20
+                        "
+                      >
+                        Mark as Dead
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -4034,17 +4209,20 @@ function RowAction({
   onClick,
   danger,
   success,
+  disabled,
 }: {
   icon: ReactNode;
   children: ReactNode;
   onClick: () => void;
   danger?: boolean;
   success?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={`
         flex
         w-full
@@ -4057,6 +4235,8 @@ function RowAction({
         text-xs
         font-semibold
         hover:bg-slate-100
+        disabled:cursor-not-allowed
+        disabled:opacity-40
         dark:hover:bg-[#071929]
         ${
           danger

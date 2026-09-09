@@ -7,6 +7,7 @@ import {
   LuUsers,
   LuPackage,
   LuFileText,
+  LuQuote,
   LuTrendingUp,
   LuDatabase,
   LuBuilding,
@@ -62,6 +63,12 @@ export const sidebarMenu: SidebarItemConfig[] = [
         icon: LuStar,
         path: "/sales/opportunities",
         permission: "opportunity.read",
+      },
+      {
+        title: "Quotation",
+        icon: LuQuote,
+        path: "/sales/quotations",
+        permission: "quotation.read",
       },
       {
         title: "Sales Orders",

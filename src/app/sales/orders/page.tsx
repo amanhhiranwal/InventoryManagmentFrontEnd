@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useUIStore } from "@/lib/store/ui.store";
+
+import {
+  PRODUCT_CATALOG,
+  PRODUCT_CATEGORIES,
+} from "@/features/catalog/productCatalog";
 import {
   SALES_ORDER_STATUS,
   SALES_ORDER_STATUS_LABEL,
@@ -166,60 +171,6 @@ const STATES = [
 ];
 
 const STATUS_OPTIONS = ["All", "Active", "Inactive"];
-
-const PRODUCT_CATEGORIES = [
-  "All",
-  "Interactive Flat Panel",
-  "Active LED Display",
-  "Advertising Display",
-  "Kiosk",
-  "Smart Display",
-];
-
-const PRODUCT_CATALOG: Product[] = [
-  {
-    id: "QIFP75",
-    name: "Qonevo IFP 75 – Core – 8/128",
-    category: "Interactive Flat Panel",
-    price: 185000,
-    available: 24,
-  },
-  {
-    id: "QIFP86",
-    name: "Qonevo IFP 86 – Core – 8/128",
-    category: "Interactive Flat Panel",
-    price: 265000,
-    available: 12,
-  },
-  {
-    id: "QLED25",
-    name: "Qonevo Active LED Indoor P2.5",
-    category: "Active LED Display",
-    price: 1850000,
-    available: 6,
-  },
-  {
-    id: "QADV55",
-    name: "Qonevo Advertising Display 55",
-    category: "Advertising Display",
-    price: 95000,
-    available: 18,
-  },
-  {
-    id: "QKIOSK22",
-    name: "Qonevo Smart Kiosk 22",
-    category: "Kiosk",
-    price: 125000,
-    available: 15,
-  },
-  {
-    id: "QSMART65",
-    name: "Qonevo Smart Display 65",
-    category: "Smart Display",
-    price: 145000,
-    available: 20,
-  },
-];
 
 /* =========================================================
    HELPERS
