@@ -1042,7 +1042,21 @@ function OpportunitiesPageInner() {
     const current = STAGE_TO_STATUS[opp.stage];
     const next = nextStatusOf(current);
 
-    if (!next || !canTransitionOpportunity(current, next)) {
+    /* Returning silently here left the user with no idea why nothing
+       happened, which is exactly the case at the end of the pipeline. */
+    if (!next) {
+      addToast(
+        `${opp.customerName} is already at ${opp.stage} — there is no further stage.`,
+        "info",
+      );
+      return;
+    }
+
+    if (!canTransitionOpportunity(current, next)) {
+      addToast(
+        `An opportunity at ${opp.stage} cannot move to ${statusToStage(next)}.`,
+        "warning",
+      );
       return;
     }
 
@@ -1094,13 +1108,25 @@ function OpportunitiesPageInner() {
         ),
       );
 
+      /* Keep the open drawer in step with the list, the same way
+         handleAdvanceStage does. */
+      setSelectedOpportunity((currentSelected) =>
+        currentSelected && currentSelected.id === opp.id
+          ? { ...currentSelected, stage: "Dead", status: "Inactive" }
+          : currentSelected,
+      );
+
       setOpenActionMenu(null);
 
-      addToast("Opportunity marked as dead.", "success");
-    } catch (error) {
+      addToast(`${opp.customerName} was marked as dead.`, "success");
+    } catch (error: any) {
       console.error(error);
 
-      addToast("Failed to mark opportunity as dead.", "error");
+      addToast(
+        error?.response?.data?.detail ||
+          "Failed to mark opportunity as dead.",
+        "error",
+      );
     }
   };
 
