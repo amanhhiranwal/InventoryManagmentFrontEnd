@@ -8,6 +8,10 @@ import {
   PRODUCT_CATALOG,
   PRODUCT_CATEGORIES,
 } from "@/features/catalog/productCatalog";
+import AmountInput, {
+  resolveAmount,
+  type AmountMode,
+} from "@/components/crm/AmountInput";
 import {
   SALES_ORDER_STATUS,
   SALES_ORDER_STATUS_LABEL,
@@ -39,6 +43,7 @@ import {
   FiPlus,
   FiMoreVertical,
   FiDownload,
+  FiEdit2,
   FiBarChart2,
   FiX,
   FiCalendar,
@@ -176,6 +181,9 @@ const STATUS_OPTIONS = ["All", "Active", "Inactive"];
    HELPERS
 ========================================================= */
 
+/** Single GST rate applied to the order's taxable amount. */
+const ORDER_GST_PERCENT = 18;
+
 const money = (value: number) =>
   `₹${Number(value || 0).toLocaleString("en-IN", {
     maximumFractionDigits: 0,
@@ -245,6 +253,17 @@ export default function OrdersListPage() {
   const [productSearch, setProductSearch] = useState("");
 
   const [productCategory, setProductCategory] = useState("All");
+
+  /* Summary charges. These inputs previously had defaultValue={0} and were
+     bound to nothing, so anything entered was discarded and never reached
+     the totals or the backend. */
+  const [discountMode, setDiscountMode] = useState<AmountMode>("AMOUNT");
+  const [discountInput, setDiscountInput] = useState<number | null>(null);
+  const [orcMode, setOrcMode] = useState<AmountMode>("AMOUNT");
+  const [orcInput, setOrcInput] = useState(0);
+  const [freightCharges, setFreightCharges] = useState(0);
+  const [installationLumpsum, setInstallationLumpsum] = useState(0);
+  const [advanceReceived, setAdvanceReceived] = useState(0);
 
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>(
     [],
@@ -882,6 +901,13 @@ export default function OrdersListPage() {
     setSelectedProducts([]);
     setAttachments([]);
     setIsDraggingFiles(false);
+    setDiscountMode("AMOUNT");
+    setDiscountInput(null);
+    setOrcMode("AMOUNT");
+    setOrcInput(0);
+    setFreightCharges(0);
+    setInstallationLumpsum(0);
+    setAdvanceReceived(0);
   };
 
   const closeCreateOrder = () => {
@@ -890,6 +916,13 @@ export default function OrdersListPage() {
     setSelectedProducts([]);
     setAttachments([]);
     setIsDraggingFiles(false);
+    setDiscountMode("AMOUNT");
+    setDiscountInput(null);
+    setOrcMode("AMOUNT");
+    setOrcInput(0);
+    setFreightCharges(0);
+    setInstallationLumpsum(0);
+    setAdvanceReceived(0);
   };
 
   /* =======================================================
@@ -1041,6 +1074,17 @@ export default function OrdersListPage() {
 
         discount_amount: discountAmount,
 
+        /* The backend recomputes every total from the lines and these
+           charges, so what is stored can never disagree with them. */
+        discount_mode: discountMode,
+        discount_input: discountInput,
+        orc_mode: orcMode,
+        orc_input: orcInput,
+        freight_charges: freightCharges,
+        installation_lumpsum: installationLumpsum,
+        gst_percent: ORDER_GST_PERCENT,
+        advance_received: advanceReceived,
+
         payment_status: "Pending",
 
         remarks: newOrder.remarks,
@@ -1169,22 +1213,45 @@ export default function OrdersListPage() {
     0,
   );
 
-  const orderDiscount = selectedProducts.reduce(
+  const orderLineDiscount = selectedProducts.reduce(
     (sum, item) => sum + item.price * item.quantity * (item.discount / 100),
     0,
   );
 
-  const orderTaxableAmount = orderSubtotal - orderDiscount;
+  /* A discount typed into the summary overrides the per-line total, and can
+     never exceed what is being discounted. Mirrors compute_order_totals in
+     app/services/sales_order_service.py, which recomputes on save. */
+  const orderDiscount = Math.max(
+    0,
+    Math.min(
+      discountInput === null
+        ? orderLineDiscount
+        : resolveAmount(discountInput, discountMode, orderSubtotal),
+      orderSubtotal,
+    ),
+  );
 
-  const orderGst = selectedProducts.reduce((sum, item) => {
-    const line = item.price * item.quantity;
-    const discount = line * (item.discount / 100);
-    const taxable = line - discount;
+  const orderOrc = resolveAmount(orcInput, orcMode, orderSubtotal);
 
-    return sum + taxable * (item.tax / 100);
-  }, 0);
+  const orderOrcPercent = orderSubtotal
+    ? (orderOrc / orderSubtotal) * 100
+    : 0;
+
+  const orderTaxableAmount =
+    orderSubtotal -
+    orderDiscount +
+    orderOrc +
+    freightCharges +
+    installationLumpsum;
+
+  const orderGst = (orderTaxableAmount * ORDER_GST_PERCENT) / 100;
 
   const orderGrandTotal = orderTaxableAmount + orderGst;
+
+  /* An advance cannot exceed the order, so the balance never goes negative. */
+  const orderAdvance = Math.max(0, Math.min(advanceReceived, orderGrandTotal));
+
+  const orderOutstanding = orderGrandTotal - orderAdvance;
 
   /* =======================================================
      NEW SALES ORDER UI
@@ -2006,58 +2073,54 @@ export default function OrdersListPage() {
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500">
-                      Total Discount
-                    </span>
+                  {/* Discount defaults to the per-line total; entering one
+                      here overrides it, in rupees or as a percentage. */}
+                  <OrderSummaryRow
+                    label="Total Discount"
+                    value={`-${money(orderDiscount)}`}
+                    tone="rose"
+                    edit={{
+                      amount:
+                        discountInput === null
+                          ? Math.round(orderDiscount)
+                          : discountInput,
+                      mode: discountMode,
+                      base: orderSubtotal,
+                      onChange: setDiscountInput,
+                      onModeChange: setDiscountMode,
+                    }}
+                  />
 
-                    <span className="text-xs font-semibold text-rose-500">
-                      -{money(orderDiscount)}
-                    </span>
-                  </div>
+                  <OrderSummaryRow
+                    label={`ORC (${orderOrcPercent.toFixed(2)}%)`}
+                    name="ORC"
+                    value={`+${money(orderOrc)}`}
+                    edit={{
+                      amount: orcInput,
+                      mode: orcMode,
+                      base: orderSubtotal,
+                      onChange: setOrcInput,
+                      onModeChange: setOrcMode,
+                    }}
+                  />
 
-                  {/* ORC */}
+                  <OrderSummaryRow
+                    label="Freight Charges"
+                    value={`+${money(freightCharges)}`}
+                    edit={{
+                      amount: freightCharges,
+                      onChange: setFreightCharges,
+                    }}
+                  />
 
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500">ORC</span>
-
-                    <input
-                      type="number"
-                      min="0"
-                      className="w-24 h-7 rounded-md border border-slate-200 px-2 text-right text-xs outline-none"
-                      defaultValue={0}
-                    />
-                  </div>
-
-                  {/* Freight */}
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500">
-                      Freight Charges
-                    </span>
-
-                    <input
-                      type="number"
-                      min="0"
-                      className="w-24 h-7 rounded-md border border-slate-200 px-2 text-right text-xs outline-none"
-                      defaultValue={0}
-                    />
-                  </div>
-
-                  {/* Lump Sum */}
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500">
-                      Lumpsum (Installation)
-                    </span>
-
-                    <input
-                      type="number"
-                      min="0"
-                      className="w-24 h-7 rounded-md border border-slate-200 px-2 text-right text-xs outline-none"
-                      defaultValue={0}
-                    />
-                  </div>
+                  <OrderSummaryRow
+                    label="Lumpsum (Installation)"
+                    value={`+${money(installationLumpsum)}`}
+                    edit={{
+                      amount: installationLumpsum,
+                      onChange: setInstallationLumpsum,
+                    }}
+                  />
 
                   <div className="border-t border-slate-100 pt-3">
                     <div className="flex items-center justify-between">
@@ -2072,7 +2135,7 @@ export default function OrdersListPage() {
 
                     <div className="flex items-center justify-between mt-3">
                       <span className="text-xs text-slate-500">
-                        Estimated GST (18%)
+                        Estimated GST ({ORDER_GST_PERCENT}%)
                       </span>
 
                       <span className="text-xs font-semibold text-slate-800">
@@ -2107,23 +2170,24 @@ export default function OrdersListPage() {
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500">
-                      Advance Received
-                    </span>
+                  <OrderSummaryRow
+                    label="Advance Received"
+                    value={money(orderAdvance)}
+                    tone="emerald"
+                    edit={{
+                      amount: advanceReceived,
+                      onChange: setAdvanceReceived,
+                    }}
+                  />
 
-                    <span className="text-xs font-semibold text-emerald-500">
-                      ₹0
-                    </span>
-                  </div>
-
+                  {/* Grand total less whatever has already been received. */}
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-slate-500">
                       Outstanding Balance
                     </span>
 
                     <span className="text-xs font-semibold text-amber-500">
-                      {money(orderGrandTotal)}
+                      {money(orderOutstanding)}
                     </span>
                   </div>
                 </div>
@@ -3191,6 +3255,96 @@ export default function OrdersListPage() {
           }))}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * One line of the Sales Order summary.
+ *
+ * The figure sits in a fixed-width column so swapping it for its input on
+ * the pencil leaves every other row exactly where it was.
+ */
+function OrderSummaryRow({
+  label,
+  name,
+  value,
+  tone,
+  edit,
+}: {
+  label: string;
+  /** Stable name for the controls; the visible label carries a live
+      percentage, which would otherwise change under a screen reader. */
+  name?: string;
+  value: string;
+  tone?: "rose" | "emerald";
+  edit?: {
+    amount: number;
+    mode?: AmountMode;
+    base?: number;
+    onChange: (next: number) => void;
+    onModeChange?: (next: AmountMode) => void;
+  };
+}) {
+  const [editing, setEditing] = useState(false);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+
+  /* Close on a click outside the row. Relying on the control's own blur
+     proved unreliable once the row scrolled out of view, and this matches
+     how the menus elsewhere on these pages close. */
+  useEffect(() => {
+    if (!editing) return;
+
+    function handleOutside(event: MouseEvent) {
+      if (!rowRef.current?.contains(event.target as Node)) setEditing(false);
+    }
+
+    document.addEventListener("mousedown", handleOutside);
+
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [editing]);
+
+  const valueTone =
+    tone === "rose"
+      ? "text-rose-500"
+      : tone === "emerald"
+        ? "text-emerald-500"
+        : "text-slate-800 dark:text-slate-200";
+
+  return (
+    <div ref={rowRef} className="flex items-center justify-between gap-3">
+      <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
+        {label}
+
+        {edit && (
+          <button
+            type="button"
+            aria-label={`Edit ${name || label}`}
+            onClick={() => setEditing((previous) => !previous)}
+            className="text-slate-400 transition hover:text-slate-700"
+          >
+            <FiEdit2 size={10} />
+          </button>
+        )}
+      </span>
+
+      <div className="flex w-32 justify-end">
+        {edit && editing ? (
+          <AmountInput
+            ariaLabel={name || label}
+            width="w-full"
+            autoFocus
+            value={edit.amount}
+            mode={edit.mode}
+            base={edit.base}
+            onChange={edit.onChange}
+            onModeChange={edit.onModeChange}
+            onDone={() => setEditing(false)}
+          />
+        ) : (
+          <span className={`text-xs font-semibold ${valueTone}`}>{value}</span>
+        )}
+      </div>
     </div>
   );
 }
