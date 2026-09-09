@@ -55,9 +55,20 @@ export function ListPageHeader({
 }
 
 /** Responsive KPI grid. Pass StatCard children. */
-export function StatGrid({ children }: { children: ReactNode }) {
+export function StatGrid({
+  children,
+  cols = 4,
+}: {
+  children: ReactNode;
+  /** Cards per row on xl and up. Quotation shows six, the rest show four. */
+  cols?: 4 | 6;
+}) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div
+      className={`grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 ${
+        cols === 6 ? "xl:grid-cols-6" : "xl:grid-cols-4"
+      }`}
+    >
       {children}
     </div>
   );

@@ -15,8 +15,28 @@ import { getSidebarMenusApi, DBMenuItem } from "@/features/menus/api/menus.api";
 import { useUIStore } from "@/lib/store/ui.store";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 
+/**
+ * Icons that are not a plain lucide export.
+ *
+ * lucide's Quote glyph has its bowl at the top with the tail sweeping down,
+ * which reads as a closing quote (99). The design uses an opening quote
+ * (66) - the same glyph turned through 180 degrees.
+ */
+const ICON_OVERRIDES: Record<string, (props: any) => any> = {
+  LuQuoteOpen: ({ style, ...props }: any) => (
+    /* Rotated inline rather than with a utility class so it cannot be
+       dropped by the CSS scanner, and so the caller's own className
+       (sizing, colour) is left intact. */
+    <LuIcons.LuQuote
+      {...props}
+      style={{ ...style, transform: "rotate(180deg)" }}
+    />
+  ),
+};
+
 function resolveIconComponent(iconName?: string) {
   if (!iconName) return LuCircle;
+  if (iconName in ICON_OVERRIDES) return ICON_OVERRIDES[iconName];
   const iconComp = (LuIcons as Record<string, any>)[iconName];
   return iconComp || LuCircle;
 }
