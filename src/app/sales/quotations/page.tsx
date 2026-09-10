@@ -27,6 +27,10 @@ import StatCard from "@/components/crm/StatCard";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
 import { FormCard, FormSectionBlock, BillingShippingHeader } from "@/components/crm/FormCard";
+import AmountInput, {
+  resolveAmount,
+  type AmountMode,
+} from "@/components/crm/AmountInput";
 import RichTextEditor, { textToHtml } from "@/components/crm/RichTextEditor";
 import FormPageHeader, {
   CancelButton,
@@ -269,22 +273,48 @@ function getInitials(name?: string | null) {
  */
 function computeTotals(
   items: LineItem[],
-  orcAmount: number,
-  freight: number,
-  installation: number,
-  gstPercent: number,
-  advancePercent: number,
+  charges: {
+    discountMode: AmountMode;
+    discountInput: number | null;
+    orcMode: AmountMode;
+    orcInput: number;
+    freight: number;
+    installation: number;
+    gstPercent: number;
+    advancePercent: number;
+  },
 ) {
+  const {
+    discountMode,
+    discountInput,
+    orcMode,
+    orcInput,
+    freight,
+    installation,
+    gstPercent,
+    advancePercent,
+  } = charges;
+
   let subtotal = 0;
-  let discountAmount = 0;
+  let lineDiscount = 0;
 
   for (const item of items) {
     const lineTotal = (item.quantity || 0) * (item.unitPrice || 0);
 
     subtotal += lineTotal;
-    discountAmount += (lineTotal * (item.discount || 0)) / 100;
+    lineDiscount += (lineTotal * (item.discount || 0)) / 100;
   }
 
+  /* A discount typed into the summary overrides the per-line total, and can
+     never exceed what is being discounted. */
+  const typedDiscount =
+    discountInput === null
+      ? lineDiscount
+      : resolveAmount(discountInput, discountMode, subtotal);
+
+  const discountAmount = Math.max(0, Math.min(typedDiscount, subtotal));
+
+  const orcAmount = resolveAmount(orcInput, orcMode, subtotal);
   const orcPercent = subtotal ? (orcAmount / subtotal) * 100 : 0;
 
   const taxableAmount =
@@ -389,7 +419,13 @@ export default function QuotationPage() {
   const [items, setItems] = useState<LineItem[]>([]);
   const [editingItemKey, setEditingItemKey] = useState<string | null>(null);
 
-  const [orcAmount, setOrcAmount] = useState(0);
+  /* Discount stays null until the user overrides it, so an untouched form
+     keeps deriving the total from the per-line discounts. */
+  const [discountMode, setDiscountMode] = useState<AmountMode>("AMOUNT");
+  const [discountInput, setDiscountInput] = useState<number | null>(null);
+
+  const [orcMode, setOrcMode] = useState<AmountMode>("AMOUNT");
+  const [orcInput, setOrcInput] = useState(0);
   const [freight, setFreight] = useState(0);
   const [installation, setInstallation] = useState(0);
   const [gstPercent, setGstPercent] = useState(18);
@@ -610,8 +646,27 @@ export default function QuotationPage() {
 
   const totals = useMemo(
     () =>
-      computeTotals(items, orcAmount, freight, installation, gstPercent, advancePercent),
-    [items, orcAmount, freight, installation, gstPercent, advancePercent],
+      computeTotals(items, {
+        discountMode,
+        discountInput,
+        orcMode,
+        orcInput,
+        freight,
+        installation,
+        gstPercent,
+        advancePercent,
+      }),
+    [
+      items,
+      discountMode,
+      discountInput,
+      orcMode,
+      orcInput,
+      freight,
+      installation,
+      gstPercent,
+      advancePercent,
+    ],
   );
 
   const userName = useCallback(
@@ -638,7 +693,10 @@ export default function QuotationPage() {
     setShipping(EMPTY_ADDRESS);
     setSameAsBilling(false);
     setItems([]);
-    setOrcAmount(0);
+    setDiscountMode("AMOUNT");
+    setDiscountInput(null);
+    setOrcMode("AMOUNT");
+    setOrcInput(0);
     setFreight(0);
     setInstallation(0);
     setGstPercent(18);
@@ -763,7 +821,10 @@ export default function QuotationPage() {
       tax: item.tax,
     })),
 
-    orc_amount: orcAmount,
+    discount_mode: discountMode,
+    discount_input: discountInput,
+    orc_mode: orcMode,
+    orc_input: orcInput,
     freight_charges: freight,
     installation_lumpsum: installation,
     gst_percent: gstPercent,
@@ -1531,52 +1592,64 @@ export default function QuotationPage() {
 
               {/* TOTALS */}
 
-              <div className="mt-5 space-y-2.5 pl-auto">
-                <TotalRow label="Subtotal:" value={money(totals.subtotal)} />
+              <div className="mt-5 space-y-2.5">
+                <SummaryRow label="Subtotal:" value={money(totals.subtotal)} />
 
-                <TotalRow
+                {/* Discount defaults to the per-line total; entering one here
+                    overrides it, in rupees or as a percentage. */}
+                <SummaryRow
                   label="Total Discount"
                   value={`-${money(totals.discountAmount)}`}
                   tone="rose"
-                  editable
+                  edit={{
+                    amount:
+                      discountInput === null
+                        ? Math.round(totals.discountAmount)
+                        : discountInput,
+                    mode: discountMode,
+                    base: totals.subtotal,
+                    onChange: setDiscountInput,
+                    onModeChange: setDiscountMode,
+                  }}
                 />
 
-                <TotalRow
+                <SummaryRow
                   label={`ORC (${totals.orcPercent.toFixed(2)}%)`}
+                  name="ORC"
                   value={`+${money(totals.orcAmount)}`}
-                  editable
-                  onEdit={(next) => setOrcAmount(next)}
-                  raw={orcAmount}
+                  edit={{
+                    amount: orcInput,
+                    mode: orcMode,
+                    base: totals.subtotal,
+                    onChange: setOrcInput,
+                    onModeChange: setOrcMode,
+                  }}
                 />
 
-                <TotalRow
+                <SummaryRow
                   label="Freight Charges"
                   value={`+${money(totals.freight)}`}
-                  editable
-                  onEdit={(next) => setFreight(next)}
-                  raw={freight}
+                  edit={{ amount: freight, onChange: setFreight }}
                 />
 
-                <TotalRow
+                <SummaryRow
                   label="Lumpsum (Installation)"
                   value={`+${money(totals.installation)}`}
-                  editable
-                  onEdit={(next) => setInstallation(next)}
-                  raw={installation}
+                  edit={{ amount: installation, onChange: setInstallation }}
                 />
 
-                <TotalRow
+                <SummaryRow
                   label="Taxable Amount:"
                   value={money(totals.taxableAmount)}
                 />
 
-                <TotalRow
+                <SummaryRow
                   label={`Estimated GST (${gstPercent}%):`}
                   value={`+${money(totals.gstAmount)}`}
                 />
 
                 <div className="border-t border-slate-200 pt-2.5 dark:border-[#17304a]">
-                  <TotalRow
+                  <SummaryRow
                     label="Total Payable:"
                     value={money(totals.totalPayable)}
                     strong
@@ -2355,27 +2428,57 @@ function AddressFields({
   );
 }
 
-function TotalRow({
+/**
+ * One line of the quotation summary.
+ *
+ * The label sits in a right-aligned column and the figure in a fixed-width
+ * one, so swapping the figure for its input on the pencil leaves every other
+ * row exactly where it was.
+ */
+function SummaryRow({
   label,
+  name,
   value,
   tone,
   strong,
-  editable,
-  onEdit,
-  raw,
+  edit,
 }: {
   label: string;
+  /** Stable name for the controls; the visible label carries a live
+      percentage, which would otherwise change under a screen reader. */
+  name?: string;
   value: string;
   tone?: "rose";
   strong?: boolean;
-  editable?: boolean;
-  onEdit?: (next: number) => void;
-  raw?: number;
+  /** Omit for a read-only row. */
+  edit?: {
+    amount: number;
+    mode?: AmountMode;
+    base?: number;
+    onChange: (next: number) => void;
+    onModeChange?: (next: AmountMode) => void;
+  };
 }) {
   const [editing, setEditing] = useState(false);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+
+  /* Close on a click outside the row. Relying on the control's own blur
+     proved unreliable once the row scrolled out of view, and this matches
+     how the menus elsewhere on these pages close. */
+  useEffect(() => {
+    if (!editing) return;
+
+    function handleOutside(event: MouseEvent) {
+      if (!rowRef.current?.contains(event.target as Node)) setEditing(false);
+    }
+
+    document.addEventListener("mousedown", handleOutside);
+
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [editing]);
 
   return (
-    <div className="flex items-center justify-end gap-6">
+    <div ref={rowRef} className="flex items-center justify-end gap-4">
       <span
         className={`flex items-center gap-1.5 text-[11px] ${
           strong
@@ -2385,10 +2488,10 @@ function TotalRow({
       >
         {label}
 
-        {editable && onEdit && (
+        {edit && (
           <button
             type="button"
-            aria-label={`Edit ${label}`}
+            aria-label={`Edit ${name || label}`}
             onClick={() => setEditing((previous) => !previous)}
             className="text-slate-400 transition hover:text-slate-700"
           >
@@ -2397,28 +2500,34 @@ function TotalRow({
         )}
       </span>
 
-      {editing && onEdit ? (
-        <input
-          type="number"
-          autoFocus
-          value={raw ?? 0}
-          onChange={(event) => onEdit(Number(event.target.value) || 0)}
-          onBlur={() => setEditing(false)}
-          className="h-7 w-28 rounded-md border border-slate-200 px-2 text-right text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929]"
-        />
-      ) : (
-        <span
-          className={`w-32 text-right text-[11px] ${
-            strong
-              ? "text-base font-bold text-slate-900 dark:text-white"
-              : tone === "rose"
-                ? "font-semibold text-rose-500"
-                : "font-semibold text-slate-700 dark:text-slate-200"
-          }`}
-        >
-          {value}
-        </span>
-      )}
+      {/* Fixed width: the input replaces the figure without moving it. */}
+      <div className="flex w-36 justify-end">
+        {edit && editing ? (
+          <AmountInput
+            ariaLabel={name || label}
+            width="w-full"
+            autoFocus
+            value={edit.amount}
+            mode={edit.mode}
+            base={edit.base}
+            onChange={edit.onChange}
+            onModeChange={edit.onModeChange}
+            onDone={() => setEditing(false)}
+          />
+        ) : (
+          <span
+            className={`text-right text-[11px] ${
+              strong
+                ? "text-base font-bold text-slate-900 dark:text-white"
+                : tone === "rose"
+                  ? "font-semibold text-rose-500"
+                  : "font-semibold text-slate-700 dark:text-slate-200"
+            }`}
+          >
+            {value}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

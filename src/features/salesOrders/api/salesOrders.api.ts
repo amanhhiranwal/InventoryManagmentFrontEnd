@@ -118,6 +118,19 @@ export interface SalesOrderModel {
   gst_amount?: number | null;
   grand_total?: number | null;
 
+  taxable_amount?: number | null;
+  orc_amount?: number | null;
+  orc_percent?: number | null;
+  orc_mode?: "AMOUNT" | "PERCENT" | null;
+  orc_input?: number | null;
+  discount_mode?: "AMOUNT" | "PERCENT" | null;
+  discount_input?: number | null;
+  freight_charges?: number | null;
+  installation_lumpsum?: number | null;
+  gst_percent?: number | null;
+  advance_received?: number | null;
+  outstanding_balance?: number | null;
+
   aging_0_30?: number | null;
   aging_31_60?: number | null;
   aging_61_90?: number | null;
@@ -155,10 +168,23 @@ export interface CreateSalesOrderPayload {
 
   items?: SalesOrderItem[];
 
+  /** Totals are recomputed server-side from the lines and charges below. */
   total_amount?: number;
   discount_amount?: number;
   gst_amount?: number;
   grand_total?: number;
+
+  /** "AMOUNT" or "PERCENT" - the unit the figure below was typed in. */
+  discount_mode?: "AMOUNT" | "PERCENT";
+  orc_mode?: "AMOUNT" | "PERCENT";
+  /** Raw values as entered. A discount here overrides the per-line total. */
+  discount_input?: number | null;
+  orc_input?: number;
+
+  freight_charges?: number;
+  installation_lumpsum?: number;
+  gst_percent?: number;
+  advance_received?: number;
 
   aging_0_30?: number;
   aging_31_60?: number;

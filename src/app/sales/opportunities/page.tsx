@@ -11,6 +11,14 @@ import {
 import { useSearchParams } from "next/navigation";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
+
+import { parseAmount } from "@/components/crm/AmountInput";
+import {
+  PRODUCT_CATALOG,
+  PRODUCT_CATEGORIES,
+  productSku,
+  type CatalogProduct,
+} from "@/features/catalog/productCatalog";
 import { Lead, getLeadsApi } from "@/features/workflows/api/workflows.api";
 import StatCard from "@/components/crm/StatCard";
 import Pagination from "@/components/crm/Pagination";
@@ -26,6 +34,7 @@ import FormPageHeader, {
   SubmitButton,
 } from "@/components/crm/FormPageHeader";
 import {
+  Th,
   ListToolbar,
   PrimaryAction,
 } from "@/components/crm/ListPageShell";
@@ -42,6 +51,9 @@ import {
 } from "@/features/opportunities/api/opportunities.api";
 import {
   FiPlus,
+  FiMinus,
+  FiInfo,
+  FiTrash2,
   FiSearch,
   FiGrid,
   FiList,
@@ -68,6 +80,34 @@ interface ProductItem {
   name: string;
   qty: number;
   price: number;
+}
+
+/** Inline editors inside the Products & Order Items table. */
+/* Fixed widths, not w-full: a stretching input widens its column and makes
+   the whole table jump between view and edit mode. */
+const LINE_CELL_BASE =
+  "h-8 rounded-md border border-slate-200 bg-white px-2 text-[10px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
+
+const LINE_CELL_MODEL = `${LINE_CELL_BASE} w-[112px]`;
+const LINE_CELL_SMALL = `${LINE_CELL_BASE} w-[46px] text-center`;
+
+const LINE_STEPPER =
+  "flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 transition hover:bg-slate-100 dark:border-[#17304a] dark:hover:bg-[#0d2336]";
+
+/** Buying windows offered on the New Opportunity form. */
+const PURCHASE_TIMELINES = ["Immediate (0-15 days)", "30 Days", "6 Months"];
+
+/** A priced line on the opportunity, chosen through Add Product. */
+interface OpportunityLineItem {
+  key: string;
+  productId: string;
+  product: string;
+  model: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+  tax: number;
 }
 
 type CustomerType =
@@ -129,6 +169,8 @@ type Priority = "High" | "Medium" | "Low";
 interface Opportunity {
   id: string;
   leadId: string;
+  /** The opportunity's own title, distinct from the customer or company. */
+  name: string;
   customerName: string;
   email: string;
   phone: string;
@@ -160,6 +202,10 @@ interface Opportunity {
   remarks?: string;
 
   productItems?: ProductItem[];
+  opportunityName?: string;
+  lineItems?: OpportunityLineItem[];
+  /** Requirements & Files uploads, recorded by name/size/type on save. */
+  attachments?: File[];
 
   activityHistory?: Activity[];
 }
@@ -232,16 +278,6 @@ const DRAWER_PIPELINE: { label: string; stage: OpportunityStage }[] = [
   { label: "Closed Won", stage: "Closed Won" },
 ];
 
-const STAGE_PROGRESS: Record<OpportunityStage, number> = {
-  Qualified: 20,
-  Requirement: 40,
-  "Demo Scheduled": 60,
-  "Proposal Sent": 80,
-  Negotiation: 90,
-  "Closed Won": 100,
-  Dead: 0,
-};
-
 const STATUS_OPTIONS = ["All", "Active", "Inactive"];
 
 const DEFAULT_FILTERS: OpportunityFilters = {
@@ -255,6 +291,11 @@ const DEFAULT_FILTERS: OpportunityFilters = {
 
 function formatCurrency(value: number) {
   return `₹${value.toLocaleString("en-IN")}`;
+}
+
+/** Full rupee figure, as the Total Amount row shows in the design. */
+function formatRupees(value: number) {
+  return `₹${Math.round(value || 0).toLocaleString("en-IN")}`;
 }
 
 function formatShortCurrency(value: number) {
@@ -391,6 +432,10 @@ function mapLeadToOpportunity(lead: any): Opportunity {
     id: String(lead.id),
     leadId: String(lead.lead_id ?? getLeadId(lead)),
 
+    /* The opportunity's title was never carried through, so the list had
+       nothing to show but the customer and company. */
+    name: lead.title || lead.opportunity_name || company,
+
     customerName,
     email: lead.email || lead.email_address || "",
     phone: lead.phone || lead.mobile || lead.mobile_number || "",
@@ -460,6 +505,10 @@ function OpportunitiesPageInner() {
 
   const [opps, setOpps] = useState<Opportunity[]>([]);
   const [salesUsers, setSalesUsers] = useState<SalesUser[]>([]);
+
+  /* Lead sources come from Masters so the source recorded on a lead can
+     always be shown here; the form previously offered three fixed values. */
+  const [leadSourceOptions, setLeadSourceOptions] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -537,7 +586,14 @@ function OpportunitiesPageInner() {
         setSalesUsers(
           users.map((user: any) => ({
             id: String(user.id || user.user_id),
-            name: user.name || user.full_name || user.username || "Sales User",
+            /* The users endpoint returns first_name/last_name; without
+               these every option read "Sales User". */
+            name:
+              `${user.first_name || ""} ${user.last_name || ""}`.trim() ||
+              user.name ||
+              user.full_name ||
+              user.email ||
+              "Sales User",
           })),
         );
       }
@@ -596,9 +652,26 @@ function OpportunitiesPageInner() {
     setShowAddModal(true);
   };
 
+  const fetchLeadSources = async () => {
+    try {
+      const res = await api.get("/api/v1/lead-sources");
+
+      if (res.data?.success) {
+        setLeadSourceOptions(
+          (res.data.data || [])
+            .filter((source: any) => source.is_active !== false)
+            .map((source: any) => source.name),
+        );
+      }
+    } catch (error) {
+      console.warn("Lead sources endpoint unavailable.", error);
+    }
+  };
+
   useEffect(() => {
     fetchOpportunities();
     fetchSalesUsers();
+    fetchLeadSources();
   }, [fetchOpportunities]);
 
   /* Arriving from the Leads page via "Convert To Opportunity". */
@@ -803,7 +876,10 @@ function OpportunitiesPageInner() {
       await createOpportunityApi({
         ...(payload.leadId ? { lead_id: Number(payload.leadId) } : {}),
 
-        title: payload.contactName || payload.organizationName,
+        title:
+          payload.opportunityName ||
+          payload.contactName ||
+          payload.organizationName,
         description: payload.organizationName,
 
         organization_name: payload.organizationName,
@@ -835,7 +911,31 @@ function OpportunitiesPageInner() {
         requirements: payload.remarks,
         remarks: payload.remarks,
 
-        product_items: payload.productItems || [],
+        /* These three were gathered by the form and then dropped: the
+           payload carried them but the request never did. */
+        lead_source: payload.leadSource,
+        purchase_timeline: payload.purchaseTimeline,
+
+        /* Assigned to was a single hardcoded option and was never sent, so
+           every opportunity was created unassigned. */
+        assigned_to_id: payload.ownerId || undefined,
+        attachments: (payload.attachments || []).map((file: File) => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        })),
+
+        product_items: (payload.lineItems || []).map(
+          (item: OpportunityLineItem) => ({
+            product: item.product,
+            model: item.model,
+            sku: item.sku,
+            quantity: item.quantity,
+            unit_price: item.unitPrice,
+            discount: item.discount,
+            tax: item.tax,
+          }),
+        ),
       });
 
       addToast("Opportunity created successfully.", "success");
@@ -1177,6 +1277,8 @@ function OpportunitiesPageInner() {
     return (
       <NewOpportunityPage
         lead={sourceLead}
+        salesUsers={salesUsers}
+        leadSourceOptions={leadSourceOptions}
         onClose={() => {
           setShowAddModal(false);
           setSourceLead(null);
@@ -1662,9 +1764,86 @@ function BoardView({
   onMarkDead: (opportunity: Opportunity) => void;
   onAdvance: (opportunity: Opportunity) => void;
 }) {
+  /* Grab-and-pan the board sideways, the way a Kanban board behaves. */
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const dragState = useRef({ startX: 0, startScroll: 0, moved: false });
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    /* Listen on the document so the pan keeps working when the pointer
+       leaves the board, and still ends wherever the button is released. */
+    function handleMove(event: MouseEvent) {
+      const element = scrollRef.current;
+
+      if (!element) return;
+
+      const distance = event.pageX - dragState.current.startX;
+
+      if (Math.abs(distance) > 4) dragState.current.moved = true;
+
+      element.scrollLeft = dragState.current.startScroll - distance;
+    }
+
+    function handleUp() {
+      setDragging(false);
+    }
+
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+    };
+  }, [dragging]);
+
   return (
-    <div className="overflow-x-auto pb-5">
-      <div className="grid min-w-[1080px] grid-cols-4 gap-4">
+    /* A flex row rather than a fixed grid: grid-cols-4 held five stages,
+       so Negotiation wrapped onto a second row instead of scrolling. */
+    <div
+      ref={scrollRef}
+      onMouseDown={(event) => {
+        /* Left button only. Cards are themselves buttons, so panning has
+           to be allowed to start on one; a drag that actually moved is
+           stopped from becoming a click in onClickCapture below. Real form
+           controls are excluded so typing and selection still work. */
+        if (event.button !== 0) return;
+
+        if ((event.target as HTMLElement).closest("input, select, textarea")) {
+          return;
+        }
+
+        const element = scrollRef.current;
+
+        if (!element) return;
+
+        dragState.current = {
+          startX: event.pageX,
+          startScroll: element.scrollLeft,
+          moved: false,
+        };
+
+        setDragging(true);
+      }}
+      /* A pan that moved should not also register as a click on whatever
+         happened to be under the pointer. */
+      onClickCapture={(event) => {
+        if (dragState.current.moved) {
+          event.preventDefault();
+          event.stopPropagation();
+          dragState.current.moved = false;
+        }
+      }}
+      /* scrollbar-none: the board is panned by dragging, so the bar itself
+         is just a line across the page. Scrolling still works. */
+      className={`scrollbar-none overflow-x-auto pb-2 ${
+        dragging ? "cursor-grabbing select-none" : "cursor-grab"
+      }`}
+    >
+      <div className="flex gap-4">
         {BOARD_STAGES.map((stage) => {
           const stageDeals = opportunities.filter((opp) => opp.stage === stage);
 
@@ -1676,10 +1855,12 @@ function BoardView({
           return (
             <div
               key={stage}
-              className="min-h-[530px] rounded-xl border border-slate-200 bg-white p-3 dark:border-[#17304a] dark:bg-[#071929]"
+              /* Viewport-relative so the board's horizontal scrollbar
+                 always sits above the fold, whatever the screen height. */
+              className="flex h-[calc(100vh-380px)] max-h-[720px] min-h-[380px] w-[290px] shrink-0 flex-col rounded-xl border border-slate-200 bg-white p-3 dark:border-[#17304a] dark:bg-[#071929]"
             >
               {/* Column Header */}
-              <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-3 dark:border-[#17304a]">
+              <div className="mb-3 flex shrink-0 items-center justify-between border-b border-slate-100 pb-3 dark:border-[#17304a]">
                 <div className="flex items-center gap-2">
                   <span className="text-[13px] font-semibold">{stage}</span>
 
@@ -1699,8 +1880,9 @@ function BoardView({
                 </div>
               </div>
 
-              {/* Cards */}
-              <div className="space-y-2.5">
+              {/* Cards scroll within the column: the board keeps a fixed
+                  height so its horizontal scrollbar is always in reach. */}
+              <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
                 {stageDeals.map((opp) => (
                   <OpportunityBoardCard
                     key={opp.id}
@@ -1749,8 +1931,6 @@ function OpportunityBoardCard({
   onMarkDead: (opportunity: Opportunity) => void;
   onAdvance: (opportunity: Opportunity) => void;
 }) {
-  const progress = STAGE_PROGRESS[opportunity.stage];
-
   return (
     <div className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md dark:border-[#17304a] dark:bg-[#0b1d2e]">
       <div className="flex items-start justify-between gap-2">
@@ -1760,7 +1940,7 @@ function OpportunityBoardCard({
           className="min-w-0 text-left"
         >
           <p className="truncate text-[12px] font-bold text-slate-900 dark:text-white">
-            {opportunity.customerName}
+            {opportunity.name}
           </p>
 
           <p className="truncate text-[9px] font-medium text-slate-500">
@@ -1782,21 +1962,20 @@ function OpportunityBoardCard({
         />
       </div>
 
-      <div className="mt-3 flex items-center justify-between">
-        <span className="text-[10px] font-semibold text-slate-500">
+      {/* Value and closing date share a line, as in the design. */}
+      <div className="mt-3 flex items-center gap-2 text-[10px] text-slate-500">
+        <span className="font-semibold text-slate-600 dark:text-slate-300">
           {formatShortCurrency(opportunity.dealValue)}
         </span>
 
-        <PriorityBadge priority={opportunity.priority} />
-      </div>
+        <span className="text-slate-300">·</span>
 
-      <div className="mt-3 h-[3px] overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-        <div
-          className="h-full rounded-full bg-[#e27c26]"
-          style={{
-            width: `${progress}%`,
-          }}
-        />
+        <span className="flex items-center gap-1">
+          <FiCalendar size={9} />
+          {formatDate(
+            opportunity.expectedClosingDate || opportunity.createdAt,
+          )}
+        </span>
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-2.5 dark:border-[#17304a]">
@@ -1808,9 +1987,7 @@ function OpportunityBoardCard({
           </span>
         </div>
 
-        <span className="text-[9px] text-slate-400">
-          {formatDate(opportunity.expectedClosingDate || opportunity.createdAt)}
-        </span>
+        <PriorityBadge priority={opportunity.priority} />
       </div>
     </div>
   );
@@ -1859,11 +2036,11 @@ function ListView({
 
               <TableHeader>Lead ID</TableHeader>
 
+              <TableHeader>Opportunity Name</TableHeader>
+
               <TableHeader>Customer Name</TableHeader>
 
-              <TableHeader>Company</TableHeader>
-
-              <TableHeader>Deal Value</TableHeader>
+              <TableHeader>Est. Deal Value</TableHeader>
 
               <TableHeader>Assigned To</TableHeader>
 
@@ -1891,6 +2068,23 @@ function ListView({
                   </span>
                 </td>
 
+                {/* Opportunity name on top, its company underneath. */}
+                <td className="px-3 py-3.5">
+                  <button
+                    type="button"
+                    onClick={() => onDetails(opp)}
+                    className="max-w-[170px] text-left"
+                  >
+                    <p className="text-[12px] font-bold text-slate-900 hover:text-[#233353] dark:text-white">
+                      {opp.name}
+                    </p>
+
+                    <p className="mt-0.5 text-[10px] text-slate-500">
+                      {opp.company}
+                    </p>
+                  </button>
+                </td>
+
                 <td className="px-3 py-3.5">
                   <button
                     type="button"
@@ -1912,12 +2106,6 @@ function ListView({
                       </p>
                     )}
                   </button>
-                </td>
-
-                <td className="px-3 py-3.5">
-                  <span className="block max-w-[130px] text-[11px] font-medium text-slate-700 dark:text-slate-300">
-                    {opp.company}
-                  </span>
                 </td>
 
                 <td className="px-3 py-3.5">
@@ -2557,12 +2745,17 @@ function LeadPickerModal({
 
 function NewOpportunityPage({
   lead,
+  salesUsers,
+  leadSourceOptions,
   onClose,
   onSubmit,
 }: {
   /** When present, the form opens prefilled from this lead and saving it
       converts the lead rather than creating a standalone opportunity. */
   lead?: Lead | null;
+  salesUsers: SalesUser[];
+  /** Lead sources as configured in Masters, not a hardcoded list. */
+  leadSourceOptions: string[];
   onClose: () => void;
   onSubmit: (payload: Record<string, any>) => Promise<void>;
 }) {
@@ -2597,6 +2790,12 @@ function NewOpportunityPage({
   const [shippingCountry, setShippingCountry] = useState("India");
   const [sameAsBilling, setSameAsBilling] = useState(false);
 
+  /* Names the opportunity itself; previously the title was silently
+     derived from the contact or organisation name. */
+  const [opportunityName, setOpportunityName] = useState(
+    lead?.title || lead?.organization_name || "",
+  );
+
   const [gstNumber, setGstNumber] = useState(lead?.gst_number || "");
 
   const [panNumber, setPanNumber] = useState(lead?.pan_number || "");
@@ -2621,68 +2820,140 @@ function NewOpportunityPage({
 
   const [purchaseTimeline, setPurchaseTimeline] = useState("");
 
-  const [leadSource, setLeadSource] = useState(
-    lead?.lead_source_name || "Marketing",
-  );
+  /* Kept as text so the field can be cleared; parsed on submit. */
+  const [totalEstValue, setTotalEstValue] = useState("");
 
-  const [assignedTo, setAssignedTo] = useState("");
+  /* Carried over from the lead rather than defaulting to Marketing, which
+     misreported the source of every lead that came in another way. */
+  const [leadSource, setLeadSource] = useState(lead?.lead_source_name || "");
+
+  /* Holds the user id, not a display name: the previous single hardcoded
+     "Sales Team" option could never map to a real user. */
+  const [assignedTo, setAssignedTo] = useState(lead?.assigned_to_id || "");
 
   const [attachments, setAttachments] = useState<File[]>([]);
 
-  const [productItems, setProductItems] = useState<ProductItem[]>([
-    {
-      name: "Interactive Flat Panel",
-      qty: 0,
-      price: 0,
-    },
-    {
-      name: "LED Video Wall",
-      qty: 0,
-      price: 0,
-    },
-    {
-      name: "Digital Signage",
-      qty: 0,
-      price: 0,
-    },
-    {
-      name: "Commercial Display",
-      qty: 0,
-      price: 0,
-    },
-    {
-      name: "Advertising Display",
-      qty: 0,
-      price: 0,
-    },
-    {
-      name: "Signage",
-      qty: 0,
-      price: 0,
-    },
-  ]);
+  /* Line items chosen through Add Product, replacing the old fixed
+     checkbox list which could not carry a model, SKU, price or tax. */
+  const [lineItems, setLineItems] = useState<OpportunityLineItem[]>([]);
+
+  /* Row whose cells are currently editable. */
+  const [editingLineKey, setEditingLineKey] = useState<string | null>(null);
+
+  const productsRef = useRef<HTMLDivElement | null>(null);
+
+  /* Clicking away from the table closes the open row, so a filled-in line
+     goes back to its read-only form instead of staying in edit mode. */
+  useEffect(() => {
+    if (!editingLineKey) return;
+
+    function handleOutside(event: MouseEvent) {
+      if (!productsRef.current?.contains(event.target as Node)) {
+        setEditingLineKey(null);
+      }
+    }
+
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Enter" || event.key === "Escape") {
+        setEditingLineKey(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("keydown", handleKey);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [editingLineKey]);
+
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [productCategory, setProductCategory] = useState("All");
+  const [pickedProducts, setPickedProducts] = useState<OpportunityLineItem[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
 
-  const totalQty = productItems.reduce((sum, item) => sum + item.qty, 0);
+  /* Mirrors compute_product_totals in app/services/opportunity_service.py
+     so the table shows live figures while editing. The backend recomputes
+     on save and its values are what get stored. */
+  const productTotals = lineItems.reduce(
+    (acc, item) => {
+      const line = item.quantity * item.unitPrice;
+      const discount = (line * (item.discount || 0)) / 100;
+      const taxable = line - discount;
 
-  const totalValue = productItems.reduce(
-    (sum, item) => sum + item.qty * item.price,
-    0,
+      acc.subtotal += line;
+      acc.discount += discount;
+      acc.tax += (taxable * (item.tax || 0)) / 100;
+
+      return acc;
+    },
+    { subtotal: 0, discount: 0, tax: 0 },
   );
 
-  const updateProductQty = (index: number, delta: number) => {
-    setProductItems((current) =>
-      current.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              qty: Math.max(0, item.qty + delta),
-            }
-          : item,
-      ),
+  const productsTotal =
+    productTotals.subtotal - productTotals.discount + productTotals.tax;
+
+  const filteredProducts = PRODUCT_CATALOG.filter((product) => {
+    if (productCategory !== "All" && product.category !== productCategory) {
+      return false;
+    }
+
+    const term = productSearch.trim().toLowerCase();
+
+    if (!term) return true;
+
+    return (
+      product.name.toLowerCase().includes(term) ||
+      productSku(product.id).toLowerCase().includes(term)
     );
+  });
+
+  const togglePicked = (product: CatalogProduct) => {
+    setPickedProducts((current) => {
+      if (current.some((item) => item.productId === product.id)) {
+        return current.filter((item) => item.productId !== product.id);
+      }
+
+      return [
+        ...current,
+        {
+          key: `${product.id}-${Date.now()}-${current.length}`,
+          productId: product.id,
+          product: product.category,
+          model: product.name,
+          sku: productSku(product.id),
+          quantity: 1,
+          unitPrice: product.price,
+          discount: 0,
+          tax: 18,
+        },
+      ];
+    });
   };
+
+  const updatePicked = (key: string, patch: Partial<OpportunityLineItem>) =>
+    setPickedProducts((current) =>
+      current.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+    );
+
+  const confirmProducts = () => {
+    if (!pickedProducts.length) return;
+
+    setLineItems((current) => [...current, ...pickedProducts]);
+    setPickedProducts([]);
+    setShowProductModal(false);
+  };
+
+  const updateLineItem = (key: string, patch: Partial<OpportunityLineItem>) =>
+    setLineItems((current) =>
+      current.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+    );
+
+  const removeLineItem = (key: string) =>
+    setLineItems((current) => current.filter((item) => item.key !== key));
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -2734,9 +3005,12 @@ function NewOpportunityPage({
         purchaseTimeline,
         leadSource,
         assignedTo,
+        ownerId: assignedTo,
         remarks,
         attachments,
-        productItems: productItems.filter((item) => item.qty > 0),
+        opportunityName,
+        dealValue: totalEstValue,
+        lineItems,
       });
     } finally {
       setSubmitting(false);
@@ -2791,8 +3065,30 @@ function NewOpportunityPage({
 
               <FormSectionBlock
                 first
+                icon={<FiInfo size={17} />}
+                title="Opportunity Information"
+              >
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Lead ID:
+                  </span>
+
+                  <span className="text-[11px] font-bold text-slate-800 dark:text-white">
+                    {lead?.id ? `#LD-${lead.id}` : "Not from a lead"}
+                  </span>
+                </div>
+
+                <FormInput
+                  label="Opportunity Name *"
+                  value={opportunityName}
+                  onChange={setOpportunityName}
+                  placeholder="Enter name here"
+                />
+              </FormSectionBlock>
+
+              <FormSectionBlock
                 icon={<FiUser size={17} />}
-                title="Customer Information"
+                title="Organization Details"
               >
                 <div className="space-y-4">
                   <FormSelect
@@ -2826,7 +3122,7 @@ function NewOpportunityPage({
 
               <FormSectionBlock
                 icon={<FiMapPin size={17} />}
-                title="Organization Details"
+                title="Location Information"
               >
                 <div className="space-y-4">
                   <BillingShippingHeader
@@ -3013,6 +3309,284 @@ function NewOpportunityPage({
                   />
                 </div>
               </FormSectionBlock>
+
+              {/* =================================================
+                  PRODUCTS & ORDER ITEMS
+              ================================================= */}
+
+              {/* Unlike the other sections this one has no heading rule:
+                  the title and Add Product share a single row. */}
+              <section className="mt-8">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400">
+                      <FiMapPin size={16} />
+                    </span>
+
+                    <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+                      Products &amp; Order Items
+                    </h3>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickedProducts([]);
+                      setProductSearch("");
+                      setProductCategory("All");
+                      setShowProductModal(true);
+                    }}
+                    className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white transition hover:bg-[#18243a]"
+                  >
+                    <FiPlus size={13} />
+                    Add Product
+                  </button>
+                </div>
+
+                <div
+                  ref={productsRef}
+                  className="overflow-x-auto rounded-lg border border-slate-200 dark:border-[#17304a]"
+                >
+                  <table className="w-full min-w-[680px] table-fixed">
+                    <colgroup>
+                      <col className="w-[26%]" />
+                      <col className="w-[19%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[44px]" />
+                    </colgroup>
+
+                    <thead className="border-b border-slate-200 dark:border-[#17304a]">
+                      <tr>
+                        <Th>Product</Th>
+                        <Th>Model / Variant</Th>
+                        <Th>Qty</Th>
+                        <Th>Discount</Th>
+                        <Th>Tax</Th>
+                        <Th>Unit Price</Th>
+                        <Th />
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-100 dark:divide-[#0d2336]">
+                      {lineItems.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={7}
+                            className="px-3 py-8 text-center text-[11px] text-slate-400"
+                          >
+                            No products added yet. Use Add Product to build the
+                            opportunity.
+                          </td>
+                        </tr>
+                      )}
+
+                      {lineItems.map((item) => {
+                        const editing = editingLineKey === item.key;
+
+                        /* Clicking a row puts its cells into edit mode; the
+                           design has no pencil, only the delete icon. */
+                        return (
+                          <tr
+                            key={item.key}
+                            onClick={() => setEditingLineKey(item.key)}
+                            className={`cursor-pointer ${
+                              editing
+                                ? "bg-slate-50 dark:bg-[#071929]"
+                                : "hover:bg-slate-50/60 dark:hover:bg-[#071929]/50"
+                            }`}
+                          >
+                            <td className="px-3 py-2.5">
+                              <p className="text-[11px] font-bold text-slate-900 dark:text-white">
+                                {item.product}
+                              </p>
+
+                              <p className="mt-0.5 text-[9px] text-slate-400">
+                                SKU: {item.sku}
+                              </p>
+                            </td>
+
+                            <td className="px-3 py-2.5">
+                              {editing ? (
+                                <input
+                                  value={item.model}
+                                  onChange={(event) =>
+                                    updateLineItem(item.key, {
+                                      model: event.target.value,
+                                    })
+                                  }
+                                  className={LINE_CELL_MODEL}
+                                />
+                              ) : (
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                                  {item.model}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="px-3 py-2.5">
+                              {editing ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    aria-label="Decrease quantity"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      updateLineItem(item.key, {
+                                        quantity: Math.max(1, item.quantity - 1),
+                                      });
+                                    }}
+                                    className={LINE_STEPPER}
+                                  >
+                                    <FiMinus size={10} />
+                                  </button>
+
+                                  <span className="w-5 text-center text-[10px] font-semibold">
+                                    {item.quantity}
+                                  </span>
+
+                                  <button
+                                    type="button"
+                                    aria-label="Increase quantity"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      updateLineItem(item.key, {
+                                        quantity: item.quantity + 1,
+                                      });
+                                    }}
+                                    className={LINE_STEPPER}
+                                  >
+                                    <FiPlus size={10} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                                  {item.quantity}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="px-3 py-2.5">
+                              {editing ? (
+                                <div className="flex items-center gap-1">
+                                  <LineNumberInput
+                                    ariaLabel={`Discount for ${item.model}`}
+                                    value={item.discount}
+                                    onChange={(next) =>
+                                      updateLineItem(item.key, {
+                                        discount: next,
+                                      })
+                                    }
+                                  />
+                                  <span className="text-[10px] text-slate-500">
+                                    %
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                                  {item.discount} %
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="px-3 py-2.5">
+                              {editing ? (
+                                <div className="flex items-center gap-1">
+                                  <LineNumberInput
+                                    ariaLabel={`Tax for ${item.model}`}
+                                    value={item.tax}
+                                    onChange={(next) =>
+                                      updateLineItem(item.key, { tax: next })
+                                    }
+                                  />
+                                  <span className="text-[10px] text-slate-500">
+                                    %
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                                  {item.tax} %
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Unit price comes from the catalogue via Add
+                                Product and is not edited on the line. */}
+                            <td className="px-3 py-2.5">
+                              <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                                {item.unitPrice.toLocaleString("en-IN")}
+                              </span>
+                            </td>
+
+                            <td className="px-3 py-2.5 text-right">
+                              <button
+                                type="button"
+                                aria-label={`Remove ${item.model}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  removeLineItem(item.key);
+                                }}
+                                className={`rounded p-1 text-rose-400 transition hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/20 ${
+                                  editing ? "bg-rose-50 dark:bg-rose-950/20" : ""
+                                }`}
+                              >
+                                <FiTrash2 size={12} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+
+                    <tfoot>
+                      <tr className="border-t border-slate-200 dark:border-[#17304a]">
+                        <td
+                          colSpan={5}
+                          className="px-3 py-2.5 text-[11px] text-slate-600 dark:text-slate-300"
+                        >
+                          Total Amount
+                        </td>
+
+                        <td
+                          colSpan={2}
+                          className="px-3 py-2.5 text-right text-[11px] font-bold text-slate-900 dark:text-white"
+                          title={
+                            `Subtotal ${formatRupees(productTotals.subtotal)}` +
+                            ` − discount ${formatRupees(productTotals.discount)}` +
+                            ` + tax ${formatRupees(productTotals.tax)}`
+                          }
+                        >
+                          {formatRupees(productsTotal)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {/* Total Estimated Value. Defaults to the products total but
+                    stays editable, since the deal value quoted to the client
+                    is a commercial decision, not just the line sum. */}
+                <div className="mt-3">
+                  <FormInput
+                    label="Total Est. Value *"
+                    value={totalEstValue}
+                    onChange={setTotalEstValue}
+                    placeholder="₹ 0.00"
+                    type="number"
+                  />
+                </div>
+
+                <div className="mt-3">
+                  <FormSelect
+                    label="Purchase Timeline *"
+                    value={purchaseTimeline}
+                    options={PURCHASE_TIMELINES}
+                    onChange={setPurchaseTimeline}
+                  />
+                </div>
+              </section>
             </FormCard>
 
             {/* ===================================================
@@ -3021,10 +3595,14 @@ function NewOpportunityPage({
 
             <FormCard className="h-fit">
               {/* =================================================
-                      PRODUCT INTEREST
-                  ================================================= */}
+                  SALES INFORMATION
+
+                  `first` matters: without it the section picks up mt-8 and
+                  this card's heading sits 32px below the one opposite it.
+              ================================================= */}
 
               <FormSectionBlock
+                first
                 icon={<FiUser size={17} />}
                 title="Sales Information"
               >
@@ -3032,14 +3610,18 @@ function NewOpportunityPage({
                   <FormSelect
                     label="Lead Source *"
                     value={leadSource}
-                    options={["Marketing", "Cold Calling", "In-bound"]}
+                    options={leadSourceOptions}
                     onChange={setLeadSource}
                   />
 
                   <FormSelect
                     label="Assigned to *"
                     value={assignedTo}
-                    options={["Sales Team"]}
+                    options={salesUsers.map((user) => user.id)}
+                    displayOptions={salesUsers.map((user) => ({
+                      value: user.id,
+                      label: user.name,
+                    }))}
                     onChange={setAssignedTo}
                   />
 
@@ -3099,112 +3681,6 @@ function NewOpportunityPage({
                 </div>
               </FormSectionBlock>
 
-              <FormSectionBlock
-                icon={<FiShoppingCart size={17} />}
-                title="Product Interest"
-              >
-                <p className="mb-2 text-[10px] text-slate-500">
-                  Product Categories
-                </p>
-
-                {/* Product Categories */}
-                <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-[#17304a]">
-                  {/* 
-                    Show 4 products at a time.
-                    Additional products can be accessed using
-                    the vertical scrollbar.
-                  */}
-                  <div className="max-h-[168px] overflow-y-auto">
-                    {productItems.map((item, index) => (
-                      <div
-                        key={item.name}
-                        className="flex min-h-[42px] items-center justify-between border-b border-slate-100 px-3 py-2.5 last:border-b-0 dark:border-[#17304a]"
-                      >
-                        {/* Product Name */}
-                        <div className="flex min-w-0 items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={item.qty > 0}
-                            onChange={() =>
-                              updateProductQty(
-                                index,
-                                item.qty > 0 ? -item.qty : 1,
-                              )
-                            }
-                            className="h-3.5 w-3.5 shrink-0 cursor-pointer"
-                          />
-
-                          <span className="truncate text-[10px] font-medium text-slate-700 dark:text-slate-200">
-                            {item.name}
-                          </span>
-                        </div>
-
-                        {/* Quantity Controls */}
-                        <div className="flex shrink-0 items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => updateProductQty(index, -1)}
-                            disabled={item.qty === 0}
-                            className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-[12px] text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#17304a] dark:hover:bg-[#0b2034]"
-                          >
-                            −
-                          </button>
-
-                          <span className="flex w-5 items-center justify-center text-[10px] font-medium text-slate-700 dark:text-slate-200">
-                            {item.qty}
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() => updateProductQty(index, 1)}
-                            className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-[12px] text-slate-500 transition hover:bg-slate-50 dark:border-[#17304a] dark:hover:bg-[#0b2034]"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Total - stays fixed below scroll area */}
-                  <div className="flex h-[32px] items-center justify-between bg-slate-50 px-3 dark:bg-[#0b2034]">
-                    <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-200">
-                      Total
-                    </span>
-
-                    <span className="text-[11px] font-bold text-slate-700 dark:text-white">
-                      {totalQty}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Total Estimated Value */}
-                <div className="mt-3">
-                  <FormInput
-                    label="Total Est. Value *"
-                    value={totalValue ? String(totalValue) : ""}
-                    onChange={() => {}}
-                    placeholder="₹ 0.00"
-                    type="number"
-                  />
-                </div>
-
-                {/* Purchase Timeline */}
-                <div className="mt-3">
-                  <FormSelect
-                    label="Purchase Timeline *"
-                    value={purchaseTimeline}
-                    options={[
-                      "Immediate",
-                      "Within 30 Days",
-                      "1 - 3 Months",
-                      "3 - 6 Months",
-                      "6+ Months",
-                    ]}
-                    onChange={setPurchaseTimeline}
-                  />
-                </div>
-              </FormSectionBlock>
 
               {/* =================================================
                   SALES INFORMATION
@@ -3268,6 +3744,390 @@ function NewOpportunityPage({
         ======================================================= */}
 
       </form>
+
+      {showProductModal && (
+        <OpportunityProductModal
+          products={filteredProducts}
+          picked={pickedProducts}
+          search={productSearch}
+          onSearch={setProductSearch}
+          category={productCategory}
+          onCategory={setProductCategory}
+          onToggle={togglePicked}
+          onUpdate={updatePicked}
+          onClose={() => setShowProductModal(false)}
+          onConfirm={confirmProducts}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Percentage cell inside the Products & Order Items table.
+ *
+ * Holds the text while focused so a half-typed or cleared value is not
+ * clobbered by the parsed number, and selects on focus so typing replaces
+ * the existing figure rather than appending to it.
+ */
+function LineNumberInput({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+  ariaLabel: string;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  /* Focus is tracked in a ref rather than state: setting state here would
+     re-render and move the caret to the end, defeating select-on-focus. */
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusedRef.current) setDraft(String(value));
+  }, [value]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      aria-label={ariaLabel}
+      value={draft}
+      onClick={(event) => event.stopPropagation()}
+      onFocus={(event) => {
+        focusedRef.current = true;
+        event.target.select();
+      }}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        onChange(parseAmount(event.target.value));
+      }}
+      onBlur={() => {
+        focusedRef.current = false;
+        setDraft(String(parseAmount(draft)));
+      }}
+      className={LINE_CELL_SMALL}
+    />
+  );
+}
+
+/* ================================================================
+   ADD PRODUCTS TO ORDER
+================================================================ */
+
+/**
+ * Product picker shared in shape with the Quotation and Sales Order
+ * screens, reading the same catalogue so all three offer the same
+ * products at the same prices.
+ */
+function OpportunityProductModal({
+  products,
+  picked,
+  search,
+  onSearch,
+  category,
+  onCategory,
+  onToggle,
+  onUpdate,
+  onClose,
+  onConfirm,
+}: {
+  products: CatalogProduct[];
+  picked: OpportunityLineItem[];
+  search: string;
+  onSearch: (value: string) => void;
+  category: string;
+  onCategory: (value: string) => void;
+  onToggle: (product: CatalogProduct) => void;
+  onUpdate: (key: string, patch: Partial<OpportunityLineItem>) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const lineTotal = picked.reduce(
+    (sum, item) =>
+      sum + item.quantity * item.unitPrice * (1 - (item.discount || 0) / 100),
+    0,
+  );
+
+  return (
+    <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/60 p-5">
+      <div className="flex h-[590px] w-full max-w-[780px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#051422]">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5 dark:border-[#17304a]">
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-white">
+            Add Products to Order
+          </h2>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-400 transition hover:text-slate-700"
+          >
+            <FiX size={17} />
+          </button>
+        </div>
+
+        <div className="px-5 pt-4">
+          <div className="relative">
+            <input
+              value={search}
+              onChange={(event) => onSearch(event.target.value)}
+              placeholder="Search by product name, model or SKU..."
+              className="h-10 w-full rounded-md border border-slate-300 px-3 pr-10 text-xs outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+            />
+
+            <FiSearch
+              size={15}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600"
+            />
+          </div>
+        </div>
+
+        <div className="px-5 pt-3">
+          <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 dark:border-[#17304a]">
+            {PRODUCT_CATEGORIES.map((entry) => (
+              <button
+                key={entry}
+                type="button"
+                onClick={() => onCategory(entry)}
+                className={`whitespace-nowrap px-3 py-2 text-[10px] font-medium transition ${
+                  category === entry
+                    ? "rounded-t-md bg-[#24395f] text-white"
+                    : "text-slate-600 hover:bg-slate-50 dark:text-slate-300"
+                }`}
+              >
+                {entry}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid flex-1 grid-cols-2 gap-5 overflow-hidden px-5 py-4">
+          <div className="space-y-2 overflow-y-auto pr-1">
+            {products.map((product) => {
+              const checked = picked.some(
+                (item) => item.productId === product.id,
+              );
+
+              return (
+                <button
+                  type="button"
+                  key={product.id}
+                  onClick={() => onToggle(product)}
+                  className={`w-full rounded-xl border p-3 text-left transition ${
+                    checked
+                      ? "border-slate-400 bg-slate-50 dark:bg-[#0b2034]"
+                      : "border-slate-200 bg-white hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929]"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded border text-[9px] ${
+                        checked
+                          ? "border-[#24395f] bg-[#24395f] text-white"
+                          : "border-slate-300"
+                      }`}
+                    >
+                      {checked ? "\u2713" : ""}
+                    </span>
+
+                    <div className="min-w-0">
+                      <p className="truncate text-[11px] font-bold text-slate-800 dark:text-white">
+                        {product.name}
+                      </p>
+
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        {formatShortCurrency(product.price)} ·{" "}
+                        {product.available} available
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+
+            {products.length === 0 && (
+              <p className="py-10 text-center text-[11px] text-slate-400">
+                No products match that search.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col overflow-hidden">
+            <div className="mb-2 flex items-center gap-2">
+              <FiShoppingCart size={13} className="text-slate-500" />
+
+              <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                Selected Products
+              </p>
+            </div>
+
+            <div className="flex-1 space-y-3 overflow-y-auto border-t border-slate-200 pt-3 dark:border-[#17304a]">
+              {picked.length === 0 && (
+                <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
+                  <FiInfo size={16} className="text-slate-300" />
+
+                  <p className="text-[11px] font-semibold text-slate-500">
+                    No Product Selected
+                  </p>
+
+                  <p className="text-[10px] text-slate-400">
+                    Select product to get started
+                  </p>
+                </div>
+              )}
+
+              {picked.map((item) => (
+                <div
+                  key={item.key}
+                  className="rounded-xl border border-slate-200 p-3 dark:border-[#17304a]"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[11px] font-bold text-slate-800 dark:text-white">
+                      {item.model}
+                    </p>
+
+                    <button
+                      type="button"
+                      aria-label={`Remove ${item.model}`}
+                      onClick={() =>
+                        onToggle({
+                          id: item.productId,
+                          name: item.model,
+                          category: item.product,
+                          price: item.unitPrice,
+                          available: 0,
+                        })
+                      }
+                      className="text-rose-400 transition hover:text-rose-600"
+                    >
+                      <FiTrash2 size={13} />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-500">Quantity</span>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        aria-label="Decrease quantity"
+                        onClick={() =>
+                          onUpdate(item.key, {
+                            quantity: Math.max(1, item.quantity - 1),
+                          })
+                        }
+                        className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 transition hover:bg-slate-100 dark:border-[#17304a]"
+                      >
+                        −
+                      </button>
+
+                      <span className="w-6 text-center text-[11px] font-semibold">
+                        {item.quantity}
+                      </span>
+
+                      <button
+                        type="button"
+                        aria-label="Increase quantity"
+                        onClick={() =>
+                          onUpdate(item.key, { quantity: item.quantity + 1 })
+                        }
+                        className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 transition hover:bg-slate-100 dark:border-[#17304a]"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="mb-1 block text-[9px] text-slate-500">
+                        Unit Price (₹)
+                      </label>
+
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={item.unitPrice}
+                        onChange={(event) =>
+                          onUpdate(item.key, {
+                            unitPrice: parseAmount(event.target.value),
+                          })
+                        }
+                        className="h-8 w-full rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[9px] text-slate-500">
+                        Discount (%)
+                      </label>
+
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={item.discount}
+                        onChange={(event) =>
+                          onUpdate(item.key, {
+                            discount: parseAmount(event.target.value),
+                          })
+                        }
+                        className="h-8 w-full rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[9px] text-slate-500">
+                        Tax (GST %)
+                      </label>
+
+                      <select
+                        value={item.tax}
+                        onChange={(event) =>
+                          onUpdate(item.key, { tax: Number(event.target.value) })
+                        }
+                        className="h-8 w-full rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                      >
+                        <option value={18}>18%</option>
+                        <option value={15}>15%</option>
+                        <option value={12}>12%</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-3 dark:border-[#17304a]">
+              <span className="text-[11px] text-slate-500">Line Total</span>
+
+              <span className="text-[11px] font-bold text-slate-800 dark:text-white">
+                {picked.length ? formatShortCurrency(lineTotal) : 0}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex h-16 shrink-0 items-center justify-end gap-3 border-t border-slate-200 px-5 dark:border-[#17304a]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 rounded-lg border border-slate-200 px-5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-[#233353] px-5 text-xs font-bold text-white transition hover:bg-[#18243a]"
+          >
+            <FiPlus size={13} />
+            Add Product
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
