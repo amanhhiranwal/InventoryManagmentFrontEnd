@@ -129,6 +129,23 @@ body {
   background: var(--primary);
 }
 
+/*
+ * Hides the scrollbar while leaving the element scrollable, for surfaces
+ * that are panned or dragged rather than scrolled with the bar - the
+ * Opportunity board, the sidebar. This class was already being used but
+ * had never been defined, so it did nothing.
+ */
+.scrollbar-none {
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* legacy Edge */
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }

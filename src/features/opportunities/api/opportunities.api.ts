@@ -117,6 +117,19 @@ export interface OpportunityModel {
 
   product_items?: OpportunityProductItem[] | null;
 
+  /** Derived server-side from product_items on every write. */
+  products_subtotal?: number | null;
+  products_discount_amount?: number | null;
+  products_tax_amount?: number | null;
+  products_total?: number | null;
+
+  /** Snapshot of where the opportunity came from. */
+  lead_source?: string | null;
+  /** Buying window, e.g. "Immediate (0-15 days)". */
+  purchase_timeline?: string | null;
+  attachments?: { name: string; size?: number; type?: string }[] | null;
+  compliance_documents?: Record<string, unknown> | null;
+
   customer_type_id?: number | null;
   customer_type_name?: string | null;
   state_id?: number | null;
@@ -167,6 +180,11 @@ export interface CreateOpportunityPayload {
   remarks?: string;
 
   product_items?: OpportunityProductItem[];
+
+  lead_source?: string;
+  purchase_timeline?: string;
+  attachments?: { name: string; size?: number; type?: string }[];
+  compliance_documents?: Record<string, unknown>;
 
   customer_type_id?: number;
   state_id?: number;
