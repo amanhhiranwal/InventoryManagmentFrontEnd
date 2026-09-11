@@ -41,13 +41,18 @@ import {
 import {
   OPPORTUNITY_STATUS,
   OPPORTUNITY_STATUS_LABEL,
+  OPPORTUNITY_TRANSITIONS,
   OpportunityStatus as CanonicalOpportunityStatus,
   canTransitionOpportunity,
   createOpportunityApi,
   getOpportunitiesApi,
+  getOpportunityActivitiesApi,
   getOpportunityApi,
+  logOpportunityActivityApi,
   updateOpportunityApi,
   updateOpportunityStatusApi,
+  LogOpportunityActivityPayload,
+  OpportunityActivity,
 } from "@/features/opportunities/api/opportunities.api";
 import {
   FiPlus,
@@ -73,6 +78,7 @@ import {
   FiShoppingCart,
   FiUploadCloud,
   FiEdit2,
+  FiChevronDown,
   FiAlertCircle,
 } from "react-icons/fi";
 
@@ -207,16 +213,10 @@ interface Opportunity {
   /** Requirements & Files uploads, recorded by name/size/type on save. */
   attachments?: File[];
 
-  activityHistory?: Activity[];
-}
-
-interface Activity {
-  id: string;
-  type: "Demo Scheduled" | "Outgoing Call" | "Form Submission" | "Note";
-  title: string;
-  description: string;
-  date: string;
-  time?: string;
+  /** The API record this was mapped from, kept so Edit can reopen the full
+      New Opportunity form with every field - shipping address, product
+      lines, lead source - rather than only the handful mapped above. */
+  raw?: Record<string, any>;
 }
 
 interface SalesUser {
@@ -328,6 +328,51 @@ function formatDate(value?: string) {
     month: "2-digit",
     year: "numeric",
   });
+}
+
+/* Timestamp shown on an activity card. Recent entries read better relative -
+   "Today, 2:15 PM" - because the timeline is mostly consulted for what just
+   happened; anything older falls back to a plain date. */
+function formatActivityStamp(value?: string) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  const time = date.toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  const startOfDay = (input: Date) =>
+    new Date(input.getFullYear(), input.getMonth(), input.getDate()).getTime();
+
+  const dayDiff = Math.round(
+    (startOfDay(new Date()) - startOfDay(date)) / 86400000,
+  );
+
+  if (dayDiff === 0) return `Today, ${time}`;
+
+  if (dayDiff === 1) return "Yesterday";
+
+  return formatDate(value);
+}
+
+/* Full date and time for the footer line of an activity card. */
+function formatActivityDateTime(value?: string) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${formatDate(value)} at ${date.toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })}`;
 }
 
 function getInitials(name: string) {
@@ -492,9 +537,7 @@ function mapLeadToOpportunity(lead: any): Opportunity {
         ? lead.quotation_items
         : [],
 
-    activityHistory: Array.isArray(lead.activity_history)
-      ? lead.activity_history
-      : [],
+    raw: lead,
   };
 }
 
@@ -545,6 +588,13 @@ function OpportunitiesPageInner() {
 
   const [editingOpportunity, setEditingOpportunity] =
     useState<Opportunity | null>(null);
+
+  /* Activity History for the opportunity the drawer is showing. Held here so
+     a stage change made from the row or board menu can refresh it without
+     the drawer having to watch for it. */
+  const [activities, setActivities] = useState<OpportunityActivity[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [loggingActivity, setLoggingActivity] = useState(false);
 
   const pageMenuRef = useRef<HTMLDivElement>(null);
 
@@ -1118,10 +1168,34 @@ function OpportunitiesPageInner() {
     addToast("Pipeline chart downloaded.", "success");
   };
 
+  const loadActivities = useCallback(
+    async (opportunityId: string) => {
+      try {
+        setActivitiesLoading(true);
+
+        const data = await getOpportunityActivitiesApi(opportunityId);
+
+        setActivities(data || []);
+      } catch (error) {
+        console.error(error);
+
+        setActivities([]);
+
+        addToast("Failed to load the activity history.", "error");
+      } finally {
+        setActivitiesLoading(false);
+      }
+    },
+    [addToast],
+  );
+
   const openDetails = async (opp: Opportunity) => {
     setSelectedOpportunity(opp);
     setShowDetails(true);
     setOpenActionMenu(null);
+
+    setActivities([]);
+    loadActivities(opp.id);
 
     /*
      * Optional detail endpoint.
@@ -1134,6 +1208,54 @@ function OpportunitiesPageInner() {
       setSelectedOpportunity(mapLeadToOpportunity(fresh));
     } catch {
       // Keep current opportunity data.
+    }
+  };
+
+  /* The Log Activity form posts the note and the stage move together, so a
+     stage change always carries the reason it happened. Returns whether it
+     succeeded, so the form knows whether to clear itself. */
+  const handleLogActivity = async (
+    opp: Opportunity,
+    payload: LogOpportunityActivityPayload,
+  ) => {
+    setLoggingActivity(true);
+
+    try {
+      const result = await logOpportunityActivityApi(opp.id, payload);
+
+      const updated = mapLeadToOpportunity(result.opportunity);
+
+      setOpps((current) =>
+        current.map((item) => (item.id === opp.id ? updated : item)),
+      );
+
+      setSelectedOpportunity((currentSelected) =>
+        currentSelected && currentSelected.id === opp.id
+          ? updated
+          : currentSelected,
+      );
+
+      addToast(
+        payload.status
+          ? `${opp.customerName} moved to ${updated.stage}.`
+          : `Activity logged against ${opp.customerName}.`,
+        "success",
+      );
+
+      await loadActivities(opp.id);
+
+      return true;
+    } catch (error: any) {
+      console.error(error);
+
+      addToast(
+        error?.response?.data?.detail || "Failed to log the activity.",
+        "error",
+      );
+
+      return false;
+    } finally {
+      setLoggingActivity(false);
     }
   };
 
@@ -1178,6 +1300,12 @@ function OpportunitiesPageInner() {
 
       setOpenActionMenu(null);
 
+      /* The move is now part of the opportunity's history, so an open drawer
+         has to pick it up rather than keep showing the timeline as it was. */
+      if (selectedOpportunity && selectedOpportunity.id === opp.id) {
+        await loadActivities(opp.id);
+      }
+
       addToast(`Opportunity moved to ${statusToStage(next)}.`, "success");
     } catch (error: any) {
       console.error(error);
@@ -1219,6 +1347,10 @@ function OpportunitiesPageInner() {
 
       setOpenActionMenu(null);
 
+      if (selectedOpportunity && selectedOpportunity.id === opp.id) {
+        await loadActivities(opp.id);
+      }
+
       addToast(`${opp.customerName} was marked as dead.`, "success");
     } catch (error: any) {
       console.error(error);
@@ -1231,60 +1363,115 @@ function OpportunitiesPageInner() {
     }
   };
 
-  const handleSaveEdit = async (payload: Partial<Opportunity>) => {
+  /* Takes the same payload the create form produces, so editing saves every
+     field the page collects rather than the four the old modal carried. */
+  const handleSaveEdit = async (payload: Record<string, any>) => {
     if (!editingOpportunity) {
       return;
     }
 
     try {
       const updated = await updateOpportunityApi(editingOpportunity.id, {
-        title: payload.customerName,
+        title:
+          payload.opportunityName ||
+          payload.contactName ||
+          payload.organizationName,
+        description: payload.organizationName,
 
-        organization_name: payload.company,
+        organization_name: payload.organizationName,
+        website: payload.organizationWebsite,
+        office_address: payload.officeAddress,
+        city: payload.city,
+        zip_code: payload.pinCode,
+        country: payload.country,
+
+        shipping_address: payload.shippingAddress,
+        shipping_city: payload.shippingCity,
+        shipping_state: payload.shippingState,
+        shipping_zip_code: payload.shippingPinCode,
+        shipping_country: payload.shippingCountry,
+
+        gst_number: payload.gstNumber,
+        pan_number: payload.panNumber,
+        coi_number: payload.coiNumber,
+
+        contact_name: payload.contactName,
+        designation: payload.designation,
+        mobile_number: payload.mobileNumber,
+        email: payload.email,
 
         priority: payload.priority,
-
-        assigned_to_id: payload.ownerId,
-
         expected_closing_date: payload.expectedClosingDate || null,
+        deal_value: Number(payload.dealValue) || 0,
 
-        deal_value: payload.dealValue,
+        requirements: payload.remarks,
+        remarks: payload.remarks,
+
+        lead_source: payload.leadSource,
+        purchase_timeline: payload.purchaseTimeline,
+
+        assigned_to_id: payload.ownerId || undefined,
+
+        product_items: (payload.lineItems || []).map(
+          (item: OpportunityLineItem) => ({
+            product: item.product,
+            model: item.model,
+            sku: item.sku,
+            quantity: item.quantity,
+            unit_price: item.unitPrice,
+            discount: item.discount,
+            tax: item.tax,
+          }),
+        ),
       });
 
       if (updated) {
+        const mapped = mapLeadToOpportunity(updated);
+
         setOpps((current) =>
           current.map((item) =>
-            item.id === editingOpportunity.id
-              ? {
-                  ...item,
-                  ...payload,
-                }
-              : item,
+            item.id === editingOpportunity.id ? mapped : item,
           ),
+        );
+
+        setSelectedOpportunity((currentSelected) =>
+          currentSelected && currentSelected.id === editingOpportunity.id
+            ? mapped
+            : currentSelected,
         );
 
         setEditingOpportunity(null);
 
         addToast("Opportunity updated.", "success");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
 
-      addToast("Failed to update opportunity.", "error");
+      addToast(
+        error?.response?.data?.detail || "Failed to update opportunity.",
+        "error",
+      );
     }
   };
 
-  if (showAddModal) {
+  /* Edit opens the same full page as New, prefilled, rather than the old
+     four-field modal - which could not reach the address, compliance,
+     sourcing or product lines that the form collects. */
+  if (showAddModal || editingOpportunity) {
     return (
       <NewOpportunityPage
         lead={sourceLead}
+        opportunity={editingOpportunity}
         salesUsers={salesUsers}
         leadSourceOptions={leadSourceOptions}
         onClose={() => {
           setShowAddModal(false);
           setSourceLead(null);
+          setEditingOpportunity(null);
         }}
-        onSubmit={handleCreateOpportunity}
+        onSubmit={
+          editingOpportunity ? handleSaveEdit : handleCreateOpportunity
+        }
       />
     );
   }
@@ -1508,17 +1695,8 @@ function OpportunitiesPageInner() {
           />
         )}
 
-        {/* =========================================================
-            EDIT OPPORTUNITY
-        ========================================================= */}
-        {editingOpportunity && (
-          <EditOpportunityModal
-            opportunity={editingOpportunity}
-            salesUsers={salesUsers}
-            onClose={() => setEditingOpportunity(null)}
-            onSubmit={handleSaveEdit}
-          />
-        )}
+        {/* Editing is handled by the full New Opportunity page above, which
+            returns early when editingOpportunity is set. */}
 
         {/* =========================================================
             LEAD DETAILS DRAWER
@@ -1526,6 +1704,9 @@ function OpportunitiesPageInner() {
         {showDetails && selectedOpportunity && (
           <LeadDetailsDrawer
             opportunity={selectedOpportunity}
+            activities={activities}
+            activitiesLoading={activitiesLoading}
+            saving={loggingActivity}
             onClose={() => setShowDetails(false)}
             onEdit={() => {
               setShowDetails(false);
@@ -1535,7 +1716,9 @@ function OpportunitiesPageInner() {
               setShowDetails(false);
               handleMarkDead(selectedOpportunity);
             }}
-            onAdvance={() => handleAdvanceStage(selectedOpportunity)}
+            onLogActivity={(payload) =>
+              handleLogActivity(selectedOpportunity, payload)
+            }
           />
         )}
     </div>
@@ -2063,9 +2246,16 @@ function ListView({
             {opportunities.map((opp) => (
               <tr
                 key={opp.id}
-                className="border-b border-slate-100 transition hover:bg-slate-50 dark:border-[#17304a]/70 dark:hover:bg-[#0b2034]"
+                /* The whole row opens the opportunity, not just the two name
+                   cells: that is where the cursor already is. The checkbox
+                   and the action cell stop the event so they still work. */
+                onClick={() => onDetails(opp)}
+                className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-[#17304a]/70 dark:hover:bg-[#0b2034]"
               >
-                <td className="px-3 py-3.5">
+                <td
+                  className="px-3 py-3.5"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <input type="checkbox" className="h-3.5 w-3.5 rounded" />
                 </td>
 
@@ -2075,44 +2265,34 @@ function ListView({
                   </span>
                 </td>
 
-                {/* Opportunity name on top, its company underneath. */}
-                <td className="px-3 py-3.5">
-                  <button
-                    type="button"
-                    onClick={() => onDetails(opp)}
-                    className="max-w-[170px] text-left"
-                  >
-                    <p className="text-[12px] font-bold text-slate-900 hover:text-[#233353] dark:text-white">
-                      {opp.name}
-                    </p>
+                {/* Opportunity name on top, its company underneath. Plain
+                    markup now the row is clickable - a nested button would
+                    fire the same handler a second time. */}
+                <td className="max-w-[170px] px-3 py-3.5">
+                  <p className="text-[12px] font-bold text-slate-900 dark:text-white">
+                    {opp.name}
+                  </p>
 
-                    <p className="mt-0.5 text-[10px] text-slate-500">
-                      {opp.company}
-                    </p>
-                  </button>
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    {opp.company}
+                  </p>
                 </td>
 
                 <td className="px-3 py-3.5">
-                  <button
-                    type="button"
-                    onClick={() => onDetails(opp)}
-                    className="text-left"
-                  >
-                    <p className="text-[12px] font-bold text-slate-900 hover:text-[#233353] dark:text-white">
-                      {opp.customerName}
-                    </p>
+                  <p className="text-[12px] font-bold text-slate-900 dark:text-white">
+                    {opp.customerName}
+                  </p>
 
-                    <p className="mt-0.5 text-[9px] text-slate-500">
-                      {opp.email}
-                    </p>
+                  <p className="mt-0.5 text-[9px] text-slate-500">
+                    {opp.email}
+                  </p>
 
-                    {opp.city && (
-                      <p className="mt-0.5 flex items-center gap-1 text-[8px] text-slate-500">
-                        <FiMapPin size={8} />
-                        {opp.city}
-                      </p>
-                    )}
-                  </button>
+                  {opp.city && (
+                    <p className="mt-0.5 flex items-center gap-1 text-[8px] text-slate-500">
+                      <FiMapPin size={8} />
+                      {opp.city}
+                    </p>
+                  )}
                 </td>
 
                 <td className="px-3 py-3.5">
@@ -2139,17 +2319,13 @@ function ListView({
                   <PriorityBadge priority={opp.priority} />
                 </td>
 
-                <td className="px-3 py-3.5">
+                <td
+                  className="px-3 py-3.5"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  {/* The phone icon opened the details drawer, which is now
+                      what clicking the row does. */}
                   <div className="flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      title="Call"
-                      onClick={() => onDetails(opp)}
-                      className="text-slate-600 transition hover:text-[#233353] dark:text-slate-300"
-                    >
-                      <FiPhone size={14} />
-                    </button>
-
                     <ActionMenu
                       opportunity={opp}
                       open={openActionMenu === opp.id}
@@ -2305,48 +2481,32 @@ function ActionMenu({
 
 function LeadDetailsDrawer({
   opportunity,
+  activities,
+  activitiesLoading,
+  saving,
   onClose,
   onEdit,
   onMarkDead,
-  onAdvance,
+  onLogActivity,
 }: {
   opportunity: Opportunity;
+  activities: OpportunityActivity[];
+  activitiesLoading: boolean;
+  saving: boolean;
   onClose: () => void;
   onEdit: () => void;
   onMarkDead: () => void;
-  onAdvance: () => void;
+  onLogActivity: (
+    payload: LogOpportunityActivityPayload,
+  ) => Promise<boolean>;
 }) {
-  const [showMenu, setShowMenu] = useState(false);
+  const [showActivityForm, setShowActivityForm] = useState(false);
 
-  const activities = opportunity.activityHistory?.length
-    ? opportunity.activityHistory
-    : [
-        {
-          id: "demo",
-          type: "Demo Scheduled" as const,
-          title: "Demo Scheduled",
-          description:
-            "Requested a live demo for the selected display solution.",
-          date:
-            opportunity.expectedClosingDate ||
-            formatDate(opportunity.createdAt),
-          time: "10:00 AM",
-        },
-        {
-          id: "call",
-          type: "Outgoing Call" as const,
-          title: "Outgoing Call",
-          description: "Discussed technical specifications and requirements.",
-          date: "Yesterday",
-        },
-        {
-          id: "form",
-          type: "Form Submission" as const,
-          title: "Form Submission",
-          description: 'Lead entered through "Synergy" landing page.',
-          date: formatDate(opportunity.createdAt),
-        },
-      ];
+  /* A different opportunity in the same drawer starts with a closed form, so
+     a half-written note never carries over to another record. */
+  useEffect(() => {
+    setShowActivityForm(false);
+  }, [opportunity.id]);
 
   return (
     <div className="fixed inset-0 z-[200]">
@@ -2469,6 +2629,9 @@ function LeadDetailsDrawer({
             </div>
           </div>
 
+          {/* The three-dot menu that sat beside this is gone: Edit and Mark
+              as Dead are the footer buttons, and the stage moves belong to
+              the Log Activity form, which also captures why. */}
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -2476,66 +2639,6 @@ function LeadDetailsDrawer({
             >
               <FiMessageSquare size={16} />
             </button>
-
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowMenu((value) => !value)}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 dark:border-[#17304a] dark:text-slate-300"
-              >
-                <FiMoreVertical size={16} />
-              </button>
-
-              {showMenu && (
-                <div className="absolute right-0 top-10 z-50 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMenu(false);
-                      onEdit();
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] hover:bg-slate-50 dark:hover:bg-[#0b2034]"
-                  >
-                    <FiEdit2 size={12} />
-                    Edit
-                  </button>
-
-                  {(() => {
-                    const next = nextStatusOf(
-                      STAGE_TO_STATUS[opportunity.stage],
-                    );
-
-                    if (!next) return null;
-
-                    return (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMenu(false);
-                          onAdvance();
-                        }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] hover:bg-slate-50 dark:hover:bg-[#0b2034]"
-                      >
-                        <FiCheckCircle size={12} />
-                        Move to {statusToStage(next)}
-                      </button>
-                    );
-                  })()}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMenu(false);
-                      onMarkDead();
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
-                  >
-                    <FiX size={12} />
-                    Mark as Dead
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
@@ -2546,37 +2649,83 @@ function LeadDetailsDrawer({
 
             <button
               type="button"
-              className="text-[10px] font-medium text-slate-500"
+              onClick={() => setShowActivityForm((value) => !value)}
+              className="text-[10px] font-medium text-slate-500 hover:text-[#233353] dark:hover:text-white"
             >
-              + Log Activity
+              {showActivityForm ? "Cancel" : "+ Log Activity"}
             </button>
           </div>
 
+          {showActivityForm && (
+            <LogOpportunityActivityForm
+              opportunity={opportunity}
+              saving={saving}
+              onCancel={() => setShowActivityForm(false)}
+              onSubmit={async (payload) => {
+                const ok = await onLogActivity(payload);
+
+                if (ok) {
+                  setShowActivityForm(false);
+                }
+
+                return ok;
+              }}
+            />
+          )}
+
           <div className="relative ml-2 border-l border-slate-200 pl-5 dark:border-[#17304a]">
-            {activities.map((activity) => (
-              <div key={activity.id} className="relative mb-5">
-                <span className="absolute -left-[25px] top-2 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#233353] dark:border-[#071929]" />
+            {activitiesLoading ? (
+              <p className="py-4 text-[10px] font-medium text-slate-400">
+                Loading activity...
+              </p>
+            ) : activities.length === 0 ? (
+              <p className="py-4 text-[10px] text-slate-400">
+                No activity recorded yet.
+              </p>
+            ) : (
+              activities.map((activity, index) => (
+                <div
+                  key={activity.id || `${activity.created_at}-${index}`}
+                  className="relative mb-5"
+                >
+                  <span
+                    className={`absolute -left-[25px] top-2 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-[#071929] ${
+                      index === 0
+                        ? "bg-[#233353]"
+                        : "bg-slate-300 dark:bg-slate-600"
+                    }`}
+                  />
 
-                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-[#17304a] dark:bg-[#0b1d2e]">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h5 className="text-[11px] font-bold">
-                        {activity.title}
-                      </h5>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-[#17304a] dark:bg-[#0b1d2e]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h5 className="text-[11px] font-bold">
+                          {activity.action}
+                        </h5>
 
-                      <p className="mt-1 text-[10px] leading-5 text-slate-500">
-                        {activity.description}
-                      </p>
+                        {activity.description && (
+                          <p className="mt-1 text-[10px] leading-5 text-slate-500">
+                            {activity.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <span className="whitespace-nowrap text-[9px] text-slate-400">
+                        {formatActivityStamp(activity.created_at)}
+                      </span>
                     </div>
 
-                    <span className="whitespace-nowrap text-[9px] text-slate-400">
-                      {activity.date}
-                      {activity.time ? `, ${activity.time}` : ""}
-                    </span>
+                    <p className="mt-1.5 flex items-center gap-1 text-[9px] text-slate-400">
+                      <FiCalendar size={9} />
+                      {formatActivityDateTime(activity.created_at)}
+                      {activity.created_by_name
+                        ? ` • ${activity.created_by_name}`
+                        : ""}
+                    </p>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
           {/* Opportunity information */}
@@ -2593,8 +2742,153 @@ function LeadDetailsDrawer({
             <InfoBox label="Priority" value={opportunity.priority} />
           </div>
         </div>
+
+        {/* Footer actions */}
+        <div className="flex shrink-0 items-center gap-3 border-t border-slate-200 bg-white px-6 py-4 dark:border-[#17304a] dark:bg-[#071929]">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white py-3 text-[11px] font-bold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#0b1d2e] dark:text-slate-200 dark:hover:bg-[#0b2034]"
+          >
+            <FiEdit2 size={13} />
+            Edit Opportunity
+          </button>
+
+          <button
+            type="button"
+            onClick={onMarkDead}
+            disabled={saving || opportunity.stage === "Dead"}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-rose-200 bg-white py-3 text-[11px] font-bold text-rose-500 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-900/40 dark:bg-[#0b1d2e] dark:hover:bg-rose-950/20"
+          >
+            <FiX size={13} />
+            Mark as Dead
+          </button>
+        </div>
       </aside>
     </div>
+  );
+}
+
+/* ================================================================
+   LOG ACTIVITY FORM
+================================================================ */
+
+/* Opens under the Activity History heading. Stage and remarks are submitted
+   together so the timeline records why an opportunity moved, not just that
+   it did. */
+function LogOpportunityActivityForm({
+  opportunity,
+  saving,
+  onCancel,
+  onSubmit,
+}: {
+  opportunity: Opportunity;
+  saving: boolean;
+  onCancel: () => void;
+  onSubmit: (payload: LogOpportunityActivityPayload) => Promise<boolean>;
+}) {
+  const currentStatus = STAGE_TO_STATUS[opportunity.stage];
+
+  const nextStatuses = OPPORTUNITY_TRANSITIONS[currentStatus] || [];
+
+  /* Default to the step forward rather than to "no change": moving the
+     opportunity on is what this form is opened for most of the time. */
+  const [status, setStatus] = useState<string>(nextStatuses[0] || "");
+  const [remarks, setRemarks] = useState("");
+
+  /* Reset once the opportunity moves, so the select is never left offering a
+     step that has already been taken. */
+  useEffect(() => {
+    setStatus((OPPORTUNITY_TRANSITIONS[currentStatus] || [])[0] || "");
+    setRemarks("");
+  }, [opportunity.id, currentStatus]);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const ok = await onSubmit({
+      status: status || undefined,
+      remarks: remarks.trim() || undefined,
+    });
+
+    if (ok) {
+      setRemarks("");
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="mb-5 rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-[#17304a] dark:bg-[#0b1d2e]"
+    >
+      <div className="mb-3">
+        <label className="mb-1.5 block text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+          Move Stage To
+        </label>
+
+        <div className="relative">
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+            className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-9 text-[11px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+          >
+            {/* Always available, so the form can also record a call or a note
+                without moving the opportunity on. */}
+            <option value="">Keep at {opportunity.stage}</option>
+
+            {nextStatuses.map((next) => (
+              <option key={next} value={next}>
+                {statusToStage(next)}
+              </option>
+            ))}
+          </select>
+
+          <FiChevronDown
+            size={13}
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+        </div>
+
+        {!nextStatuses.length && (
+          <p className="mt-1.5 text-[9px] text-slate-400">
+            This opportunity is {opportunity.stage} and cannot move further.
+            You can still log a note against it.
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+          Remarks
+        </label>
+
+        <textarea
+          rows={3}
+          value={remarks}
+          onChange={(event) => setRemarks(event.target.value)}
+          placeholder="What happened? e.g. Discussed technical specifications and requirements."
+          className="w-full resize-none rounded-lg border border-slate-200 bg-white p-3 text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+        />
+      </div>
+
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg px-3 py-2 text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white"
+        >
+          Cancel
+        </button>
+
+        <button
+          type="submit"
+          disabled={saving || (!status && !remarks.trim())}
+          className="rounded-lg bg-[#233353] px-4 py-2 text-[10px] font-bold text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {saving ? "Saving..." : "Submit"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -2752,6 +3046,7 @@ function LeadPickerModal({
 
 function NewOpportunityPage({
   lead,
+  opportunity,
   salesUsers,
   leadSourceOptions,
   onClose,
@@ -2760,89 +3055,128 @@ function NewOpportunityPage({
   /** When present, the form opens prefilled from this lead and saving it
       converts the lead rather than creating a standalone opportunity. */
   lead?: Lead | null;
+  /** When present, the form opens as Edit Opportunity, prefilled from the
+      record. Editing used to open a four-field modal, which could not reach
+      the address, compliance, sourcing or product lines at all. */
+  opportunity?: Opportunity | null;
   salesUsers: SalesUser[];
   /** Lead sources as configured in Masters, not a hardcoded list. */
   leadSourceOptions: string[];
   onClose: () => void;
   onSubmit: (payload: Record<string, any>) => Promise<void>;
 }) {
+  const isEditing = Boolean(opportunity);
+
+  /* The opportunity record and the lead carry the same field names, so one
+     seed serves both; the record wins when editing an existing row. */
+  const seed: Record<string, any> = opportunity?.raw || lead || {};
+
   const [customerType, setCustomerType] = useState<CustomerType>(
-    normalizeCustomerType(lead?.customer_type_name),
+    normalizeCustomerType(seed.customer_type_name),
   );
 
   const [organizationName, setOrganizationName] = useState(
-    lead?.organization_name || "",
+    seed.organization_name || "",
   );
 
   const [organizationWebsite, setOrganizationWebsite] = useState(
-    lead?.website || "",
+    seed.website || "",
   );
 
-  const [officeAddress, setOfficeAddress] = useState(
-    lead?.office_address || "",
+  const [officeAddress, setOfficeAddress] = useState(seed.office_address || "");
+
+  const [city, setCity] = useState(seed.city || "");
+
+  const [state, setState] = useState(seed.state_name || "");
+
+  const [pinCode, setPinCode] = useState(seed.zip_code || "");
+
+  const [country, setCountry] = useState(seed.country || "India");
+
+  const [shippingAddress, setShippingAddress] = useState(
+    seed.shipping_address || "",
   );
-
-  const [city, setCity] = useState(lead?.city || "");
-
-  const [state, setState] = useState(lead?.state_name || "");
-
-  const [pinCode, setPinCode] = useState(lead?.zip_code || "");
-
-  const [country, setCountry] = useState(lead?.country || "India");
-
-  const [shippingAddress, setShippingAddress] = useState("");
-  const [shippingCity, setShippingCity] = useState("");
-  const [shippingState, setShippingState] = useState("");
-  const [shippingPinCode, setShippingPinCode] = useState("");
-  const [shippingCountry, setShippingCountry] = useState("India");
+  const [shippingCity, setShippingCity] = useState(seed.shipping_city || "");
+  const [shippingState, setShippingState] = useState(seed.shipping_state || "");
+  const [shippingPinCode, setShippingPinCode] = useState(
+    seed.shipping_zip_code || "",
+  );
+  const [shippingCountry, setShippingCountry] = useState(
+    seed.shipping_country || "India",
+  );
   const [sameAsBilling, setSameAsBilling] = useState(false);
 
   /* Names the opportunity itself; previously the title was silently
      derived from the contact or organisation name. */
   const [opportunityName, setOpportunityName] = useState(
-    lead?.title || lead?.organization_name || "",
+    seed.title || seed.organization_name || "",
   );
 
-  const [gstNumber, setGstNumber] = useState(lead?.gst_number || "");
+  const [gstNumber, setGstNumber] = useState(seed.gst_number || "");
 
-  const [panNumber, setPanNumber] = useState(lead?.pan_number || "");
+  const [panNumber, setPanNumber] = useState(seed.pan_number || "");
 
-  const [coiNumber, setCoiNumber] = useState(lead?.coi_number || "");
+  const [coiNumber, setCoiNumber] = useState(seed.coi_number || "");
 
-  const [contactName, setContactName] = useState(lead?.contact_name || "");
+  const [contactName, setContactName] = useState(seed.contact_name || "");
 
-  const [designation, setDesignation] = useState(lead?.designation || "");
+  const [designation, setDesignation] = useState(seed.designation || "");
 
-  const [mobileNumber, setMobileNumber] = useState(lead?.mobile_number || "");
+  const [mobileNumber, setMobileNumber] = useState(seed.mobile_number || "");
 
-  const [email, setEmail] = useState(lead?.email || "");
+  const [email, setEmail] = useState(seed.email || "");
 
-  const [priority, setPriority] = useState<Priority>("Medium");
+  const [priority, setPriority] = useState<Priority>(
+    normalizePriority(seed.priority),
+  );
 
-  const [expectedClosingDate, setExpectedClosingDate] = useState("");
+  /* The date input needs YYYY-MM-DD; the API sends a full ISO timestamp. */
+  const [expectedClosingDate, setExpectedClosingDate] = useState(
+    seed.expected_closing_date
+      ? String(seed.expected_closing_date).slice(0, 10)
+      : "",
+  );
 
   const [remarks, setRemarks] = useState(
-    lead?.remarks || lead?.requirements || "",
+    seed.remarks || seed.requirements || "",
   );
 
-  const [purchaseTimeline, setPurchaseTimeline] = useState("");
+  const [purchaseTimeline, setPurchaseTimeline] = useState(
+    seed.purchase_timeline || "",
+  );
 
   /* Kept as text so the field can be cleared; parsed on submit. */
-  const [totalEstValue, setTotalEstValue] = useState("");
+  const [totalEstValue, setTotalEstValue] = useState(
+    seed.deal_value ? String(seed.deal_value) : "",
+  );
 
   /* Carried over from the lead rather than defaulting to Marketing, which
      misreported the source of every lead that came in another way. */
-  const [leadSource, setLeadSource] = useState(lead?.lead_source_name || "");
+  const [leadSource, setLeadSource] = useState(
+    seed.lead_source || seed.lead_source_name || "",
+  );
 
   /* Holds the user id, not a display name: the previous single hardcoded
      "Sales Team" option could never map to a real user. */
-  const [assignedTo, setAssignedTo] = useState(lead?.assigned_to_id || "");
+  const [assignedTo, setAssignedTo] = useState(seed.assigned_to_id || "");
 
   const [attachments, setAttachments] = useState<File[]>([]);
 
   /* Line items chosen through Add Product, replacing the old fixed
      checkbox list which could not carry a model, SKU, price or tax. */
-  const [lineItems, setLineItems] = useState<OpportunityLineItem[]>([]);
+  const [lineItems, setLineItems] = useState<OpportunityLineItem[]>(() =>
+    (seed.product_items || []).map((item: any, index: number) => ({
+      key: `${item.sku || item.product || "line"}-${index}`,
+      productId: String(item.product_id ?? item.sku ?? index),
+      product: item.product || "",
+      model: item.model || "",
+      sku: item.sku || "",
+      quantity: Number(item.quantity) || 1,
+      unitPrice: Number(item.unit_price ?? item.unitPrice) || 0,
+      discount: Number(item.discount) || 0,
+      tax: Number(item.tax) || 0,
+    })),
+  );
 
   /* Row whose cells are currently editable. */
   const [editingLineKey, setEditingLineKey] = useState<string | null>(null);
@@ -3031,8 +3365,9 @@ function NewOpportunityPage({
       ========================================================= */}
 
       <FormPageHeader
-        title="New Opportunity"
+        title={isEditing ? "Edit Opportunity" : "New Opportunity"}
         parentLabel="Opportunity"
+        currentLabel={isEditing ? "Edit" : "New"}
         actions={
           <>
             <CancelButton onClick={onClose} />
@@ -3040,7 +3375,13 @@ function NewOpportunityPage({
             <DraftButton disabled={submitting} onClick={onClose} />
 
             <SubmitButton formId="new-opportunity-form" disabled={submitting}>
-              {submitting ? "Creating..." : "Create Opportunity"}
+              {submitting
+                ? isEditing
+                  ? "Saving..."
+                  : "Creating..."
+                : isEditing
+                  ? "Save Opportunity"
+                  : "Create Opportunity"}
             </SubmitButton>
           </>
         }
@@ -4143,123 +4484,11 @@ function OpportunityProductModal({
    EDIT MODAL
 ================================================================ */
 
-function EditOpportunityModal({
-  opportunity,
-  salesUsers,
-  onClose,
-  onSubmit,
-}: {
-  opportunity: Opportunity;
-  salesUsers: SalesUser[];
-  onClose: () => void;
-  onSubmit: (payload: Partial<Opportunity>) => Promise<void>;
-}) {
-  const [customerName, setCustomerName] = useState(opportunity.customerName);
+/* EditOpportunityModal lived here: a four-field modal (name, company,
+   priority, owner) that could not reach the address, compliance,
+   sourcing or product lines. Edit now opens the full New Opportunity
+   page prefilled instead. */
 
-  const [company, setCompany] = useState(opportunity.company);
-
-  const [customerType, setCustomerType] = useState(opportunity.customerType);
-
-  const [priority, setPriority] = useState(opportunity.priority);
-
-  const [ownerId, setOwnerId] = useState(opportunity.ownerId || "");
-
-  const [expectedClosingDate, setExpectedClosingDate] = useState(
-    opportunity.expectedClosingDate || "",
-  );
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    await onSubmit({
-      customerName,
-      company,
-      customerType,
-      priority,
-      ownerId,
-      expectedClosingDate,
-      owner:
-        salesUsers.find((user) => user.id === ownerId)?.name ||
-        opportunity.owner,
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/30 p-4">
-      <form
-        onSubmit={submit}
-        className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#071929]"
-      >
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-[16px] font-semibold">Edit Opportunity</h2>
-
-          <button type="button" onClick={onClose} className="text-slate-500">
-            <FiX size={17} />
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          <FormInput
-            label="Customer Name"
-            value={customerName}
-            onChange={setCustomerName}
-          />
-
-          <FormInput label="Company" value={company} onChange={setCompany} />
-
-          <FormSelect
-            label="Customer Type"
-            value={customerType}
-            options={CUSTOMER_TYPES}
-            onChange={(value) => setCustomerType(value as CustomerType)}
-          />
-
-          <FormSelect
-            label="Assigned To"
-            value={ownerId}
-            options={salesUsers.map((user) => user.id)}
-            displayOptions={salesUsers.map((user) => ({
-              value: user.id,
-              label: user.name,
-            }))}
-            onChange={setOwnerId}
-          />
-
-          <FormSelect
-            label="Priority"
-            value={priority}
-            options={["High", "Medium", "Low"]}
-            onChange={(value) => setPriority(value as Priority)}
-          />
-
-          <FormInput
-            label="Expected Closing Date"
-            type="date"
-            value={expectedClosingDate}
-            onChange={setExpectedClosingDate}
-          />
-        </div>
-
-        <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-[#17304a]">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold dark:border-[#17304a]"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            className="rounded-lg bg-[#233353] px-5 py-2 text-xs font-bold text-white"
-          >
-            Save Changes
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
 
 /* ================================================================
    FORM COMPONENTS
