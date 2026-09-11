@@ -808,38 +808,39 @@ function OpportunitiesPageInner() {
   }, [page, totalPages]);
 
   /*
-   * Figma KPI values:
-   *
-   * Total Orders
-   * Total Negotiation
-   * Closed Won Today
-   *
-   * Since the existing API is a leads endpoint,
-   * "Total Orders" is calculated as total opportunities.
+   * KPI cards: Total Opportunities, Pipeline Value, Win Rate and
+   * Closing This Month. All four are derived from the loaded
+   * opportunities rather than being fixed numbers.
    */
-  const totalOrders = opps.length;
+  const totalOpportunities = opps.length;
 
-  const negotiationCount = opps.filter(
-    (opp) => opp.stage === "Negotiation",
-  ).length;
+  /* Pipeline value is what is still in play, so closed deals - won or
+     dead - are excluded rather than inflating the figure. */
+  const pipelineValue = opps
+    .filter((opp) => opp.stage !== "Closed Won" && opp.stage !== "Dead")
+    .reduce((sum, opp) => sum + (opp.dealValue || 0), 0);
 
-  const closedWonToday = opps.filter((opp) => {
-    if (opp.stage !== "Closed Won") {
-      return false;
-    }
+  const wonCount = opps.filter((opp) => opp.stage === "Closed Won").length;
+  const lostCount = opps.filter((opp) => opp.stage === "Dead").length;
 
-    if (!opp.createdAt) {
-      return false;
-    }
+  /* Win rate is measured against decided deals only; counting the open
+     pipeline in the denominator would drag it towards zero. */
+  const decidedCount = wonCount + lostCount;
 
-    const date = new Date(opp.createdAt);
+  const winRate = decidedCount ? (wonCount / decidedCount) * 100 : 0;
 
-    const today = new Date();
+  const closingThisMonth = opps.filter((opp) => {
+    if (!opp.expectedClosingDate) return false;
+
+    const date = new Date(opp.expectedClosingDate);
+
+    if (Number.isNaN(date.getTime())) return false;
+
+    const now = new Date();
 
     return (
-      date.getFullYear() === today.getFullYear() &&
-      date.getMonth() === today.getMonth() &&
-      date.getDate() === today.getDate()
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth()
     );
   }).length;
 
@@ -1074,7 +1075,7 @@ function OpportunitiesPageInner() {
       },
       {
         label: "Negotiation",
-        value: negotiationCount,
+        value: opps.filter((x) => x.stage === "Negotiation").length,
       },
     ];
 
@@ -1366,26 +1367,32 @@ function OpportunitiesPageInner() {
         {/* =========================================================
             KPI CARDS
         ========================================================= */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
-            label="Total Orders"
-            value={totalOrders}
+            label="Total Opportunities"
+            value={totalOpportunities}
             change="18.0%"
             positive
           />
 
           <StatCard
-            label="Total Negotiation"
-            value={negotiationCount}
+            label="Pipeline Value"
+            value={formatShortCurrency(pipelineValue)}
             change="12%"
             positive={false}
           />
 
           <StatCard
-            label="Closed Won Today"
-            value={closedWonToday}
+            label="Win Rate"
+            value={`${winRate.toFixed(1)}%`}
             change="15.0%"
             positive
+          />
+
+          <StatCard
+            label="Closing This Month"
+            value={closingThisMonth}
+            caption=""
           />
         </div>
 

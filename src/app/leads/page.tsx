@@ -18,10 +18,14 @@ import { useUIStore } from "@/lib/store/ui.store";
 
 import {
   createLeadApi,
+  getLeadActivitiesApi,
   getLeadsApi,
+  logLeadActivityApi,
   progressLeadApi,
   updateLeadApi,
   Lead,
+  LeadActivity,
+  LogLeadActivityPayload,
 } from "@/features/workflows/api/workflows.api";
 
 import { useRouter } from "next/navigation";
@@ -216,6 +220,16 @@ function canAdvanceLead(lead: Lead, target: string) {
   return (LEAD_NEXT_STATUSES[lead.status] || []).includes(target);
 }
 
+/* What the Log Activity form may move a lead to. CONVERTED is excluded on
+   purpose: converting also has to create the opportunity, so it runs through
+   the New Opportunity page rather than being set from a dropdown. The
+   backend refuses it here too. */
+function logActivityStatuses(status: string) {
+  return (LEAD_NEXT_STATUSES[status] || []).filter(
+    (next) => next !== "CONVERTED",
+  );
+}
+
 const LEAD_SOURCES = ["Marketing", "Cold Calling", "In-bound"];
 
 const COUNTRIES = ["India", "United States", "China", "Malaysia", "Indonesia"];
@@ -408,6 +422,51 @@ function formatDate(value?: string) {
   });
 }
 
+/* Timestamp shown on an activity card. Recent entries read better relative -
+   "Today, 2:15 PM" - because the timeline is mostly consulted for what just
+   happened; anything older falls back to a plain date. */
+function formatActivityStamp(value?: string) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const time = date.toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  const startOfDay = (input: Date) =>
+    new Date(input.getFullYear(), input.getMonth(), input.getDate()).getTime();
+
+  const dayDiff = Math.round(
+    (startOfDay(new Date()) - startOfDay(date)) / 86400000,
+  );
+
+  if (dayDiff === 0) return `Today, ${time}`;
+
+  if (dayDiff === 1) return "Yesterday";
+
+  return formatDate(value);
+}
+
+/* Full date and time for the footer line of an activity card. */
+function formatActivityDateTime(value?: string) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${formatDate(value)} at ${date.toLocaleTimeString("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })}`;
+}
+
 function formatLeadId(id: number | string) {
   const str = String(id);
   return `#LD-${str.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
@@ -506,6 +565,12 @@ export default function LeadsPage() {
   const [detailsLead, setDetailsLead] = useState<Lead | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
 
+  /* Activity History for the lead the drawer is showing. Held here rather
+     than inside the drawer so a status change made from the row menu can
+     refresh it without the drawer having to watch for it. */
+  const [activities, setActivities] = useState<LeadActivity[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+
   /*
    * Create/Edit page mode.
    */
@@ -554,6 +619,27 @@ export default function LeadsPage() {
       setLoading(false);
     }
   }, [addToast]);
+
+  const loadActivities = useCallback(
+    async (leadId: number | string) => {
+      try {
+        setActivitiesLoading(true);
+
+        const data = await getLeadActivitiesApi(leadId);
+
+        setActivities(data || []);
+      } catch (error) {
+        console.error(error);
+
+        setActivities([]);
+
+        addToast("Failed to load the activity history.", "error");
+      } finally {
+        setActivitiesLoading(false);
+      }
+    },
+    [addToast],
+  );
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -1024,6 +1110,12 @@ export default function LeadsPage() {
       setRowMenuLeadId(null);
 
       await fetchLeads();
+
+      /* The move is now part of the lead's history, so the open drawer has
+         to pick it up rather than keep showing the timeline as it was. */
+      if (detailsLead && String(detailsLead.id) === String(lead.id)) {
+        await loadActivities(lead.id);
+      }
     } catch (error: any) {
       console.error(error);
 
@@ -1063,6 +1155,10 @@ export default function LeadsPage() {
       setRowMenuLeadId(null);
 
       await fetchLeads();
+
+      if (detailsLead && String(detailsLead.id) === String(lead.id)) {
+        await loadActivities(lead.id);
+      }
     } catch (error: any) {
       console.error(error);
 
@@ -1104,10 +1200,49 @@ export default function LeadsPage() {
     router.push(`/sales/opportunities?leadId=${lead.id}`);
   };
 
+  /* The Log Activity form posts the note and the status move together, so a
+     status change always carries the reason it happened. Returns whether it
+     succeeded, so the form knows whether to clear itself. */
+  const logActivity = async (lead: Lead, payload: LogLeadActivityPayload) => {
+    setStatusUpdatingId(lead.id);
+
+    try {
+      const result = await logLeadActivityApi(lead.id, payload);
+
+      addToast(
+        payload.status
+          ? `${getLeadDisplayName(lead)} is now ${leadStatusLabel(
+              result.lead.status,
+            )}.`
+          : `Activity logged against ${getLeadDisplayName(lead)}.`,
+        "success",
+      );
+
+      await fetchLeads();
+      await loadActivities(lead.id);
+
+      return true;
+    } catch (error: any) {
+      console.error(error);
+
+      addToast(
+        error?.response?.data?.detail || "Failed to log the activity.",
+        "error",
+      );
+
+      return false;
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
+
   const openLeadDetails = (lead: Lead) => {
     setDetailsLead(lead);
     setShowDetailsModal(true);
     setRowMenuLeadId(null);
+
+    setActivities([]);
+    loadActivities(lead.id);
   };
 
   /* The drawer must render the lead as it exists in the freshly fetched
@@ -2122,13 +2257,22 @@ export default function LeadsPage() {
                     return (
                       <tr
                         key={lead.id}
+                        /* The whole row opens the lead, not just the name:
+                           that is where a reader's eye and cursor already
+                           are. The checkbox and the action cell stop the
+                           event so they still work on their own. */
+                        onClick={() => openLeadDetails(lead)}
                         className="
+                            cursor-pointer
                             transition
                             hover:bg-slate-50
                             dark:hover:bg-[#071929]/50
                           "
                       >
-                        <td className="px-4 py-4">
+                        <td
+                          className="px-4 py-4"
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <input
                             type="checkbox"
                             className="h-4 w-4 rounded border-slate-300"
@@ -2142,24 +2286,21 @@ export default function LeadsPage() {
                         </td>
 
                         <td className="px-4 py-4">
-                          <button
-                            type="button"
-                            onClick={() => openLeadDetails(lead)}
-                            className="text-left"
-                          >
-                            <p className="text-xs font-bold text-slate-900 hover:text-primary dark:text-white">
-                              {getLeadDisplayName(lead)}
-                            </p>
+                          {/* Plain markup now the row itself is clickable -
+                              a nested button would fire the same handler a
+                              second time. */}
+                          <p className="text-xs font-bold text-slate-900 dark:text-white">
+                            {getLeadDisplayName(lead)}
+                          </p>
 
-                            <p className="mt-1 text-[10px] text-slate-400">
-                              {details.email || "No email"}
-                            </p>
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            {details.email || "No email"}
+                          </p>
 
-                            <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-400">
-                              <FiMapPin />
-                              {formatLeadLocation(details)}
-                            </p>
-                          </button>
+                          <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-400">
+                            <FiMapPin />
+                            {formatLeadLocation(details)}
+                          </p>
                         </td>
 
                         <td className="px-4 py-4">
@@ -2206,23 +2347,8 @@ export default function LeadsPage() {
                             className="flex items-center justify-center gap-1"
                             onClick={(event) => event.stopPropagation()}
                           >
-                            <button
-                              type="button"
-                              title="Lead Details"
-                              onClick={() => openLeadDetails(lead)}
-                              className="
-                                  rounded-lg
-                                  p-2
-                                  text-slate-400
-                                  hover:bg-slate-100
-                                  hover:text-slate-700
-                                  dark:hover:bg-[#071929]
-                                  dark:hover:text-white
-                                "
-                            >
-                              <FiPhone />
-                            </button>
-
+                            {/* The phone icon opened the details drawer,
+                                which is now what clicking the row does. */}
                             <div className="relative" data-row-menu>
                               <button
                                 type="button"
@@ -2376,11 +2502,14 @@ export default function LeadsPage() {
         <LeadDetailsModal
           lead={liveDetailsLead}
           isOpen={showDetailsModal}
+          activities={activities}
+          activitiesLoading={activitiesLoading}
+          saving={statusUpdatingId === liveDetailsLead.id}
           onClose={() => setShowDetailsModal(false)}
           onEdit={() => openEditPage(liveDetailsLead)}
-          onAdvance={(next) => advanceLeadStatus(liveDetailsLead, next)}
           onMarkDead={() => markLeadDead(liveDetailsLead)}
           onConvert={() => convertToOpportunity(liveDetailsLead)}
+          onLogActivity={(payload) => logActivity(liveDetailsLead, payload)}
         />
       )}
     </div>
@@ -3123,29 +3252,41 @@ function ExcelImportModal({
 function LeadDetailsModal({
   lead,
   isOpen,
+  activities,
+  activitiesLoading,
+  saving,
   onClose,
   onEdit,
-  onAdvance,
   onMarkDead,
   onConvert,
+  onLogActivity,
 }: {
   lead: Lead;
   isOpen: boolean;
+  activities: LeadActivity[];
+  activitiesLoading: boolean;
+  saving: boolean;
   onClose: () => void;
   onEdit: () => void;
-  onAdvance: (next: string) => void;
   onMarkDead: () => void;
   onConvert: () => void;
+  onLogActivity: (payload: LogLeadActivityPayload) => Promise<boolean>;
 }) {
   const details = getLeadDetails(lead);
 
-  const [showMenu, setShowMenu] = useState(false);
+  const [showActivityForm, setShowActivityForm] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
-      setShowMenu(false);
+      setShowActivityForm(false);
     }
   }, [isOpen]);
+
+  /* A different lead in the same drawer starts with a closed form, so a
+     half-written note never carries over to somebody else's record. */
+  useEffect(() => {
+    setShowActivityForm(false);
+  }, [lead.id]);
 
   if (!isOpen) return null;
 
@@ -3362,6 +3503,10 @@ function LeadDetailsModal({
 
               {/* ACTION BUTTONS */}
 
+              {/* The three-dot menu that sat here is gone: Edit Lead and
+                  Mark Dead are in the footer, and the remaining status moves
+                  belong to the Log Activity form, which also captures why
+                  the lead moved. */}
               <div className="relative flex shrink-0 items-center gap-2">
                 <button
                   type="button"
@@ -3386,154 +3531,6 @@ function LeadDetailsModal({
                   <FiMessageSquare />
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setShowMenu((value) => !value)}
-                  className="
-                    flex
-                    h-9
-                    w-9
-                    items-center
-                    justify-center
-                    rounded-lg
-                    border
-                    border-slate-200
-                    bg-white
-                    text-slate-600
-                    shadow-sm
-                    hover:bg-slate-50
-                    dark:border-[#0d2336]
-                    dark:bg-[#071929]
-                    dark:text-slate-300
-                  "
-                >
-                  <FiMoreVertical />
-                </button>
-
-                {showMenu && (
-                  <div
-                    className="
-                      absolute
-                      right-0
-                      top-11
-                      z-20
-                      w-32
-                      overflow-hidden
-                      rounded-lg
-                      border
-                      border-slate-200
-                      bg-white
-                      py-1
-                      shadow-xl
-                      dark:border-[#0d2336]
-                      dark:bg-[#071929]
-                    "
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowMenu(false);
-                        onEdit();
-                      }}
-                      className="
-                        flex
-                        w-full
-                        items-center
-                        px-4
-                        py-2.5
-                        text-left
-                        text-xs
-                        font-medium
-                        text-slate-700
-                        hover:bg-slate-50
-                        dark:text-slate-200
-                        dark:hover:bg-[#0d2336]
-                      "
-                    >
-                      Edit
-                    </button>
-
-                    {/* The drawer previously offered no way to move a lead
-                        forward, so the pipeline strip above it could never
-                        change from here. */}
-                    {canAdvanceLead(lead, "CONTACTED") && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMenu(false);
-                          onAdvance("CONTACTED");
-                        }}
-                        className="
-                          flex
-                          w-full
-                          items-center
-                          px-4
-                          py-2.5
-                          text-left
-                          text-xs
-                          font-medium
-                          text-slate-700
-                          hover:bg-slate-50
-                          dark:text-slate-200
-                          dark:hover:bg-[#0d2336]
-                        "
-                      >
-                        Mark as Contacted
-                      </button>
-                    )}
-
-                    {canAdvanceLead(lead, "QUALIFIED") && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMenu(false);
-                          onAdvance("QUALIFIED");
-                        }}
-                        className="
-                          flex
-                          w-full
-                          items-center
-                          px-4
-                          py-2.5
-                          text-left
-                          text-xs
-                          font-medium
-                          text-slate-700
-                          hover:bg-slate-50
-                          dark:text-slate-200
-                          dark:hover:bg-[#0d2336]
-                        "
-                      >
-                        Mark as Qualified
-                      </button>
-                    )}
-
-                    {canAdvanceLead(lead, "LOST") && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMenu(false);
-                          onMarkDead();
-                        }}
-                        className="
-                          flex
-                          w-full
-                          items-center
-                          px-4
-                          py-2.5
-                          text-left
-                          text-xs
-                          font-medium
-                          text-rose-500
-                          hover:bg-rose-50
-                          dark:hover:bg-rose-950/20
-                        "
-                      >
-                        Mark as Dead
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
 
@@ -3547,6 +3544,7 @@ function LeadDetailsModal({
 
                 <button
                   type="button"
+                  onClick={() => setShowActivityForm((value) => !value)}
                   className="
                     text-[11px]
                     font-medium
@@ -3555,9 +3553,26 @@ function LeadDetailsModal({
                     dark:text-slate-400
                   "
                 >
-                  + Log Activity
+                  {showActivityForm ? "Cancel" : "+ Log Activity"}
                 </button>
               </div>
+
+              {showActivityForm && (
+                <LogActivityForm
+                  lead={lead}
+                  saving={saving}
+                  onCancel={() => setShowActivityForm(false)}
+                  onSubmit={async (payload) => {
+                    const ok = await onLogActivity(payload);
+
+                    if (ok) {
+                      setShowActivityForm(false);
+                    }
+
+                    return ok;
+                  }}
+                />
+              )}
 
               <div className="relative pl-5">
                 {/* TIMELINE */}
@@ -3574,34 +3589,35 @@ function LeadDetailsModal({
                   "
                 />
 
-                {lead.activity_history?.length ? (
+                {activitiesLoading ? (
+                  <div className="flex items-center gap-2 py-6 text-[11px] font-semibold text-slate-400">
+                    <CgSpinner className="animate-spin text-base" />
+                    Loading activity...
+                  </div>
+                ) : activities.length ? (
                   <div className="space-y-5">
-                    {lead.activity_history.map((activity, index) => (
+                    {activities.map((activity, index) => (
                       <ActivityTimelineCard
                         key={activity.id || `${activity.created_at}-${index}`}
                         title={activity.action}
                         description={activity.description}
                         date={activity.created_at}
+                        author={activity.created_by_name}
                         active={index === 0}
                       />
                     ))}
                   </div>
                 ) : (
+                  /* Only reached for a lead raised before the history table
+                     existed and never touched since. */
                   <div className="space-y-5">
                     <ActivityTimelineCard
                       title="Lead Created"
-                      description="Lead was registered in the CRM."
-                      date={lead.created_at}
-                      active
-                    />
-
-                    <ActivityTimelineCard
-                      title="Form Submission"
                       description={
-                        details.remarks ||
-                        "Lead entered through the integration."
+                        details.remarks || "Lead was registered in the CRM."
                       }
                       date={lead.created_at}
+                      active
                     />
                   </div>
                 )}
@@ -3609,8 +3625,276 @@ function LeadDetailsModal({
             </div>
           </div>
         </div>
+
+        {/* FOOTER ACTIONS */}
+
+        <div
+          className="
+            flex
+            shrink-0
+            items-center
+            gap-3
+            border-t
+            border-slate-200
+            bg-white
+            px-6
+            py-4
+            dark:border-[#0d2336]
+            dark:bg-[#051422]
+          "
+        >
+          <button
+            type="button"
+            onClick={onEdit}
+            className="
+              flex
+              flex-1
+              items-center
+              justify-center
+              gap-2
+              rounded-lg
+              border
+              border-slate-200
+              bg-white
+              py-3
+              text-xs
+              font-bold
+              text-slate-700
+              transition
+              hover:bg-slate-50
+              dark:border-[#0d2336]
+              dark:bg-[#071929]
+              dark:text-slate-200
+              dark:hover:bg-[#0b2034]
+            "
+          >
+            <FiEdit3 />
+            Edit Lead
+          </button>
+
+          <button
+            type="button"
+            onClick={onMarkDead}
+            disabled={saving || !canAdvanceLead(lead, "LOST")}
+            className="
+              flex
+              flex-1
+              items-center
+              justify-center
+              gap-2
+              rounded-lg
+              border
+              border-rose-200
+              bg-white
+              py-3
+              text-xs
+              font-bold
+              text-rose-500
+              transition
+              hover:bg-rose-50
+              disabled:cursor-not-allowed
+              disabled:opacity-40
+              dark:border-rose-900/40
+              dark:bg-[#071929]
+              dark:hover:bg-rose-950/20
+            "
+          >
+            <FiXCircle />
+            Mark Dead
+          </button>
+        </div>
       </aside>
     </div>
+  );
+}
+
+/* ============================================================================
+   LOG ACTIVITY FORM
+============================================================================ */
+
+/* Opens under the Activity History heading. Status and remarks are submitted
+   together so the timeline records why a lead moved, not just that it did. */
+function LogActivityForm({
+  lead,
+  saving,
+  onCancel,
+  onSubmit,
+}: {
+  lead: Lead;
+  saving: boolean;
+  onCancel: () => void;
+  onSubmit: (payload: LogLeadActivityPayload) => Promise<boolean>;
+}) {
+  const leadId = lead.id;
+  const leadStatus = lead.status;
+
+  const nextStatuses = logActivityStatuses(leadStatus);
+
+  /* Default to the step forward rather than to "no change": moving the lead
+     on is what this form is opened for most of the time. */
+  const [status, setStatus] = useState(nextStatuses[0] || "");
+  const [remarks, setRemarks] = useState("");
+
+  /* Reset once the lead moves, so the select is never left offering a step
+     that has already been taken. */
+  useEffect(() => {
+    setStatus(logActivityStatuses(leadStatus)[0] || "");
+    setRemarks("");
+  }, [leadId, leadStatus]);
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+
+    const ok = await onSubmit({
+      status: status || undefined,
+      remarks: remarks.trim() || undefined,
+    });
+
+    if (ok) {
+      setRemarks("");
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="
+        mb-5
+        rounded-xl
+        border
+        border-slate-200
+        bg-slate-50/70
+        p-4
+        dark:border-[#0d2336]
+        dark:bg-[#071929]
+      "
+    >
+      <div className="mb-3">
+        <label className="mb-1.5 block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+          Move Status To
+        </label>
+
+        <div className="relative">
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+            className="
+              h-10
+              w-full
+              appearance-none
+              rounded-lg
+              border
+              border-slate-200
+              bg-white
+              px-3
+              pr-9
+              text-xs
+              text-slate-700
+              outline-none
+              focus:border-primary
+              focus:ring-2
+              focus:ring-primary/10
+              dark:border-[#0d2336]
+              dark:bg-[#051422]
+              dark:text-white
+            "
+          >
+            {/* Always available, so the form can also be used to record a
+                call or a note without moving the lead on. */}
+            <option value="">Keep as {leadStatusLabel(lead.status)}</option>
+
+            {nextStatuses.map((next) => (
+              <option key={next} value={next}>
+                {leadStatusLabel(next)}
+              </option>
+            ))}
+          </select>
+
+          <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        </div>
+
+        {!nextStatuses.length && (
+          <p className="mt-1.5 text-[10px] text-slate-400">
+            This lead is {leadStatusLabel(lead.status)} and cannot move
+            further. You can still log a note against it.
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+          Remarks
+        </label>
+
+        <textarea
+          rows={3}
+          value={remarks}
+          onChange={(event) => setRemarks(event.target.value)}
+          placeholder="What happened? e.g. Discussed technical specs and power requirements."
+          className="
+            w-full
+            resize-none
+            rounded-lg
+            border
+            border-slate-200
+            bg-white
+            p-3
+            text-xs
+            text-slate-800
+            outline-none
+            focus:border-primary
+            focus:ring-2
+            focus:ring-primary/10
+            dark:border-[#0d2336]
+            dark:bg-[#051422]
+            dark:text-white
+          "
+        />
+      </div>
+
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="
+            rounded-lg
+            px-3
+            py-2
+            text-[11px]
+            font-bold
+            text-slate-500
+            hover:text-slate-800
+            dark:hover:text-white
+          "
+        >
+          Cancel
+        </button>
+
+        <button
+          type="submit"
+          disabled={saving || (!status && !remarks.trim())}
+          className="
+            flex
+            items-center
+            gap-2
+            rounded-lg
+            bg-[#1d2b45]
+            px-4
+            py-2
+            text-[11px]
+            font-bold
+            text-white
+            transition
+            hover:bg-[#162238]
+            disabled:cursor-not-allowed
+            disabled:opacity-40
+          "
+        >
+          {saving && <CgSpinner className="animate-spin" />}
+          {saving ? "Saving..." : "Submit"}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -3679,11 +3963,13 @@ function ActivityTimelineCard({
   title,
   description,
   date,
+  author,
   active = false,
 }: {
   title: string;
   description?: string;
   date?: string;
+  author?: string | null;
   active?: boolean;
 }) {
   return (
@@ -3726,7 +4012,7 @@ function ActivityTimelineCard({
           </p>
 
           <span className="shrink-0 text-[9px] text-slate-400">
-            {formatDate(date)}
+            {formatActivityStamp(date)}
           </span>
         </div>
 
@@ -3739,7 +4025,8 @@ function ActivityTimelineCard({
         {date && (
           <p className="mt-1.5 flex items-center gap-1 text-[9px] text-slate-400">
             <FiCalendar />
-            {formatDate(date)}
+            {formatActivityDateTime(date)}
+            {author ? ` • ${author}` : ""}
           </p>
         )}
       </div>
