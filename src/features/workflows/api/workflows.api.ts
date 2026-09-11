@@ -31,8 +31,15 @@ export interface LeadActivity {
   id?: string;
   action: string;
   description?: string;
+
+  /* Status either side of the move, so the timeline can still be read once
+     the lead has advanced past it. Absent on a note-only entry. */
+  from_status?: string | null;
+  to_status?: string | null;
+
   created_at: string;
-  created_by_name?: string;
+  created_by?: string | null;
+  created_by_name?: string | null;
 }
 
 export interface Lead {
@@ -203,6 +210,41 @@ export const progressLeadApi = async (
 ): Promise<Lead> => {
   const { data } = await api.put(
     `/api/v1/leads/${leadId}/progress`,
+    payload
+  );
+
+  return data.data || data;
+};
+
+/* Activity History is fetched per lead rather than being carried on the list
+   response: the table never shows it, so loading every lead's timeline just
+   to draw the rows would be wasted work. */
+export const getLeadActivitiesApi = async (
+  leadId: number | string
+): Promise<LeadActivity[]> => {
+  const { data } = await api.get(`/api/v1/leads/${leadId}/activities`);
+
+  return data.data || data;
+};
+
+export interface LogLeadActivityPayload {
+  /* Omitted for a note against the lead; otherwise the status to move to.
+     CONVERTED is not accepted here - conversion runs through the New
+     Opportunity flow, which has to create the opportunity as well. */
+  status?: string;
+  action?: string;
+  remarks?: string;
+}
+
+export const logLeadActivityApi = async (
+  leadId: number | string,
+  payload: LogLeadActivityPayload
+): Promise<{
+  activity: LeadActivity;
+  lead: { id: number | string; status: string; stage: string };
+}> => {
+  const { data } = await api.post(
+    `/api/v1/leads/${leadId}/activities`,
     payload
   );
 
