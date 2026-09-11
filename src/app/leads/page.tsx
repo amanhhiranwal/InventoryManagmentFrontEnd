@@ -2507,7 +2507,6 @@ export default function LeadsPage() {
           saving={statusUpdatingId === liveDetailsLead.id}
           onClose={() => setShowDetailsModal(false)}
           onEdit={() => openEditPage(liveDetailsLead)}
-          onAdvance={(next) => advanceLeadStatus(liveDetailsLead, next)}
           onMarkDead={() => markLeadDead(liveDetailsLead)}
           onConvert={() => convertToOpportunity(liveDetailsLead)}
           onLogActivity={(payload) => logActivity(liveDetailsLead, payload)}
@@ -3258,7 +3257,6 @@ function LeadDetailsModal({
   saving,
   onClose,
   onEdit,
-  onAdvance,
   onMarkDead,
   onConvert,
   onLogActivity,
@@ -3270,19 +3268,16 @@ function LeadDetailsModal({
   saving: boolean;
   onClose: () => void;
   onEdit: () => void;
-  onAdvance: (next: string) => void;
   onMarkDead: () => void;
   onConvert: () => void;
   onLogActivity: (payload: LogLeadActivityPayload) => Promise<boolean>;
 }) {
   const details = getLeadDetails(lead);
 
-  const [showMenu, setShowMenu] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
-      setShowMenu(false);
       setShowActivityForm(false);
     }
   }, [isOpen]);
@@ -3508,6 +3503,10 @@ function LeadDetailsModal({
 
               {/* ACTION BUTTONS */}
 
+              {/* The three-dot menu that sat here is gone: Edit Lead and
+                  Mark Dead are in the footer, and the remaining status moves
+                  belong to the Log Activity form, which also captures why
+                  the lead moved. */}
               <div className="relative flex shrink-0 items-center gap-2">
                 <button
                   type="button"
@@ -3532,154 +3531,6 @@ function LeadDetailsModal({
                   <FiMessageSquare />
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setShowMenu((value) => !value)}
-                  className="
-                    flex
-                    h-9
-                    w-9
-                    items-center
-                    justify-center
-                    rounded-lg
-                    border
-                    border-slate-200
-                    bg-white
-                    text-slate-600
-                    shadow-sm
-                    hover:bg-slate-50
-                    dark:border-[#0d2336]
-                    dark:bg-[#071929]
-                    dark:text-slate-300
-                  "
-                >
-                  <FiMoreVertical />
-                </button>
-
-                {showMenu && (
-                  <div
-                    className="
-                      absolute
-                      right-0
-                      top-11
-                      z-20
-                      w-32
-                      overflow-hidden
-                      rounded-lg
-                      border
-                      border-slate-200
-                      bg-white
-                      py-1
-                      shadow-xl
-                      dark:border-[#0d2336]
-                      dark:bg-[#071929]
-                    "
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowMenu(false);
-                        onEdit();
-                      }}
-                      className="
-                        flex
-                        w-full
-                        items-center
-                        px-4
-                        py-2.5
-                        text-left
-                        text-xs
-                        font-medium
-                        text-slate-700
-                        hover:bg-slate-50
-                        dark:text-slate-200
-                        dark:hover:bg-[#0d2336]
-                      "
-                    >
-                      Edit
-                    </button>
-
-                    {/* The drawer previously offered no way to move a lead
-                        forward, so the pipeline strip above it could never
-                        change from here. */}
-                    {canAdvanceLead(lead, "CONTACTED") && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMenu(false);
-                          onAdvance("CONTACTED");
-                        }}
-                        className="
-                          flex
-                          w-full
-                          items-center
-                          px-4
-                          py-2.5
-                          text-left
-                          text-xs
-                          font-medium
-                          text-slate-700
-                          hover:bg-slate-50
-                          dark:text-slate-200
-                          dark:hover:bg-[#0d2336]
-                        "
-                      >
-                        Mark as Contacted
-                      </button>
-                    )}
-
-                    {canAdvanceLead(lead, "QUALIFIED") && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMenu(false);
-                          onAdvance("QUALIFIED");
-                        }}
-                        className="
-                          flex
-                          w-full
-                          items-center
-                          px-4
-                          py-2.5
-                          text-left
-                          text-xs
-                          font-medium
-                          text-slate-700
-                          hover:bg-slate-50
-                          dark:text-slate-200
-                          dark:hover:bg-[#0d2336]
-                        "
-                      >
-                        Mark as Qualified
-                      </button>
-                    )}
-
-                    {canAdvanceLead(lead, "LOST") && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowMenu(false);
-                          onMarkDead();
-                        }}
-                        className="
-                          flex
-                          w-full
-                          items-center
-                          px-4
-                          py-2.5
-                          text-left
-                          text-xs
-                          font-medium
-                          text-rose-500
-                          hover:bg-rose-50
-                          dark:hover:bg-rose-950/20
-                        "
-                      >
-                        Mark as Dead
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
 
