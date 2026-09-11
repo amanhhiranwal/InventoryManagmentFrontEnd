@@ -245,6 +245,52 @@ export const updateOpportunityStatusApi = async (
   return data.data;
 };
 
+export interface OpportunityActivity {
+  id?: string;
+  action: string;
+  description?: string | null;
+
+  /* Status either side of the move, so the timeline can still be read once
+     the opportunity has advanced past it. Absent on a note-only entry. */
+  from_status?: string | null;
+  to_status?: string | null;
+
+  created_at: string;
+  created_by?: string | null;
+  created_by_name?: string | null;
+}
+
+/* Fetched per opportunity rather than carried on the list response: neither
+   the table nor the board shows history, so loading every timeline to draw
+   them would be wasted work. */
+export const getOpportunityActivitiesApi = async (
+  id: number | string,
+): Promise<OpportunityActivity[]> => {
+  const { data } = await api.get(`/api/v1/opportunities/${id}/activities`);
+  return data.data || data;
+};
+
+export interface LogOpportunityActivityPayload {
+  /** Omitted for a note against the opportunity; otherwise the stage to move to. */
+  status?: string;
+  action?: string;
+  remarks?: string;
+}
+
+export const logOpportunityActivityApi = async (
+  id: number | string,
+  payload: LogOpportunityActivityPayload,
+): Promise<{
+  activity: OpportunityActivity;
+  opportunity: OpportunityModel;
+}> => {
+  const { data } = await api.post(
+    `/api/v1/opportunities/${id}/activities`,
+    payload,
+  );
+  return data.data || data;
+};
+
 /** Promote a QUALIFIED lead into an opportunity. */
 export const convertLeadToOpportunityApi = async (
   leadId: number | string,
