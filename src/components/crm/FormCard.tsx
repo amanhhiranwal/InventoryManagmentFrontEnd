@@ -31,23 +31,31 @@ export function FormCard({
 export function FormSectionBlock({
   icon,
   title,
+  action,
   children,
   first = false,
 }: {
   icon: ReactNode;
   title: string;
+  /** Control shown at the right of the heading row, e.g. Add Product. Keeps
+      it on the same line as the title instead of costing a row of its own. */
+  action?: ReactNode;
   children: ReactNode;
   /** Skips the top spacing for the first section in a card. */
   first?: boolean;
 }) {
   return (
     <section className={first ? "" : "mt-8"}>
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-        <span className="text-slate-400">{icon}</span>
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-[#17304a]">
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">{icon}</span>
 
-        <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
-          {title}
-        </h3>
+          <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+            {title}
+          </h3>
+        </div>
+
+        {action}
       </div>
 
       <div className="mt-5">{children}</div>

@@ -1530,18 +1530,20 @@ export default function QuotationPage() {
             <FormSectionBlock
               icon={<FiGrid size={16} />}
               title="Products & Order Items"
-            >
-              <div className="mb-4 flex justify-end">
+              /* Inline with the heading, as the design has it - on its own
+                 row it cost a full line and read as detached from the
+                 table it fills. */
+              action={
                 <button
                   type="button"
                   onClick={openProductModal}
-                  className="flex h-9 items-center gap-1.5 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white transition hover:bg-[#18243a]"
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white transition hover:bg-[#18243a]"
                 >
                   <FiPlus size={13} />
                   Add Product
                 </button>
-              </div>
-
+              }
+            >
               <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#17304a]">
                 <table className="w-full min-w-[720px]">
                   <thead className="border-b border-slate-200 dark:border-[#17304a]">
