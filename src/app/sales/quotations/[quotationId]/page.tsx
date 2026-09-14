@@ -14,6 +14,16 @@ import { useParams, useRouter } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
 import { StatusPill } from "@/components/crm/Pill";
 import {
+  getOpportunityApi,
+  type OpportunityModel,
+} from "@/features/opportunities/api/opportunities.api";
+import {
+  SALES_ORDER_STATUS,
+  getSalesOrdersApi,
+  salesOrderStatusLabel,
+  type SalesOrderModel,
+} from "@/features/salesOrders/api/salesOrders.api";
+import {
   QUOTATION_STATUS,
   QUOTATION_STATUS_LABEL,
   QUOTATION_TRANSITIONS,
@@ -31,7 +41,6 @@ import {
   FiArrowLeft,
   FiCalendar,
   FiCheckCircle,
-  FiChevronRight,
   FiClock,
   FiDownload,
   FiEdit2,
@@ -41,6 +50,7 @@ import {
   FiPlus,
   FiRepeat,
   FiShield,
+  FiX,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 
@@ -145,6 +155,16 @@ export default function QuotationDetailPage() {
   /* Editable copies of the addresses and charges. Held apart from the saved
      quotation so nothing is written until the user says so - and so a failed
      save leaves what they typed on screen rather than reverting it. */
+  /* The quotation itself stores no GST / PAN / COI - those belong to the
+     account and are held on the opportunity it was raised against, so the
+     overview reads them from there rather than duplicating them. */
+  const [opportunity, setOpportunity] = useState<OpportunityModel | null>(null);
+
+  /* The sales order raised against this quotation, if one exists. The order
+     stores the quote number, so the link is followed from that rather than
+     guessed from the customer. */
+  const [linkedOrder, setLinkedOrder] = useState<SalesOrderModel | null>(null);
+
   const [billingDraft, setBillingDraft] = useState<QuotationAddress>({});
   const [shippingDraft, setShippingDraft] = useState<QuotationAddress>({});
   const [sameAsBilling, setSameAsBilling] = useState(false);
@@ -196,6 +216,30 @@ export default function QuotationDetailPage() {
     loadQuotation();
     loadActivities();
   }, [loadQuotation, loadActivities]);
+
+  /* Account context is a nice-to-have: a failure here must not stop the
+     quotation itself from rendering. */
+  useEffect(() => {
+    if (!quotation?.opportunity_id) return;
+
+    getOpportunityApi(quotation.opportunity_id)
+      .then(setOpportunity)
+      .catch(() => setOpportunity(null));
+  }, [quotation?.opportunity_id]);
+
+  useEffect(() => {
+    const reference = quotation?.quote_number;
+
+    if (!reference) return;
+
+    getSalesOrdersApi()
+      .then((orders) =>
+        setLinkedOrder(
+          orders.find((order) => order.quotation_id === reference) || null,
+        ),
+      )
+      .catch(() => setLinkedOrder(null));
+  }, [quotation?.quote_number]);
 
   const items = useMemo(
     () => (Array.isArray(quotation?.items) ? quotation!.items : []),
@@ -258,6 +302,20 @@ export default function QuotationDetailPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  /** Drops one annexure and saves the shortened list. */
+  const removeAttachment = async (index: number) => {
+    if (!quotation) return;
+
+    await patchQuotation(
+      {
+        attachments: (quotation.attachments || []).filter(
+          (_, position) => position !== index,
+        ),
+      },
+      "Annexure removed.",
+    );
   };
 
   const saveAddresses = async () => {
@@ -350,6 +408,22 @@ export default function QuotationDetailPage() {
   }
 
   const remarkLines = remarksToLines(quotation.remarks);
+
+  /* How far the quote has travelled towards a fulfilled order. Everything
+     before this index is done, this one is in progress, the rest are still
+     ahead - so only one step is ever highlighted. */
+  const reachedStep = (() => {
+    if (linkedOrder?.status === SALES_ORDER_STATUS.COMPLETED) return 5;
+    if (linkedOrder?.status === SALES_ORDER_STATUS.RELEASED) return 4;
+    if ((linkedOrder?.advance_received || 0) > 0) return 4;
+    if (linkedOrder) return 3;
+    if (quotation.status === QUOTATION_STATUS.ACCEPTED) return 1;
+
+    return 0;
+  })();
+
+  const processState = (index: number): "done" | "current" | "todo" =>
+    index < reachedStep ? "done" : index === reachedStep ? "current" : "todo";
 
   /* The backend refuses edits once a quotation has been sent - a revision is
      raised instead - so the inline controls are only offered while it is
@@ -464,26 +538,41 @@ export default function QuotationDetailPage() {
                 label="Organization Name"
                 value={quotation.organization_name}
               />
-              <Field label="Contact Person" value={quotation.contact_name} />
-              <Field label="Designation" value={quotation.designation} />
-              <Field label="Mobile Number" value={quotation.mobile_number} />
-              <Field label="Email Address" value={quotation.email} />
+              <Field label="GST" value={opportunity?.gst_number} />
+              <Field label="PAN" value={opportunity?.pan_number} />
+              <Field label="COI Number" value={opportunity?.coi_number} />
               <Field
-                label="Opportunity"
-                value={
-                  quotation.opportunity_name
-                    ? `${quotation.opportunity_name}${
-                        quotation.opportunity_id
-                          ? ` (#${quotation.opportunity_id})`
-                          : ""
-                      }`
-                    : null
-                }
+                label="Registration"
+                value={opportunity?.gst_number ? "Registered" : null}
               />
-              <Field
-                label="Quotation Date"
-                value={formatDate(quotation.quotation_date)}
-              />
+
+              <div className="flex items-center">
+                <span className="w-[130px] shrink-0 text-[11px] text-slate-500">
+                  Assigned To:
+                </span>
+
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 dark:bg-[#0b2034] dark:text-slate-200">
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] dark:bg-[#17304a]">
+                    {(quotation.contact_name || "U").charAt(0).toUpperCase()}
+                  </span>
+                  {opportunity?.assigned_to_name || "Unassigned"}
+                </span>
+              </div>
+            </div>
+
+            {/* The contact the quotation is addressed to. Kept below the
+                account block rather than mixed into it. */}
+            <div className="mt-5 border-t border-slate-100 pt-4 dark:border-[#17304a]">
+              <p className="mb-3 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Primary Contact
+              </p>
+
+              <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
+                <Field label="Contact Person" value={quotation.contact_name} />
+                <Field label="Designation" value={quotation.designation} />
+                <Field label="Mobile Number" value={quotation.mobile_number} />
+                <Field label="Email Address" value={quotation.email} />
+              </div>
             </div>
           </Card>
 
@@ -796,90 +885,76 @@ export default function QuotationDetailPage() {
             </div>
           </Card>
 
-          {/* QUOTATION PROCESS */}
-          <Card icon={<FiClock size={15} />} title="Quotation Process">
+          {/* ORDER PROCESS
+
+              The same lifecycle strip the sales order shows, read from the
+              quotation's point of view: where this quote has got to on its
+              way to a fulfilled order. */}
+          <Card icon={<FiClock size={15} />} title="Order Process">
             <div className="space-y-4">
-              {/* Each step reads the quotation rather than being a fixed
-                  picture of one. */}
               <ProcessStep
-                done
-                title="Drafted"
-                caption={`Raised on ${formatDate(quotation.quotation_date)}`}
-              />
-
-              {/* A quotation can reach the client without this app emailing
-                  it, so the step follows the status and the caption says
-                  whether it actually went out from here. Keying it on
-                  sent_at alone left it reading "Not sent yet" under a Sent
-                  badge. */}
-              <ProcessStep
-                done={
-                  Boolean(quotation.sent_at) ||
-                  quotation.status !== QUOTATION_STATUS.DRAFT
-                }
-                title="Sent To Client"
-                caption={
-                  quotation.sent_at
-                    ? `Emailed to ${quotation.sent_to} on ${formatDate(quotation.sent_at)}`
-                    : quotation.status === QUOTATION_STATUS.DRAFT
-                      ? "Not sent yet"
-                      : "Marked as sent, not emailed from here"
-                }
-              />
-
-              <ProcessStep
-                done={quotation.status === QUOTATION_STATUS.ACCEPTED}
-                title="Client Decision"
+                state={processState(0)}
+                title="Quotation Approved"
                 caption={
                   quotation.status === QUOTATION_STATUS.ACCEPTED
-                    ? "Accepted"
+                    ? `${quotation.quote_number} accepted by the client`
                     : quotation.status === QUOTATION_STATUS.REJECTED
-                      ? `Rejected${quotation.rejected_reason ? `: ${quotation.rejected_reason}` : ""}`
+                      ? "Rejected by the client"
                       : quotation.status === QUOTATION_STATUS.EXPIRED
                         ? "Lapsed past its validity date"
-                        : `Awaiting a response (valid to ${formatDate(quotation.validation_date)})`
+                        : linkedOrder
+                          /* An order raised against it settles the question
+                             even if the quotation was never formally marked
+                             accepted - so the caption must not still read
+                             "awaiting" under a ticked step. */
+                          ? `Order raised against ${quotation.quote_number}`
+                          : `${quotation.quote_number} awaiting approval`
+                }
+              />
+
+              <ProcessStep
+                state={processState(1)}
+                title="Customer PO Received"
+                caption={
+                  linkedOrder?.po_number
+                    ? `${linkedOrder.po_number} recorded`
+                    : "No customer PO recorded"
+                }
+              />
+
+              <ProcessStep
+                state={processState(2)}
+                title="Sales Order"
+                caption={
+                  linkedOrder
+                    ? `${linkedOrder.order_number} · ${salesOrderStatusLabel(
+                        linkedOrder.status,
+                      )}`
+                    : "Not raised yet"
+                }
+              />
+
+              <ProcessStep
+                state={processState(3)}
+                title="Proforma Invoice"
+                caption={
+                  (linkedOrder?.advance_received || 0) > 0
+                    ? `${money(linkedOrder?.advance_received)} received against it`
+                    : "Not Generated"
+                }
+              />
+
+              <ProcessStep
+                state={processState(4)}
+                title="Fulfillment"
+                caption={
+                  linkedOrder?.status === SALES_ORDER_STATUS.COMPLETED
+                    ? "Completed"
+                    : linkedOrder?.status === SALES_ORDER_STATUS.RELEASED
+                      ? "Released for dispatch"
+                      : "Not Released"
                 }
                 last
-              />
-            </div>
-          </Card>
-
-          {/* LINKED DOCUMENTS */}
-          <Card icon={<FiFileText size={15} />} title="Linked Documents">
-            <div className="space-y-2.5">
-              <LinkedDocument
-                title={
-                  quotation.opportunity_name
-                    ? `Opportunity: ${quotation.opportunity_name}`
-                    : "Opportunity"
-                }
-                subtitle={
-                  quotation.opportunity_id
-                    ? `#${quotation.opportunity_id}`
-                    : "Not linked"
-                }
-                href={
-                  quotation.opportunity_id ? "/sales/opportunities" : undefined
-                }
-              />
-
-              <LinkedDocument
-                title={`Quotation ${quoteReference(quotation)}`}
-                subtitle={QUOTATION_STATUS_LABEL[quotation.status]}
-              />
-
-              <LinkedDocument
-                title="Sales Order"
-                subtitle={
-                  quotation.status === QUOTATION_STATUS.ACCEPTED
-                    ? "Ready to raise"
-                    : "Raised once the quotation is accepted"
-                }
-                href={
-                  quotation.status === QUOTATION_STATUS.ACCEPTED
-                    ? "/sales/orders"
-                    : undefined
-                }
               />
             </div>
           </Card>
@@ -896,8 +971,30 @@ export default function QuotationDetailPage() {
                     key={`${file.name}-${index}`}
                     className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 dark:border-[#17304a] dark:bg-[#0b2034] dark:text-slate-300"
                   >
-                    <FiFileText size={11} className="shrink-0 text-rose-500" />
+                    {/* Spreadsheets get the green mark the design uses, so a
+                        BOQ annexure is distinguishable at a glance. */}
+                    <FiFileText
+                      size={11}
+                      className={`shrink-0 ${
+                        /\.(xlsx?|csv)$/i.test(file.name)
+                          ? "text-emerald-600"
+                          : "text-rose-500"
+                      }`}
+                    />
+
                     <span className="truncate">{file.name}</span>
+
+                    {editable && (
+                      <button
+                        type="button"
+                        aria-label={`Remove ${file.name}`}
+                        onClick={() => removeAttachment(index)}
+                        disabled={saving}
+                        className="shrink-0 rounded p-0.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:opacity-40 dark:hover:bg-rose-950/20"
+                      >
+                        <FiX size={11} />
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>
@@ -1227,12 +1324,13 @@ function AddressFieldsBlock({
 }
 
 function ProcessStep({
-  done,
+  state,
   title,
   caption,
   last,
 }: {
-  done: boolean;
+  /** "current" is the step the quotation is sitting on right now. */
+  state: "done" | "current" | "todo";
   title: string;
   caption: string;
   last?: boolean;
@@ -1245,12 +1343,20 @@ function ProcessStep({
 
       <span
         className={`relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-          done
+          state === "done"
             ? "bg-emerald-500 text-white"
-            : "border border-slate-300 bg-white text-slate-300 dark:border-[#17304a] dark:bg-[#071929]"
+            : state === "current"
+              ? "bg-amber-400 text-white"
+              : "border border-slate-300 bg-white text-slate-300 dark:border-[#17304a] dark:bg-[#071929]"
         }`}
       >
-        {done ? <FiCheckCircle size={13} /> : <FiPlus size={11} />}
+        {state === "done" ? (
+          <FiCheckCircle size={13} />
+        ) : state === "current" ? (
+          <FiClock size={12} />
+        ) : (
+          <FiPlus size={11} />
+        )}
       </span>
 
       <div className="pb-1">
@@ -1260,40 +1366,6 @@ function ProcessStep({
 
         <p className="mt-0.5 text-[10px] text-slate-500">{caption}</p>
       </div>
-    </div>
-  );
-}
-
-function LinkedDocument({
-  title,
-  subtitle,
-  href,
-}: {
-  title: string;
-  subtitle: string;
-  href?: string;
-}) {
-  const router = useRouter();
-
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-[#0b2034]">
-      <div className="min-w-0">
-        <p className="truncate text-[11px] font-bold text-slate-800 dark:text-white">
-          {title}
-        </p>
-
-        <p className="text-[10px] text-slate-500">{subtitle}</p>
-      </div>
-
-      <button
-        type="button"
-        disabled={!href}
-        onClick={() => href && router.push(href)}
-        className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
-      >
-        View
-        <FiChevronRight size={11} />
-      </button>
     </div>
   );
 }
