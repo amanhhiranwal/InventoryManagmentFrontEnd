@@ -1734,37 +1734,9 @@ export default function QuotationPage() {
               <div className="mt-5 space-y-2.5">
                 <SummaryRow label="Subtotal:" value={money(totals.subtotal)} />
 
-                {/* Discount defaults to the per-line total; entering one here
-                    overrides it, in rupees or as a percentage. */}
-                <SummaryRow
-                  label="Total Discount"
-                  value={`-${money(totals.discountAmount)}`}
-                  tone="rose"
-                  edit={{
-                    amount:
-                      discountInput === null
-                        ? Math.round(totals.discountAmount)
-                        : discountInput,
-                    mode: discountMode,
-                    base: totals.subtotal,
-                    onChange: setDiscountInput,
-                    onModeChange: setDiscountMode,
-                  }}
-                />
-
-                <SummaryRow
-                  label={`ORC (${totals.orcPercent.toFixed(2)}%)`}
-                  name="ORC"
-                  value={`+${money(totals.orcAmount)}`}
-                  edit={{
-                    amount: orcInput,
-                    mode: orcMode,
-                    base: totals.subtotal,
-                    onChange: setOrcInput,
-                    onModeChange: setOrcMode,
-                  }}
-                />
-
+                {/* The design has no summary-level Total Discount or ORC on a
+                    quotation: discount is given per line, in the table's own
+                    Discount column, and the totals below follow from that. */}
                 <SummaryRow
                   label="Freight Charges"
                   value={`+${money(totals.freight)}`}

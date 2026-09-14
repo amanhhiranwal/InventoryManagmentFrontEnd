@@ -18,11 +18,13 @@ import {
   QUOTATION_STATUS_LABEL,
   QUOTATION_TRANSITIONS,
   QuotationActivity,
+  QuotationAddress,
   QuotationModel,
   QuotationStatus,
   getQuotationActivitiesApi,
   getQuotationApi,
   logQuotationActivityApi,
+  updateQuotationApi,
 } from "@/features/quotations/api/quotations.api";
 
 import {
@@ -35,11 +37,9 @@ import {
   FiEdit2,
   FiFileText,
   FiInfo,
-  FiMapPin,
   FiPackage,
   FiPlus,
   FiRepeat,
-  FiSend,
   FiShield,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
@@ -142,13 +142,28 @@ export default function QuotationDetailPage() {
   const [saving, setSaving] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
 
+  /* Editable copies of the addresses and charges. Held apart from the saved
+     quotation so nothing is written until the user says so - and so a failed
+     save leaves what they typed on screen rather than reverting it. */
+  const [billingDraft, setBillingDraft] = useState<QuotationAddress>({});
+  const [shippingDraft, setShippingDraft] = useState<QuotationAddress>({});
+  const [sameAsBilling, setSameAsBilling] = useState(false);
+  const [addressDirty, setAddressDirty] = useState(false);
+
   const loadQuotation = useCallback(async () => {
     if (!quotationId) return;
 
     try {
       setLoading(true);
 
-      setQuotation(await getQuotationApi(quotationId));
+      const saved = await getQuotationApi(quotationId);
+
+      setQuotation(saved);
+
+      setBillingDraft(saved.billing_address || {});
+      setShippingDraft(saved.shipping_address || {});
+      setSameAsBilling(Boolean(saved.shipping_same_as_billing));
+      setAddressDirty(false);
     } catch (error: any) {
       console.error(error);
 
@@ -213,6 +228,58 @@ export default function QuotationDetailPage() {
   /* ---------------------------------------------------------------
      ACTIONS
   --------------------------------------------------------------- */
+
+  /** Persist one partial change and fold the response back into the page. */
+  const patchQuotation = async (
+    payload: Record<string, unknown>,
+    message: string,
+  ) => {
+    if (!quotation) return false;
+
+    setSaving(true);
+
+    try {
+      const updated = await updateQuotationApi(quotation.id, payload as never);
+
+      setQuotation(updated);
+
+      addToast(message, "success");
+
+      return true;
+    } catch (error: any) {
+      console.error(error);
+
+      addToast(
+        error?.response?.data?.detail || "Failed to save the change.",
+        "error",
+      );
+
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveAddresses = async () => {
+    const shippingToSave = sameAsBilling ? billingDraft : shippingDraft;
+
+    const ok = await patchQuotation(
+      {
+        billing_address: billingDraft,
+        shipping_address: shippingToSave,
+        shipping_same_as_billing: sameAsBilling,
+      },
+      "Address updated.",
+    );
+
+    if (ok) setAddressDirty(false);
+  };
+
+  /* Charges and the GST rate carry pencils in the design; each saves on its
+     own so a single correction does not require resubmitting the form. */
+  const saveCharge = (field: string, label: string) => async (next: number) => {
+    await patchQuotation({ [field]: next }, `${label} updated.`);
+  };
 
   const logActivity = async (payload: {
     status?: QuotationStatus;
@@ -282,10 +349,12 @@ export default function QuotationDetailPage() {
     );
   }
 
-  const isDraft = quotation.status === QUOTATION_STATUS.DRAFT;
-  const billing = quotation.billing_address || {};
-  const shipping = quotation.shipping_address || {};
   const remarkLines = remarksToLines(quotation.remarks);
+
+  /* The backend refuses edits once a quotation has been sent - a revision is
+     raised instead - so the inline controls are only offered while it is
+     still a draft, rather than presenting an edit that would 400. */
+  const editable = quotation.status === QUOTATION_STATUS.DRAFT;
 
   return (
     <div className="min-h-full space-y-4 pb-8">
@@ -317,20 +386,6 @@ export default function QuotationDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Editing reopens the New Quotation form, the only place a
-                quotation's fields can actually be changed. */}
-            <button
-              type="button"
-              onClick={() =>
-                router.push(`/sales/quotations?edit=${quotation.id}`)
-              }
-              title="Edit this quotation"
-              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
-            >
-              <FiEdit2 size={13} />
-              Edit
-            </button>
-
             <button
               type="button"
               onClick={() => window.print()}
@@ -340,37 +395,23 @@ export default function QuotationDetailPage() {
               Download
             </button>
 
-            {/* A draft still has to reach the client; once it has, the next
-                step is raising the order against it. */}
-            {isDraft ? (
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(`/sales/quotations?send=${quotation.id}`)
-                }
-                className="flex items-center gap-2 rounded-lg bg-[#233353] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#18243a]"
-              >
-                <FiSend size={13} />
-                Send To Client
-              </button>
-            ) : (
-              /* Carries the quotation's reference through, so the New Sales
-                 Order form opens knowing what it is being raised against. */
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(
-                    `/sales/orders?quotation=${encodeURIComponent(
-                      quotation.quote_number || "",
-                    )}`,
-                  )
-                }
-                className="flex items-center gap-2 rounded-lg bg-[#233353] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#18243a]"
-              >
-                <FiRepeat size={13} />
-                Convert To Sales Order
-              </button>
-            )}
+            {/* Carries the quotation's reference through, so the New Sales
+                Order form opens knowing what it is being raised against -
+                which is what ties the order back to the opportunity. */}
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  `/sales/orders?quotation=${encodeURIComponent(
+                    quotation.quote_number || "",
+                  )}`,
+                )
+              }
+              className="flex items-center gap-2 rounded-lg bg-[#233353] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#18243a]"
+            >
+              <FiRepeat size={13} />
+              Convert To Sales Order
+            </button>
           </div>
         </div>
       </div>
@@ -416,23 +457,9 @@ export default function QuotationDetailPage() {
         {/* LEFT */}
 
         <div className="space-y-4">
-          <Card
-            icon={<FiInfo size={15} />}
-            title="Customer & Opportunity Information"
-          >
+          <Card icon={<FiInfo size={15} />} title="Order & Account Overview">
             <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
-              <Field
-                label="Opportunity ID"
-                value={
-                  quotation.opportunity_id
-                    ? `#${quotation.opportunity_id}`
-                    : null
-                }
-              />
-              <Field
-                label="Opportunity Name"
-                value={quotation.opportunity_name}
-              />
+              <Field label="Customer Type" value={quotation.customer_type} />
               <Field
                 label="Organization Name"
                 value={quotation.organization_name}
@@ -441,22 +468,96 @@ export default function QuotationDetailPage() {
               <Field label="Designation" value={quotation.designation} />
               <Field label="Mobile Number" value={quotation.mobile_number} />
               <Field label="Email Address" value={quotation.email} />
-              <Field label="Customer Type" value={quotation.customer_type} />
+              <Field
+                label="Opportunity"
+                value={
+                  quotation.opportunity_name
+                    ? `${quotation.opportunity_name}${
+                        quotation.opportunity_id
+                          ? ` (#${quotation.opportunity_id})`
+                          : ""
+                      }`
+                    : null
+                }
+              />
               <Field
                 label="Quotation Date"
                 value={formatDate(quotation.quotation_date)}
               />
-              <Field
-                label="Validation Date"
-                value={formatDate(quotation.validation_date)}
-              />
             </div>
           </Card>
 
-          <Card icon={<FiMapPin size={15} />} title="Address Details">
+          {/* Editable in place: correcting an address is the commonest
+              change to a saved quotation, and the design puts the fields
+              right here rather than sending the user back to the form. */}
+          <Card
+            icon={<FiInfo size={15} />}
+            title="Billing & Shipping"
+            action={
+              <div className="flex items-center gap-3">
+                {!editable && (
+                  <span className="text-[10px] text-slate-400">
+                    Locked once sent
+                  </span>
+                )}
+
+                {editable && addressDirty && (
+                  <button
+                    type="button"
+                    onClick={saveAddresses}
+                    disabled={saving}
+                    className="rounded-md bg-[#233353] px-3 py-1.5 text-[10px] font-bold text-white disabled:opacity-40"
+                  >
+                    {saving ? "Saving..." : "Save Address"}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowActivityForm((value) => !value)}
+                  className="flex items-center gap-1 text-[10px] font-medium text-slate-500 hover:text-[#233353] dark:hover:text-white"
+                >
+                  <FiEdit2 size={10} />
+                  {showActivityForm ? "Cancel" : "Log Activity"}
+                </button>
+              </div>
+            }
+          >
             <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-              <AddressBlock title="Billing Address" address={billing} />
-              <AddressBlock title="Shipping Address" address={shipping} />
+              <AddressFieldsBlock
+                title="Billing Address"
+                address={billingDraft}
+                disabled={!editable}
+                onChange={(next) => {
+                  setBillingDraft(next);
+                  setAddressDirty(true);
+                }}
+              />
+
+              <AddressFieldsBlock
+                title="Shipping Address"
+                address={sameAsBilling ? billingDraft : shippingDraft}
+                disabled={sameAsBilling || !editable}
+                onChange={(next) => {
+                  setShippingDraft(next);
+                  setAddressDirty(true);
+                }}
+                header={
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={sameAsBilling}
+                      disabled={!editable}
+                      onChange={(event) => {
+                        setSameAsBilling(event.target.checked);
+                        setAddressDirty(true);
+                      }}
+                      className="h-3.5 w-3.5 rounded border-slate-300 accent-[#233353]"
+                    />
+                    Same as Billing
+                  </label>
+                }
+              />
             </div>
           </Card>
 
@@ -534,29 +635,25 @@ export default function QuotationDetailPage() {
               <div className="w-full max-w-[400px] space-y-2.5">
                 <SummaryLine label="Subtotal:" value={money(quotation.subtotal)} />
 
-                {Boolean(quotation.discount_amount) && (
-                  <SummaryLine
-                    label="Total Discount:"
-                    value={`-${money(quotation.discount_amount)}`}
-                    tone="rose"
-                  />
-                )}
-
-                {Boolean(quotation.orc_amount) && (
-                  <SummaryLine
-                    label={`ORC (${Number(quotation.orc_percent || 0).toFixed(2)}%):`}
-                    value={`+${money(quotation.orc_amount)}`}
-                  />
-                )}
-
+                {/* The charges and the rate carry pencils in the design, so
+                    a correction can be made here rather than by reopening
+                    the whole form. Each saves on its own. */}
                 <SummaryLine
                   label="Freight Charges:"
                   value={`+${money(quotation.freight_charges)}`}
+                  edit={editable ? {
+                    amount: quotation.freight_charges || 0,
+                    onSave: saveCharge("freight_charges", "Freight charges"),
+                  } : undefined}
                 />
 
                 <SummaryLine
                   label="Lumpsum (Installation):"
                   value={`+${money(quotation.installation_lumpsum)}`}
+                  edit={editable ? {
+                    amount: quotation.installation_lumpsum || 0,
+                    onSave: saveCharge("installation_lumpsum", "Lumpsum"),
+                  } : undefined}
                 />
 
                 <div className="border-t border-slate-100 pt-2.5 dark:border-[#17304a]">
@@ -569,6 +666,11 @@ export default function QuotationDetailPage() {
                 <SummaryLine
                   label={`Estimated GST (${quotation.gst_percent}%):`}
                   value={`+${money(quotation.gst_amount)}`}
+                  edit={editable ? {
+                    amount: quotation.gst_percent || 18,
+                    unit: "%",
+                    onSave: saveCharge("gst_percent", "GST rate"),
+                  } : undefined}
                 />
 
                 <div className="flex items-center justify-between border-t border-slate-200 pt-2.5 dark:border-[#17304a]">
@@ -1045,39 +1147,81 @@ function Field({ label, value }: { label: string; value?: unknown }) {
   );
 }
 
-function AddressBlock({
+function AddressFieldsBlock({
   title,
   address,
+  onChange,
+  disabled,
+  header,
 }: {
   title: string;
-  address: Record<string, any>;
+  address: QuotationAddress;
+  onChange: (next: QuotationAddress) => void;
+  /** Shipping is greyed out while it mirrors billing. */
+  disabled?: boolean;
+  header?: React.ReactNode;
 }) {
-  const lines = [
-    address.street,
-    [address.city, address.state].filter(Boolean).join(", "),
-    [address.zip_code, address.country].filter(Boolean).join(" "),
-  ].filter((line) => line && String(line).trim());
+  const set = (field: keyof QuotationAddress, value: string) =>
+    onChange({ ...address, [field]: value });
+
+  const input =
+    "h-9 w-full rounded-lg border border-slate-200 px-3 text-[11px] text-slate-700 outline-none transition focus:border-[#233353] disabled:bg-slate-50 disabled:text-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white dark:disabled:bg-[#0b2034]";
 
   return (
     <div>
-      <p className="mb-2 border-b border-slate-100 pb-2 text-xs font-semibold text-slate-600 dark:border-[#17304a] dark:text-slate-300">
-        {title}
-      </p>
+      <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-2 dark:border-[#17304a]">
+        <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+          {title}
+        </p>
 
-      {lines.length ? (
-        <div className="space-y-1">
-          {lines.map((line, index) => (
-            <p
-              key={index}
-              className="text-[11px] text-slate-700 dark:text-slate-300"
-            >
-              {line}
-            </p>
-          ))}
+        {header}
+      </div>
+
+      <div className="space-y-3">
+        <input
+          value={address.street || ""}
+          disabled={disabled}
+          onChange={(event) => set("street", event.target.value)}
+          placeholder="Street Address, Building, Suite"
+          className={input}
+        />
+
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            value={address.state || ""}
+            disabled={disabled}
+            onChange={(event) => set("state", event.target.value)}
+            placeholder="State"
+            className={input}
+          />
+
+          <input
+            value={address.city || ""}
+            disabled={disabled}
+            onChange={(event) => set("city", event.target.value)}
+            placeholder="City"
+            className={input}
+          />
         </div>
-      ) : (
-        <p className="text-[11px] text-slate-400">No address recorded.</p>
-      )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            value={address.country || ""}
+            disabled={disabled}
+            onChange={(event) => set("country", event.target.value)}
+            placeholder="Country"
+            className={input}
+          />
+
+          <input
+            value={address.zip_code || ""}
+            disabled={disabled}
+            onChange={(event) => set("zip_code", event.target.value)}
+            placeholder="PIN / ZIP Code"
+            className={input}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -1158,22 +1302,83 @@ function SummaryLine({
   label,
   value,
   tone,
+  edit,
 }: {
   label: string;
   value: string;
   tone?: "rose";
+  /** Omit for a read-only line. */
+  edit?: {
+    amount: number;
+    /** "%" for a rate, where a rupee figure makes no sense. */
+    unit?: "%";
+    onSave: (next: number) => void | Promise<void>;
+  };
 }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-[11px] text-slate-500">{label}</span>
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(edit?.amount ?? 0));
 
-      <span
-        className={`text-[11px] font-semibold ${
-          tone === "rose" ? "text-rose-500" : "text-slate-800 dark:text-white"
-        }`}
-      >
-        {value}
+  const commit = async () => {
+    setEditing(false);
+
+    const next = Number(draft.replace(/[^\d.]/g, "")) || 0;
+
+    if (next !== edit?.amount) await edit?.onSave(next);
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+        {label}
+
+        {edit && !editing && (
+          <button
+            type="button"
+            aria-label={`Edit ${label}`}
+            onClick={() => {
+              setDraft(String(edit.amount));
+              setEditing(true);
+            }}
+            className="text-slate-400 transition hover:text-slate-700"
+          >
+            <FiEdit2 size={10} />
+          </button>
+        )}
       </span>
+
+      {/* Fixed width: the input replaces the figure without moving it. */}
+      <div className="flex w-32 justify-end">
+        {edit && editing ? (
+          <div className="flex items-center gap-1">
+            <input
+              autoFocus
+              type="text"
+              inputMode="decimal"
+              aria-label={label}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onBlur={commit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commit();
+                if (event.key === "Escape") setEditing(false);
+              }}
+              className="h-7 w-24 rounded-md border border-slate-200 px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+            />
+
+            {edit.unit === "%" && (
+              <span className="text-[11px] text-slate-500">%</span>
+            )}
+          </div>
+        ) : (
+          <span
+            className={`text-[11px] font-semibold ${
+              tone === "rose" ? "text-rose-500" : "text-slate-800 dark:text-white"
+            }`}
+          >
+            {value}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
