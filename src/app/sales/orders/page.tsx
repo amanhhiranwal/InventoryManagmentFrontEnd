@@ -8,6 +8,7 @@ import { useUIStore } from "@/lib/store/ui.store";
 import {
   PRODUCT_CATALOG,
   PRODUCT_CATEGORIES,
+  productSku,
 } from "@/features/catalog/productCatalog";
 import AmountInput, {
   resolveAmount,
@@ -57,6 +58,7 @@ import {
   FiCamera,
   FiUpload,
   FiShield,
+  FiFileText,
 } from "react-icons/fi";
 
 /* =========================================================
@@ -280,6 +282,10 @@ export default function OrdersListPage() {
   const [freightCharges, setFreightCharges] = useState(0);
   const [installationLumpsum, setInstallationLumpsum] = useState(0);
   const [advanceReceived, setAdvanceReceived] = useState(0);
+
+  /* The rate was a module constant, so every order was taxed at 18% with no
+     way to quote an exempt supply or a 28% line. */
+  const [gstPercent, setGstPercent] = useState(ORDER_GST_PERCENT);
 
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>(
     [],
@@ -944,6 +950,7 @@ export default function OrdersListPage() {
     setFreightCharges(0);
     setInstallationLumpsum(0);
     setAdvanceReceived(0);
+    setGstPercent(ORDER_GST_PERCENT);
   };
 
   const closeCreateOrder = () => {
@@ -960,6 +967,7 @@ export default function OrdersListPage() {
     setFreightCharges(0);
     setInstallationLumpsum(0);
     setAdvanceReceived(0);
+    setGstPercent(ORDER_GST_PERCENT);
   };
 
   /* -------------------------------------------------------
@@ -1035,8 +1043,9 @@ export default function OrdersListPage() {
 
             return {
               id: String(item.product_id || `line-${index}`),
-              name: item.description || item.item || "Product",
-              category: catalogued?.category || item.category || "",
+              name: item.model || item.description || item.item || "Product",
+              category:
+                item.product || catalogued?.category || item.category || "",
               price: Number(item.price ?? item.rate) || 0,
               quantity: Number(item.quantity_case ?? item.qty) || 1,
               discount: Number(item.discount) || 0,
@@ -1054,6 +1063,11 @@ export default function OrdersListPage() {
         setFreightCharges(saved.freight_charges || 0);
         setInstallationLumpsum(saved.installation_lumpsum || 0);
         setAdvanceReceived(saved.advance_received || 0);
+        setGstPercent(
+          saved.gst_percent === null || saved.gst_percent === undefined
+            ? ORDER_GST_PERCENT
+            : saved.gst_percent,
+        );
         setAdvancePercent(
           saved.advance_percent === null || saved.advance_percent === undefined
             ? 30
@@ -1245,6 +1259,15 @@ export default function OrdersListPage() {
 
         items: selectedProducts.map((item) => ({
           product_id: item.id,
+
+          /* Named the same way the quotation names them - family, model and
+             SKU - so a line reads the same on both documents. Only the model
+             used to reach the order, as description, which left the
+             Model / Variant column with nothing to show. */
+          product: item.category,
+          model: item.name,
+          sku: productSku(item.id),
+
           description: item.name,
           rate: item.price,
           quantity_case: item.quantity,
@@ -1270,12 +1293,10 @@ export default function OrdersListPage() {
         orc_input: orcInput,
         freight_charges: freightCharges,
         installation_lumpsum: installationLumpsum,
-        gst_percent: ORDER_GST_PERCENT,
+        gst_percent: gstPercent,
         advance_received: advanceReceived,
 
         payment_status: "Pending",
-
-        remarks: newOrder.remarks,
 
         advance_percent: advancePercent,
 
@@ -1447,7 +1468,7 @@ export default function OrdersListPage() {
     freightCharges +
     installationLumpsum;
 
-  const orderGst = (orderTaxableAmount * ORDER_GST_PERCENT) / 100;
+  const orderGst = (orderTaxableAmount * gstPercent) / 100;
 
   const orderGrandTotal = orderTaxableAmount + orderGst;
 
@@ -1456,11 +1477,8 @@ export default function OrdersListPage() {
 
   const orderOutstanding = orderGrandTotal - orderAdvance;
 
-  /* The Advance / Balance split shown on the Order Summary. Derived from the
-     share rather than printed as a fixed 30/70, so the two figures always sum
-     back to the total. The backend derives the same pair on read. */
-  const orderAdvanceExpected = (orderGrandTotal * advancePercent) / 100;
-  const orderBalanceExpected = orderGrandTotal - orderAdvanceExpected;
+  /* The advance share is still stored and still drives the split the order
+     detail page shows; the design just does not surface it on this form. */
 
   /* =======================================================
      NEW SALES ORDER UI
@@ -2134,10 +2152,6 @@ export default function OrdersListPage() {
                         </th>
 
                         <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
-                          Unit Price
-                        </th>
-
-                        <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
                           Discount
                         </th>
 
@@ -2146,8 +2160,12 @@ export default function OrdersListPage() {
                         </th>
 
                         <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
-                          Actions
+                          Unit Price
                         </th>
+
+                        {/* The delete column is unlabelled in the design; the
+                            bin icon says what it does. */}
+                        <th className="w-12 px-3 py-3" />
                       </tr>
                     </thead>
 
@@ -2221,29 +2239,32 @@ export default function OrdersListPage() {
                               </div>
                             </td>
 
-                            <td className="px-3 py-3 text-xs text-slate-700">
-                              {money(item.price)}
-                            </td>
-
                             <td className="px-3 py-3">
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
+                              <PercentCell
                                 value={item.discount}
-                                onChange={(e) =>
+                                onChange={(next) =>
                                   updateSelectedProduct(
                                     item.id,
                                     "discount",
-                                    Number(e.target.value),
+                                    next,
                                   )
                                 }
-                                className="w-16 h-8 rounded-md border border-slate-200 px-2 text-xs"
                               />
                             </td>
 
+                            {/* Tax was display-only, so a line that should be
+                                exempt or at 28% could not be quoted. */}
                             <td className="px-3 py-3">
-                              <span className="text-[10px]">{item.tax}%</span>
+                              <PercentCell
+                                value={item.tax}
+                                onChange={(next) =>
+                                  updateSelectedProduct(item.id, "tax", next)
+                                }
+                              />
+                            </td>
+
+                            <td className="px-3 py-3 text-xs text-slate-700">
+                              {money(item.price)}
                             </td>
 
                             <td className="px-3 py-3">
@@ -2272,7 +2293,7 @@ export default function OrdersListPage() {
 
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-500">
-                          Subtotal (Products)
+                          Subtotal:
                         </span>
 
                         <span className="text-xs font-semibold text-slate-800">
@@ -2332,7 +2353,7 @@ export default function OrdersListPage() {
                       <div className="border-t border-slate-100 pt-3">
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-slate-500">
-                            Taxable Amount
+                            Taxable Amount:
                           </span>
 
                           <span className="text-xs font-semibold text-slate-800">
@@ -2340,14 +2361,21 @@ export default function OrdersListPage() {
                           </span>
                         </div>
 
-                        <div className="flex items-center justify-between mt-3">
-                          <span className="text-xs text-slate-500">
-                            Estimated GST ({ORDER_GST_PERCENT}%)
-                          </span>
-
-                          <span className="text-xs font-semibold text-slate-800">
-                            {money(orderGst)}
-                          </span>
+                        <div className="mt-3">
+                          {/* The rate carries a pencil in the design but was
+                              a module constant, so an order could only ever
+                              be taxed at 18%. */}
+                          <OrderSummaryRow
+                            label={`Estimated GST (${gstPercent}%)`}
+                            name="Estimated GST"
+                            value={money(orderGst)}
+                            edit={{
+                              amount: gstPercent,
+                              unit: "%",
+                              onChange: (next) =>
+                                setGstPercent(Math.min(100, Math.max(0, next))),
+                            }}
+                          />
                         </div>
                       </div>
 
@@ -2360,6 +2388,27 @@ export default function OrdersListPage() {
 
                     <span className="text-sm font-bold text-slate-900 dark:text-white">
                       {money(orderGrandTotal)}
+                    </span>
+                  </div>
+
+                  {/* What has come in against the order, and what is still
+                      owed. Both were in the sidebar; the design puts them at
+                      the foot of the totals where the arithmetic reads. */}
+                  <OrderSummaryRow
+                    label="Amount Paid"
+                    value={`-${money(orderAdvance)}`}
+                    tone="rose"
+                    edit={{
+                      amount: advanceReceived,
+                      onChange: setAdvanceReceived,
+                    }}
+                  />
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500">Balance Due:</span>
+
+                    <span className="text-xs font-semibold text-slate-800 dark:text-white">
+                      {money(orderOutstanding)}
                     </span>
                   </div>
                 </div>
@@ -2383,53 +2432,42 @@ export default function OrdersListPage() {
                     Pre-filled Commercial Conditions
                   </p>
 
-                  <div className="space-y-2.5">
+                  {/* Plain bullets, as the design has them. Each is still
+                      click-to-edit - the borderless field only shows its
+                      outline on hover - so a condition that does not apply to
+                      this order can be reworded without the row of controls
+                      the design does not show. */}
+                  <div className="space-y-2">
                     {commercialTerms.map((term, index) => (
                       <div key={index} className="flex items-start gap-2">
                         <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#24395f]" />
 
-                        {/* Editable, so a condition that does not apply to
-                            this order can be changed or emptied out rather
-                            than being printed regardless. */}
                         <textarea
-                          rows={2}
+                          rows={1}
                           value={term}
-                          onChange={(e) =>
+                          onChange={(e) => {
                             setCommercialTerms((current) =>
                               current.map((item, i) =>
                                 i === index ? e.target.value : item,
                               ),
-                            )
-                          }
-                          className="min-h-[34px] w-full resize-none rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[11px] leading-5 text-slate-600 outline-none hover:border-slate-200 focus:border-slate-300 focus:bg-white dark:text-slate-300 dark:hover:border-[#17304a] dark:focus:bg-[#051422]"
-                        />
+                            );
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCommercialTerms((current) =>
-                              current.filter((_, i) => i !== index),
-                            )
-                          }
-                          title="Remove condition"
-                          className="mt-1 shrink-0 rounded-md p-1 text-slate-400 hover:bg-white hover:text-rose-500 dark:hover:bg-[#051422]"
-                        >
-                          <FiX size={12} />
-                        </button>
+                            /* Grow with the text so bullets sit tight
+                               against each other, as they do in print. */
+                            e.target.style.height = "auto";
+                            e.target.style.height = `${e.target.scrollHeight}px`;
+                          }}
+                          ref={(node) => {
+                            if (node) {
+                              node.style.height = "auto";
+                              node.style.height = `${node.scrollHeight}px`;
+                            }
+                          }}
+                          className="w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-[11px] leading-5 text-slate-600 outline-none hover:border-slate-200 focus:border-slate-300 focus:bg-white dark:text-slate-300 dark:hover:border-[#17304a] dark:focus:bg-[#051422]"
+                        />
                       </div>
                     ))}
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setCommercialTerms((current) => [...current, ""])
-                    }
-                    className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-[#24395f] hover:underline dark:text-slate-300"
-                  >
-                    <FiPlus size={12} />
-                    Add Condition
-                  </button>
                 </div>
 
                 <div className="mt-4">
@@ -2484,74 +2522,13 @@ export default function OrdersListPage() {
                   </div>
                 </div>
 
-                {/* The advance share drives both figures, so they always sum
-                    back to the total rather than being two fixed labels. */}
-                <div className="mt-4 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1 text-[11px] text-slate-500">
-                      Advance Expected (
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={advancePercent}
-                        onChange={(e) =>
-                          setAdvancePercent(
-                            Math.min(
-                              100,
-                              Math.max(0, Number(e.target.value) || 0),
-                            ),
-                          )
-                        }
-                        className="w-9 border-0 bg-transparent p-0 text-[11px] text-slate-500 outline-none [appearance:textfield] focus:text-slate-800 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none dark:focus:text-white"
-                      />
-                      %)
-                    </span>
-
-                    <span className="text-[11px] font-semibold text-[#3b82f6]">
-                      {money(orderAdvanceExpected)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-slate-500">
-                      Balance Expected ({100 - advancePercent}%)
-                    </span>
-
-                    <span className="text-[11px] font-semibold text-slate-800 dark:text-white">
-                      {money(orderBalanceExpected)}
-                    </span>
-                  </div>
-
-                  {/* Kept from the previous build: what has actually been
-                      received, and what that leaves outstanding. The two rows
-                      above are expectations, these are the real position. */}
-                  <div className="border-t border-slate-100 pt-2.5 dark:border-[#17304a]">
-                    <OrderSummaryRow
-                      label="Advance Received"
-                      value={money(orderAdvance)}
-                      tone="emerald"
-                      edit={{
-                        amount: advanceReceived,
-                        onChange: setAdvanceReceived,
-                      }}
-                    />
-
-                    <div className="mt-2.5 flex items-center justify-between">
-                      <span className="text-[11px] text-slate-500">
-                        Outstanding Balance
-                      </span>
-
-                      <span className="text-[11px] font-semibold text-amber-500">
-                        {money(orderOutstanding)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                {/* The advance / balance split and what has been received
+                    live at the foot of the totals, where the arithmetic they
+                    come from is. This panel just states the figure. */}
               </div>
 
               {/* =================================================
-                ATTACHED DOCUMENTS & ANNEXURES
+                ATTACHED DOCUMENTS
             ================================================= */}
 
               <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 dark:border-[#17304a] dark:bg-[#071929]">
@@ -2559,24 +2536,11 @@ export default function OrdersListPage() {
                   <FiUpload size={16} className="text-slate-600" />
 
                   <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
-                    Attached Documents & Annexures
+                    Attached Documents
                   </h3>
                 </div>
 
-                {/* Remarks stays here: it is the one free-text field on the
-                    order and the design has nowhere else for it. */}
-                <label className="block text-[11px] text-slate-500 mb-1.5">
-                  Remarks
-                </label>
-
-                <textarea
-                  value={newOrder.remarks}
-                  onChange={(e) => updateNewOrder("remarks", e.target.value)}
-                  placeholder="Enter specific hardware requirements or customization requests..."
-                  className="w-full h-24 rounded-xl border border-slate-300 bg-white p-3 text-xs resize-none outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
-                />
-
-                <div className="mt-5">
+                <div>
                   {/* Hidden File Input */}
 
                   <input
@@ -2653,27 +2617,25 @@ export default function OrdersListPage() {
                   {/* Selected Attachments */}
 
                   {attachments.length > 0 && (
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       {attachments.map((file, index) => (
-                        <div
+                        <span
                           key={`${file.name}-${file.size}-${index}`}
-                          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                          title={formatFileSize(file.size)}
+                          className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 dark:border-[#17304a] dark:bg-[#0b2034] dark:text-slate-300"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-8 h-8 rounded-md bg-white border border-slate-200 flex items-center justify-center shrink-0">
-                              <FiUpload size={14} className="text-slate-500" />
-                            </div>
+                          {/* Spreadsheets get the green mark the design uses,
+                              so a BOQ annexure stands out from the PDFs. */}
+                          <FiFileText
+                            size={11}
+                            className={`shrink-0 ${
+                              /\.(xlsx?|csv)$/i.test(file.name)
+                                ? "text-emerald-600"
+                                : "text-rose-500"
+                            }`}
+                          />
 
-                            <div className="min-w-0">
-                              <p className="text-[10px] font-medium text-slate-700 truncate">
-                                {file.name}
-                              </p>
-
-                              <p className="text-[9px] text-slate-400">
-                                {formatFileSize(file.size)}
-                              </p>
-                            </div>
-                          </div>
+                          <span className="truncate">{file.name}</span>
 
                           <button
                             type="button"
@@ -2681,12 +2643,12 @@ export default function OrdersListPage() {
                               event.stopPropagation();
                               removeAttachment(index);
                             }}
-                            className="w-7 h-7 rounded-md flex items-center justify-center text-rose-500 hover:bg-rose-50 shrink-0"
                             title="Remove attachment"
+                            className="shrink-0 rounded p-0.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/20"
                           >
-                            <FiX size={14} />
+                            <FiX size={11} />
                           </button>
-                        </div>
+                        </span>
                       ))}
                     </div>
                   )}
@@ -3628,6 +3590,36 @@ export default function OrdersListPage() {
  * The figure sits in a fixed-width column so swapping it for its input on
  * the pencil leaves every other row exactly where it was.
  */
+/** Percentage cell inside the Products & Order Items table. */
+function PercentCell({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <div className="flex h-8 w-[70px] items-center rounded-md border border-slate-200 px-2 focus-within:border-slate-400 dark:border-[#17304a]">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={String(value)}
+        onChange={(event) =>
+          onChange(
+            Math.min(
+              100,
+              Math.max(0, Number(event.target.value.replace(/[^\d.]/g, "")) || 0),
+            ),
+          )
+        }
+        className="w-full min-w-0 border-0 bg-transparent p-0 text-xs text-slate-700 outline-none dark:text-white"
+      />
+
+      <span className="ml-1 shrink-0 text-[10px] text-slate-400">%</span>
+    </div>
+  );
+}
+
 function OrderSummaryRow({
   label,
   name,
@@ -3645,6 +3637,8 @@ function OrderSummaryRow({
     amount: number;
     mode?: AmountMode;
     base?: number;
+    /** "%" for a plain rate, where a rupee alternative makes no sense. */
+    unit?: "%";
     onChange: (next: number) => void;
     onModeChange?: (next: AmountMode) => void;
   };
@@ -3693,6 +3687,32 @@ function OrderSummaryRow({
 
       <div className="flex w-32 justify-end">
         {edit && editing ? (
+          edit.unit === "%" ? (
+            /* A rate has no rupee alternative, so it gets a plain input
+               rather than the ₹ / % selector the charges use. */
+            <div className="flex w-full items-center justify-end gap-1">
+              <input
+                autoFocus
+                type="text"
+                inputMode="decimal"
+                aria-label={name || label}
+                value={String(edit.amount)}
+                onChange={(event) =>
+                  edit.onChange(
+                    Number(event.target.value.replace(/[^\d.]/g, "")) || 0,
+                  )
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === "Escape") {
+                    setEditing(false);
+                  }
+                }}
+                className="h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-xs text-slate-800 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+              />
+
+              <span className="text-xs text-slate-500">%</span>
+            </div>
+          ) : (
           <AmountInput
             ariaLabel={name || label}
             width="w-full"
@@ -3704,6 +3724,7 @@ function OrderSummaryRow({
             onModeChange={edit.onModeChange}
             onDone={() => setEditing(false)}
           />
+          )
         ) : (
           <span className={`text-xs font-semibold ${valueTone}`}>{value}</span>
         )}

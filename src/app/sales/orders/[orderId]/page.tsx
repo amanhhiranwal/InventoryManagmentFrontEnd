@@ -20,6 +20,7 @@ import {
   getSalesOrderActivitiesApi,
   getSalesOrderApi,
   logSalesOrderActivityApi,
+  updateSalesOrderApi,
   nextSalesOrderStatuses,
   salesOrderStatusLabel,
   SALES_ORDER_STATUS_LABEL,
@@ -33,9 +34,10 @@ import {
   FiEdit2,
   FiFileText,
   FiInfo,
-  FiMapPin,
+  FiMinus,
   FiPackage,
   FiPlus,
+  FiTrash2,
   FiSend,
   FiShield,
 } from "react-icons/fi";
@@ -139,13 +141,27 @@ export default function SalesOrderDetailPage() {
   const [sending, setSending] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
 
+  /* Editable copies of the addresses, held apart from the saved order so a
+     failed save leaves what the user typed on screen rather than reverting
+     it, and Cancel can put the originals back. */
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [billingDraft, setBillingDraft] = useState<Record<string, any>>({});
+  const [shippingDraft, setShippingDraft] = useState<Record<string, any>>({});
+  const [sameAsBilling, setSameAsBilling] = useState(false);
+
   const loadOrder = useCallback(async () => {
     if (!orderId) return;
 
     try {
       setLoading(true);
 
-      setOrder(await getSalesOrderApi(orderId));
+      const saved = await getSalesOrderApi(orderId);
+
+      setOrder(saved);
+
+      setBillingDraft(asRecord(saved.billing_address));
+      setShippingDraft(asRecord(saved.shipping_address));
+      setEditingAddress(false);
     } catch (error: any) {
       console.error(error);
 
@@ -180,9 +196,6 @@ export default function SalesOrderDetailPage() {
   }, [loadOrder, loadActivities]);
 
   const customerInfo = asRecord(order?.customer_information);
-  const primaryContact = asRecord(customerInfo.primary_contact);
-  const billing = asRecord(order?.billing_address);
-  const shipping = asRecord(order?.shipping_address);
 
   const items = useMemo(
     () => (Array.isArray(order?.items) ? (order!.items as any[]) : []),
@@ -194,6 +207,69 @@ export default function SalesOrderDetailPage() {
   --------------------------------------------------------------- */
 
   const isDraft = order?.status === SALES_ORDER_STATUS.DRAFT;
+
+  /** Persist one partial change and fold the response back into the page. */
+  const patchOrder = async (
+    payload: Record<string, unknown>,
+    message: string,
+  ) => {
+    if (!order) return false;
+
+    setSending(true);
+
+    try {
+      const updated = await updateSalesOrderApi(order.id, payload as never);
+
+      setOrder(updated);
+
+      setBillingDraft(asRecord(updated.billing_address));
+      setShippingDraft(asRecord(updated.shipping_address));
+
+      addToast(message, "success");
+
+      return true;
+    } catch (error: any) {
+      console.error(error);
+
+      addToast(
+        error?.response?.data?.detail || "Failed to save the change.",
+        "error",
+      );
+
+      return false;
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const saveAddresses = async () => {
+    const ok = await patchOrder(
+      {
+        billing_address: billingDraft,
+        shipping_address: sameAsBilling ? billingDraft : shippingDraft,
+      },
+      "Address updated.",
+    );
+
+    if (ok) setEditingAddress(false);
+  };
+
+  /* Changing a line re-derives every total on the backend, so the summary
+     below can never disagree with the rows above it. */
+  const patchLine = async (index: number, field: string, value: number) => {
+    const next = items.map((item, position) =>
+      position === index ? { ...item, [field]: value } : item,
+    );
+
+    await patchOrder({ items: next }, "Order items updated.");
+  };
+
+  const removeLine = async (index: number) => {
+    await patchOrder(
+      { items: items.filter((_, position) => position !== index) },
+      "Line removed.",
+    );
+  };
 
   const sendForApproval = async () => {
     if (!order) return;
@@ -391,34 +467,78 @@ export default function SalesOrderDetailPage() {
                 </span>
               </div>
 
-              <Field label="Quotation ID" value={order.quotation_id} />
-              <Field label="PO Number" value={order.po_number} />
-              <Field label="PO Date" value={formatDate(order.po_date)} />
-              <Field label="Order Date" value={formatDate(order.order_date)} />
-            </div>
-
-            <div className="mt-5 border-t border-slate-100 pt-4 dark:border-[#17304a]">
-              <p className="mb-3 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                Primary Contact
-              </p>
-
-              <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
-                <Field
-                  label="Customer"
-                  value={primaryContact.name || order.customer_name}
-                />
-                <Field label="Designation" value={primaryContact.designation} />
-                <Field label="Phone" value={primaryContact.phone} />
-                <Field label="Email" value={primaryContact.email} />
-              </div>
             </div>
           </Card>
 
           {/* BILLING & SHIPPING */}
-          <Card icon={<FiMapPin size={15} />} title="Billing & Shipping">
+          {/* Editable in place behind the design's Edit Address control:
+              correcting an address is the commonest change to a saved order,
+              and sending the user back to the form for it is heavy-handed. */}
+          <Card
+            icon={<FiInfo size={15} />}
+            title="Billing & Shipping"
+            action={
+              editingAddress ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBillingDraft(asRecord(order.billing_address));
+                      setShippingDraft(asRecord(order.shipping_address));
+                      setEditingAddress(false);
+                    }}
+                    className="rounded-md px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={saveAddresses}
+                    disabled={sending}
+                    className="rounded-md bg-[#233353] px-3 py-1.5 text-[10px] font-bold text-white disabled:opacity-40"
+                  >
+                    {sending ? "Saving..." : "Save Address"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingAddress(true)}
+                  className="flex items-center gap-1 text-[10px] font-medium text-slate-500 hover:text-[#233353] dark:hover:text-white"
+                >
+                  <FiEdit2 size={10} />
+                  Edit Address
+                </button>
+              )
+            }
+          >
             <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-              <AddressBlock title="Billing Address" address={billing} />
-              <AddressBlock title="Shipping Address" address={shipping} />
+              <AddressFieldsBlock
+                title="Billing Address"
+                address={billingDraft}
+                disabled={!editingAddress}
+                onChange={setBillingDraft}
+              />
+
+              <AddressFieldsBlock
+                title="Shipping Address"
+                address={sameAsBilling ? billingDraft : shippingDraft}
+                disabled={sameAsBilling || !editingAddress}
+                onChange={setShippingDraft}
+                header={
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={sameAsBilling}
+                      disabled={!editingAddress}
+                      onChange={(event) => setSameAsBilling(event.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 accent-[#233353]"
+                    />
+                    Same as Billing
+                  </label>
+                }
+              />
             </div>
           </Card>
 
@@ -434,6 +554,7 @@ export default function SalesOrderDetailPage() {
                     <th className="px-3 py-2.5">Discount</th>
                     <th className="px-3 py-2.5">Tax</th>
                     <th className="px-3 py-2.5 text-right">Unit Price</th>
+                    <th className="w-12 px-3 py-2.5" />
                   </tr>
                 </thead>
 
@@ -441,7 +562,7 @@ export default function SalesOrderDetailPage() {
                   {items.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="py-10 text-center text-xs text-slate-400"
                       >
                         No products on this order.
@@ -456,36 +577,102 @@ export default function SalesOrderDetailPage() {
                           key={`${item.product_id || item.description}-${index}`}
                           className="border-b border-slate-100 dark:border-[#17304a]/70"
                         >
+                          {/* Product family with its SKU beneath, and the
+                              specific model alongside - the shape the design
+                              uses and the quotation already stored. Orders
+                              saved before those fields existed fall back to
+                              the description they did carry. */}
                           <td className="px-3 py-3">
                             <p className="text-[11px] font-bold text-slate-800 dark:text-white">
-                              {item.description || item.item || "Product"}
+                              {item.product || item.description || item.item || "Product"}
                             </p>
 
-                            {item.product_id && (
+                            {(item.sku || item.product_id) && (
                               <p className="text-[9px] text-slate-400">
-                                SKU: {item.product_id}
+                                SKU: {item.sku || item.product_id}
                               </p>
                             )}
                           </td>
 
                           <td className="px-3 py-3 text-[10px] text-slate-500">
-                            {item.model || "-"}
+                            {item.model || item.description || "-"}
                           </td>
 
-                          <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">
-                            {totals.quantity}
+                          {/* Quantity, discount and tax are editable here, as
+                              the design has them - every change re-derives the
+                              totals below on the backend. */}
+                          <td className="px-3 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                disabled={sending || totals.quantity <= 1}
+                                onClick={() =>
+                                  patchLine(
+                                    index,
+                                    "quantity_case",
+                                    totals.quantity - 1,
+                                  )
+                                }
+                                className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 disabled:opacity-30 dark:border-[#17304a]"
+                              >
+                                <FiMinus size={10} />
+                              </button>
+
+                              <span className="min-w-4 text-center text-[11px] text-slate-700 dark:text-slate-300">
+                                {totals.quantity}
+                              </span>
+
+                              <button
+                                type="button"
+                                disabled={sending}
+                                onClick={() =>
+                                  patchLine(
+                                    index,
+                                    "quantity_case",
+                                    totals.quantity + 1,
+                                  )
+                                }
+                                className="flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 disabled:opacity-30 dark:border-[#17304a]"
+                              >
+                                <FiPlus size={10} />
+                              </button>
+                            </div>
                           </td>
 
-                          <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">
-                            {Number(item.discount) || 0} %
+                          <td className="px-3 py-3">
+                            <PercentCell
+                              value={Number(item.discount) || 0}
+                              disabled={sending}
+                              onCommit={(next) =>
+                                patchLine(index, "discount", next)
+                              }
+                            />
                           </td>
 
-                          <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">
-                            {Number(item.tax_rate) || 0} %
+                          <td className="px-3 py-3">
+                            <PercentCell
+                              value={Number(item.tax_rate) || 0}
+                              disabled={sending}
+                              onCommit={(next) =>
+                                patchLine(index, "tax_rate", next)
+                              }
+                            />
                           </td>
 
                           <td className="px-3 py-3 text-right text-[11px] font-semibold text-slate-800 dark:text-white">
                             {Number(totals.unitPrice).toLocaleString("en-IN")}
+                          </td>
+
+                          <td className="px-3 py-3">
+                            <button
+                              type="button"
+                              aria-label="Remove line"
+                              disabled={sending}
+                              onClick={() => removeLine(index)}
+                              className="rounded-md p-1.5 text-rose-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30 dark:hover:bg-rose-950/20"
+                            >
+                              <FiTrash2 size={13} />
+                            </button>
                           </td>
                         </tr>
                       );
@@ -617,6 +804,50 @@ export default function SalesOrderDetailPage() {
         ===================================================== */}
 
         <div className="space-y-4">
+          {/* ORDER SUMMARY
+
+              The figure and how it splits. The order's own totals sit under
+              the line items; this states the headline and the terms. */}
+          <Card icon={<FiFileText size={15} />} title="Order Summary">
+            <div className="rounded-xl bg-emerald-50 px-4 py-3 dark:bg-emerald-950/20">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  Total Payable
+                </span>
+
+                <span className="text-[17px] font-bold text-slate-900 dark:text-white">
+                  {money(order.grand_total)}
+                </span>
+              </div>
+            </div>
+
+            <p className="mb-2 mt-4 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+              Payment Terms:
+            </p>
+
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-500">
+                  {Number(order.advance_percent ?? 30)}% Advance
+                </span>
+
+                <span className="text-[11px] font-semibold text-amber-500">
+                  {money(order.advance_expected)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-500">
+                  {100 - Number(order.advance_percent ?? 30)}% Against Delivery
+                </span>
+
+                <span className="text-[11px] font-semibold text-[#3b82f6]">
+                  {money(order.balance_expected)}
+                </span>
+              </div>
+            </div>
+          </Card>
+
           {/* ORDER PROCESS */}
           <Card icon={<FiClock size={15} />} title="Order Process">
             <div className="space-y-4">
@@ -999,39 +1230,126 @@ function Field({ label, value }: { label: string; value?: unknown }) {
   );
 }
 
-function AddressBlock({
+function PercentCell({
+  value,
+  disabled,
+  onCommit,
+}: {
+  value: number;
+  disabled?: boolean;
+  onCommit: (next: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => setDraft(String(value)), [value]);
+
+  const commit = () => {
+    const next = Math.min(100, Math.max(0, Number(draft.replace(/[^\d.]/g, "")) || 0));
+
+    if (next !== value) onCommit(next);
+    else setDraft(String(value));
+  };
+
+  return (
+    <div className="flex h-8 w-[70px] items-center rounded-md border border-slate-200 px-2 focus-within:border-[#233353] dark:border-[#17304a]">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={draft}
+        disabled={disabled}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          /* Commit on Enter directly rather than leaning on blur() to do it
+             - the field stays focused for the next edit, and Enter behaves
+             the same whether or not the window has focus. */
+          if (event.key === "Enter") commit();
+          if (event.key === "Escape") setDraft(String(value));
+        }}
+        className="w-full min-w-0 border-0 bg-transparent p-0 text-[11px] text-slate-700 outline-none disabled:opacity-50 dark:text-white"
+      />
+
+      <span className="ml-1 shrink-0 text-[10px] text-slate-400">%</span>
+    </div>
+  );
+}
+
+function AddressFieldsBlock({
   title,
   address,
+  onChange,
+  disabled,
+  header,
 }: {
   title: string;
   address: Record<string, any>;
+  onChange: (next: Record<string, any>) => void;
+  /** Shipping is greyed out while it mirrors billing, and everything is
+      greyed until Edit Address is pressed. */
+  disabled?: boolean;
+  header?: React.ReactNode;
 }) {
-  const lines = [
-    address.street,
-    [address.city, address.state].filter(Boolean).join(", "),
-    [address.pin, address.country].filter(Boolean).join(" "),
-  ].filter((line) => line && String(line).trim());
+  const set = (field: string, value: string) =>
+    onChange({ ...address, [field]: value });
+
+  const input =
+    "h-9 w-full rounded-lg border border-slate-200 px-3 text-[11px] text-slate-700 outline-none transition focus:border-[#233353] disabled:border-transparent disabled:bg-transparent disabled:px-0 disabled:text-slate-700 dark:border-[#17304a] dark:bg-[#051422] dark:text-white dark:disabled:bg-transparent";
 
   return (
     <div>
-      <p className="mb-2 border-b border-slate-100 pb-2 text-xs font-semibold text-slate-600 dark:border-[#17304a] dark:text-slate-300">
-        {title}
-      </p>
+      <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-2 dark:border-[#17304a]">
+        <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+          {title}
+        </p>
 
-      {lines.length ? (
-        <div className="space-y-1">
-          {lines.map((line, index) => (
-            <p
-              key={index}
-              className="text-[11px] text-slate-700 dark:text-slate-300"
-            >
-              {line}
-            </p>
-          ))}
+        {header}
+      </div>
+
+      <div className="space-y-3">
+        <input
+          value={address.street || ""}
+          disabled={disabled}
+          onChange={(event) => set("street", event.target.value)}
+          placeholder="Street Address, Building, Suite"
+          className={input}
+        />
+
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            value={address.state || ""}
+            disabled={disabled}
+            onChange={(event) => set("state", event.target.value)}
+            placeholder="State"
+            className={input}
+          />
+
+          <input
+            value={address.city || ""}
+            disabled={disabled}
+            onChange={(event) => set("city", event.target.value)}
+            placeholder="City"
+            className={input}
+          />
         </div>
-      ) : (
-        <p className="text-[11px] text-slate-400">No address recorded.</p>
-      )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <input
+            value={address.country || ""}
+            disabled={disabled}
+            onChange={(event) => set("country", event.target.value)}
+            placeholder="Country"
+            className={input}
+          />
+
+          <input
+            value={address.pin || ""}
+            disabled={disabled}
+            onChange={(event) => set("pin", event.target.value)}
+            placeholder="PIN / ZIP Code"
+            className={input}
+          />
+        </div>
+      </div>
     </div>
   );
 }
