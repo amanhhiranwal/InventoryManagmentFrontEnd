@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
 
 import {
@@ -17,7 +18,9 @@ import {
   SALES_ORDER_STATUS_LABEL,
   SalesOrderStatus as CanonicalSalesOrderStatus,
   createSalesOrderApi,
+  getSalesOrderApi,
   getSalesOrdersApi,
+  updateSalesOrderApi,
   nextSalesOrderStatuses,
   salesOrderStatusLabel,
   updateSalesOrderStatusApi,
@@ -53,6 +56,7 @@ import {
   FiMapPin,
   FiCamera,
   FiUpload,
+  FiShield,
 } from "react-icons/fi";
 
 /* =========================================================
@@ -177,6 +181,15 @@ const STATES = [
 
 const STATUS_OPTIONS = ["All", "Active", "Inactive"];
 
+/* Seeded into every new order's Terms & Conditions block. Kept here rather
+   than printed into the markup so the user can edit or remove any of them and
+   what they end up with is what gets saved. */
+const DEFAULT_COMMERCIAL_TERMS = [
+  "Payment Terms: 30% advance against Proforma Invoice; 70% balance upon delivery challan verification.",
+  "Delivery Lead Time: 15 to 20 working days from receipt of initial mobilization advance and confirmed delivery slot.",
+  "Warranty & Support: Standard 3-year comprehensive on-site OEM warranty on IFP panels and Core OPS compute modules.",
+];
+
 /* =========================================================
    HELPERS
 ========================================================= */
@@ -208,6 +221,9 @@ const getState = (order: Order) => order.state || "Delhi";
 
 export default function OrdersListPage() {
   const { addToast } = useUIStore();
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   /* =======================================================
      ORDERS LIST STATE
@@ -271,18 +287,37 @@ export default function OrdersListPage() {
 
   const [creatingOrder, setCreatingOrder] = useState(false);
 
+  /* Set when the detail page sent us here to edit an existing order; the
+     form then saves through the update endpoint instead of creating a
+     second order. */
+  const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
+
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
 
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
+  /* Commercial conditions carried onto every order. Editable, but seeded
+     with the standard set so a user is not made to retype them each time. */
+  const [commercialTerms, setCommercialTerms] = useState<string[]>([
+    ...DEFAULT_COMMERCIAL_TERMS,
+  ]);
+
+  /* Share of the total expected up front; drives the Advance / Balance split
+     the summary shows, which used to be a fixed 30/70 printed into the
+     markup with nothing behind it. */
+  const [advancePercent, setAdvancePercent] = useState(30);
+
   const [newOrder, setNewOrder] = useState({
     // Order Information
     salesOrderId: "",
-    opportunityId: "",
+    quotationId: "",
     orderDate: "",
+    poNumber: "",
+    poDate: "",
     assignedTo: "",
     salesExecutive: "",
+    technicalNotes: "",
 
     // Customer Information
     customerName: "",
@@ -892,8 +927,9 @@ export default function OrdersListPage() {
 
     setNewOrder((current) => ({
       ...current,
-      salesOrderId: `SO-${String(Date.now()).slice(-4)}`,
-      orderDate: now.toISOString(),
+      salesOrderId: "",
+      /* The date input needs YYYY-MM-DD; an ISO timestamp renders blank. */
+      orderDate: now.toISOString().slice(0, 10),
     }));
 
     setShowCreateOrder(true);
@@ -912,6 +948,7 @@ export default function OrdersListPage() {
 
   const closeCreateOrder = () => {
     setShowCreateOrder(false);
+    setEditingOrderId(null);
     setShowProductModal(false);
     setSelectedProducts([]);
     setAttachments([]);
@@ -924,6 +961,135 @@ export default function OrdersListPage() {
     setInstallationLumpsum(0);
     setAdvanceReceived(0);
   };
+
+  /* -------------------------------------------------------
+     EDIT AN EXISTING ORDER
+
+     The detail page's Edit Order button navigates here with ?edit=<id>.
+     Everything the form collects is read back off the saved order so the
+     user edits what is actually stored, not a blank form.
+  ------------------------------------------------------- */
+
+  const openOrderForEdit = useCallback(
+    async (id: string) => {
+      try {
+        const saved = await getSalesOrderApi(id);
+
+        const info = (saved.customer_information || {}) as Record<string, any>;
+        const contact = (info.primary_contact || {}) as Record<string, any>;
+        const billing = (saved.billing_address || {}) as Record<string, any>;
+        const shipping = (saved.shipping_address || {}) as Record<string, any>;
+
+        const toDateInput = (value?: string | null) =>
+          value ? String(value).slice(0, 10) : "";
+
+        setNewOrder({
+          salesOrderId: saved.order_number || "",
+          quotationId: saved.quotation_id || "",
+          orderDate: toDateInput(saved.order_date),
+          poNumber: saved.po_number || "",
+          poDate: toDateInput(saved.po_date),
+          assignedTo: saved.assigned_to || "",
+          salesExecutive: saved.sales_executive || "",
+          technicalNotes: saved.technical_notes || "",
+
+          customerName: saved.customer_name || "",
+          companyName: saved.company_name || "",
+          customerType: saved.customer_type || "",
+          gst: info.gst || "",
+          pan: info.pan || "",
+          cin: info.cin || "",
+          registration: info.registration || "",
+          primaryContact: contact.name || "",
+          phone: contact.phone || "",
+          email: contact.email || "",
+          designation: contact.designation || "",
+          state: saved.state || "",
+
+          billingStreet: billing.street || "",
+          billingCountry: billing.country || "",
+          billingState: billing.state || "",
+          billingCity: billing.city || "",
+          billingPin: billing.pin || "",
+
+          shippingStreet: shipping.street || "",
+          shippingCountry: shipping.country || "",
+          shippingState: shipping.state || "",
+          shippingCity: shipping.city || "",
+          shippingPin: shipping.pin || "",
+
+          sameAsBilling: false,
+
+          remarks: saved.remarks || "",
+        });
+
+        setSelectedProducts(
+          (saved.items || []).map((item: any, index: number) => {
+            /* The line's category is not stored on the order - it is a
+               property of the catalogue product. Looking it back up keeps
+               the Product column populated without a column that would go
+               stale the moment a product was recategorised. */
+            const catalogued = PRODUCT_CATALOG.find(
+              (product) => product.id === String(item.product_id),
+            );
+
+            return {
+              id: String(item.product_id || `line-${index}`),
+              name: item.description || item.item || "Product",
+              category: catalogued?.category || item.category || "",
+              price: Number(item.price ?? item.rate) || 0,
+              quantity: Number(item.quantity_case ?? item.qty) || 1,
+              discount: Number(item.discount) || 0,
+              tax: Number(item.tax_rate) || 0,
+            };
+          }),
+        );
+
+        setDiscountMode((saved.discount_mode as AmountMode) || "AMOUNT");
+        setDiscountInput(
+          saved.discount_input === undefined ? null : saved.discount_input,
+        );
+        setOrcMode((saved.orc_mode as AmountMode) || "AMOUNT");
+        setOrcInput(saved.orc_input || 0);
+        setFreightCharges(saved.freight_charges || 0);
+        setInstallationLumpsum(saved.installation_lumpsum || 0);
+        setAdvanceReceived(saved.advance_received || 0);
+        setAdvancePercent(
+          saved.advance_percent === null || saved.advance_percent === undefined
+            ? 30
+            : saved.advance_percent,
+        );
+        setCommercialTerms(
+          saved.commercial_terms?.length
+            ? saved.commercial_terms
+            : [...DEFAULT_COMMERCIAL_TERMS],
+        );
+
+        setEditingOrderId(saved.id);
+        setShowCreateOrder(true);
+      } catch (error: any) {
+        console.error(error);
+
+        addToast(
+          error?.response?.data?.detail || "Unable to open this order.",
+          "error",
+        );
+      }
+    },
+    [addToast],
+  );
+
+  const editParam = searchParams.get("edit");
+
+  useEffect(() => {
+    if (!editParam) return;
+
+    openOrderForEdit(editParam);
+
+    /* Clear the parameter so a refresh, or closing the form, does not
+       reopen the editor behind the user's back. */
+    router.replace("/sales/orders");
+  }, [editParam, openOrderForEdit, router]);
 
   /* =======================================================
      PRODUCT MODAL
@@ -1041,11 +1207,15 @@ export default function OrdersListPage() {
 
         sales_executive: newOrder.salesExecutive,
 
-        opportunity_id: newOrder.opportunityId
-          ? Number(newOrder.opportunityId)
-          : null,
-
         sales_order_id: newOrder.salesOrderId,
+
+        quotation_id: newOrder.quotationId || undefined,
+
+        po_number: newOrder.poNumber || undefined,
+
+        po_date: newOrder.poDate
+          ? new Date(newOrder.poDate).toISOString()
+          : null,
 
         state: newOrder.state || newOrder.billingState,
 
@@ -1089,6 +1259,23 @@ export default function OrdersListPage() {
 
         remarks: newOrder.remarks,
 
+        advance_percent: advancePercent,
+
+        /* Blank bullets are dropped rather than saved as empty list items. */
+        commercial_terms: commercialTerms
+          .map((term) => term.trim())
+          .filter(Boolean),
+
+        technical_notes: newOrder.technicalNotes || undefined,
+
+        /* Only the file metadata is stored; there is no upload endpoint yet,
+           so the bytes stay in the browser. */
+        attachments: attachments.map((file) => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        })),
+
         customer_information: {
           customer_name: newOrder.customerName,
           organization_name: newOrder.companyName,
@@ -1123,28 +1310,44 @@ export default function OrdersListPage() {
         },
       };
 
-      const created = await createSalesOrderApi(
-        payload as Parameters<typeof createSalesOrderApi>[0],
-      );
+      /* Editing saves through the update endpoint; status is left alone
+         there, because an order already past Draft must not be dragged back
+         to it just because someone corrected an address. */
+      const created = editingOrderId
+        ? await updateSalesOrderApi(
+            editingOrderId,
+            (({ status: _status, ...rest }) => rest)(payload) as Parameters<
+              typeof updateSalesOrderApi
+            >[1],
+          )
+        : await createSalesOrderApi(
+            payload as Parameters<typeof createSalesOrderApi>[0],
+          );
 
       if (created) {
         addToast(
-          asDraft
-            ? "Sales order saved as draft."
-            : "Sales order created successfully.",
+          editingOrderId
+            ? "Sales order updated."
+            : asDraft
+              ? "Sales order saved as draft."
+              : "Sales order created successfully.",
           "success",
         );
 
         setShowCreateOrder(false);
+        setEditingOrderId(null);
 
         setSelectedProducts([]);
 
         setNewOrder({
           salesOrderId: "",
-          opportunityId: "",
+          quotationId: "",
           orderDate: "",
+          poNumber: "",
+          poDate: "",
           assignedTo: "",
           salesExecutive: "",
+          technicalNotes: "",
 
           customerName: "",
           companyName: "",
@@ -1185,28 +1388,10 @@ export default function OrdersListPage() {
     }
   };
 
-  const formatOrderDisplayDate = (value: string) => {
-    if (!value) return "-";
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return "-";
-    }
-
-    return date.toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  };
-
+  /* Order Date is a real date input now, and Sales Executive is gone from
+     the form, so the display helper and that field's fallback went with
+     them. */
   const assignedUserDisplay = newOrder.assignedTo.trim() || "Not Assigned";
-
-  const salesExecutiveDisplay =
-    newOrder.salesExecutive.trim() ||
-    newOrder.assignedTo.trim() ||
-    "Not Assigned";
 
   const orderSubtotal = selectedProducts.reduce(
     (sum, item) => sum + item.price * item.quantity,
@@ -1253,6 +1438,12 @@ export default function OrdersListPage() {
 
   const orderOutstanding = orderGrandTotal - orderAdvance;
 
+  /* The Advance / Balance split shown on the Order Summary. Derived from the
+     share rather than printed as a fixed 30/70, so the two figures always sum
+     back to the total. The backend derives the same pair on read. */
+  const orderAdvanceExpected = (orderGrandTotal * advancePercent) / 100;
+  const orderBalanceExpected = orderGrandTotal - orderAdvanceExpected;
+
   /* =======================================================
      NEW SALES ORDER UI
   ======================================================= */
@@ -1265,8 +1456,9 @@ export default function OrdersListPage() {
       ================================================= */}
 
         <FormPageHeader
-          title="New Sales Order"
+          title={editingOrderId ? "Edit Sales Order" : "New Sales Order"}
           parentLabel="Sales Order"
+          currentLabel={editingOrderId ? "Edit" : "New"}
           actions={
             <>
               <CancelButton onClick={closeCreateOrder} />
@@ -1317,63 +1509,36 @@ export default function OrdersListPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">
-                  {/* =================================================
-                          ROW 1 - SALES ORDER ID
-                      ================================================= */}
-
+                  {/* Sales Order ID - assigned by the backend on save. */}
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
                       Sales Order ID:
                     </span>
 
-                    <span className="text-[11px] font-semibold text-slate-800">
-                      {newOrder.salesOrderId || "-"}
+                    <span className="text-[11px] font-semibold text-slate-800 dark:text-white">
+                      {newOrder.salesOrderId || "Assigned on save"}
                     </span>
                   </div>
 
-                  {/* =================================================
-                          ROW 1 - OPPORTUNITY ID
-                      ================================================= */}
-
+                  {/* Quotation this order was raised against. Replaces the
+                      Opportunity ID field, which asked for a numeric id the
+                      user had no way of knowing. */}
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
-                      Opportunity ID:
+                      Quotation ID:
                     </span>
 
                     <input
-                      value={newOrder.opportunityId}
+                      value={newOrder.quotationId}
                       onChange={(e) =>
-                        updateNewOrder("opportunityId", e.target.value)
+                        updateNewOrder("quotationId", e.target.value)
                       }
-                      placeholder="#LD-9021"
-                      className="h-7 w-[150px] rounded-md border border-slate-200 px-2 text-[11px] text-slate-700 outline-none focus:border-slate-400"
+                      placeholder="#QT-4822"
+                      className="h-7 w-[150px] rounded-md border border-slate-200 px-2 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
                     />
                   </div>
 
-                  {/* =================================================
-                          ROW 2 - ORDER DATE
-                      ================================================= */}
-
-                  <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
-                      Order Date:
-                    </span>
-
-                    <span className="text-[11px] font-semibold text-slate-800">
-                      {formatOrderDisplayDate(newOrder.orderDate)}
-                    </span>
-                  </div>
-
-                  {/* =================================================
-                      ROW 2 - EMPTY COLUMN
-                      ================================================= */}
-
-                  <div />
-
-                  {/* =================================================
-                          ROW 3 - ASSIGNED TO
-                      ================================================= */}
-
+                  {/* Assigned To */}
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-slate-500">
                       Assigned To:
@@ -1390,32 +1555,69 @@ export default function OrdersListPage() {
                           updateNewOrder("assignedTo", e.target.value)
                         }
                         placeholder="Rohit S."
-                        className="h-7 w-[100px] rounded-md border border-slate-200 px-2 text-[11px] text-slate-700 outline-none focus:border-slate-400"
+                        className="h-7 w-[120px] rounded-md border border-slate-200 px-2 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
                       />
                     </div>
                   </div>
 
-                  {/* =================================================
-                          ROW 3 - SALES EXECUTIVE
-                      ================================================= */}
+                  <div />
 
-                  <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
-                      Sales Executive:
-                    </span>
+                  {/* Order Date. Was display-only text with no way to set it,
+                      so every order was dated the moment it was saved. */}
+                  <div className="md:col-span-2">
+                    <label className="mb-1.5 block text-[11px] text-slate-500">
+                      Order Date: <span className="text-rose-500">*</span>
+                    </label>
 
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[8px] text-slate-600">
-                        {salesExecutiveDisplay.charAt(0).toUpperCase()}
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:border-[#17304a]">
+                        <FiCalendar size={14} />
                       </span>
 
                       <input
-                        value={newOrder.salesExecutive}
+                        type="date"
+                        value={newOrder.orderDate}
                         onChange={(e) =>
-                          updateNewOrder("salesExecutive", e.target.value)
+                          updateNewOrder("orderDate", e.target.value)
                         }
-                        placeholder="Rohit S."
-                        className="h-7 w-[100px] rounded-md border border-slate-200 px-2 text-[11px] text-slate-700 outline-none focus:border-slate-400"
+                        className="h-9 flex-1 rounded-lg border border-slate-200 px-3 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* The customer's own purchase order. */}
+                  <div>
+                    <label className="mb-1.5 block text-[11px] text-slate-500">
+                      PO Number
+                    </label>
+
+                    <input
+                      value={newOrder.poNumber}
+                      onChange={(e) =>
+                        updateNewOrder("poNumber", e.target.value)
+                      }
+                      placeholder="PO-7842"
+                      className="h-9 w-full rounded-lg border border-slate-200 px-3 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-[11px] text-slate-500">
+                      PO Date
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:border-[#17304a]">
+                        <FiCalendar size={14} />
+                      </span>
+
+                      <input
+                        type="date"
+                        value={newOrder.poDate}
+                        onChange={(e) =>
+                          updateNewOrder("poDate", e.target.value)
+                        }
+                        className="h-9 flex-1 rounded-lg border border-slate-200 px-3 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
                       />
                     </div>
                   </div>
@@ -1423,7 +1625,7 @@ export default function OrdersListPage() {
               </div>
 
               {/* =================================================
-                CUSTOMER INFORMATION
+                ORGANIZATION DETAILS
             ================================================= */}
 
               <div className="border-t border-slate-100 mt-6 pt-5">
@@ -1435,7 +1637,7 @@ export default function OrdersListPage() {
                   </div>
 
                   <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
-                    Customer Information
+                    Organization Details
                   </h3>
                 </div>
 
@@ -1632,7 +1834,7 @@ export default function OrdersListPage() {
               </div>
 
               {/* =================================================
-                BILLING & SHIPPING
+                LOCATION INFORMATION
             ================================================= */}
 
               <div className="border-t border-slate-100 mt-6 pt-5">
@@ -1640,7 +1842,7 @@ export default function OrdersListPage() {
                   <FiMapPin size={16} className="text-slate-600" />
 
                   <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
-                    Billing & Shipping
+                    Location Information
                   </h3>
                 </div>
 
@@ -2042,6 +2244,192 @@ export default function OrdersListPage() {
                   </table>
                 </div>
               </div>
+
+              {/* =================================================
+                ORDER TOTALS
+            ================================================= */}
+
+              <div className="mt-5 flex justify-end">
+                <div className="w-full max-w-[420px] space-y-3">
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500">
+                          Subtotal (Products)
+                        </span>
+
+                        <span className="text-xs font-semibold text-slate-800">
+                          {money(orderSubtotal)}
+                        </span>
+                      </div>
+
+                      {/* Discount defaults to the per-line total; entering one
+                          here overrides it, in rupees or as a percentage. */}
+                      <OrderSummaryRow
+                        label="Total Discount"
+                        value={`-${money(orderDiscount)}`}
+                        tone="rose"
+                        edit={{
+                          amount:
+                            discountInput === null
+                              ? Math.round(orderDiscount)
+                              : discountInput,
+                          mode: discountMode,
+                          base: orderSubtotal,
+                          onChange: setDiscountInput,
+                          onModeChange: setDiscountMode,
+                        }}
+                      />
+
+                      <OrderSummaryRow
+                        label={`ORC (${orderOrcPercent.toFixed(2)}%)`}
+                        name="ORC"
+                        value={`+${money(orderOrc)}`}
+                        edit={{
+                          amount: orcInput,
+                          mode: orcMode,
+                          base: orderSubtotal,
+                          onChange: setOrcInput,
+                          onModeChange: setOrcMode,
+                        }}
+                      />
+
+                      <OrderSummaryRow
+                        label="Freight Charges"
+                        value={`+${money(freightCharges)}`}
+                        edit={{
+                          amount: freightCharges,
+                          onChange: setFreightCharges,
+                        }}
+                      />
+
+                      <OrderSummaryRow
+                        label="Lumpsum (Installation)"
+                        value={`+${money(installationLumpsum)}`}
+                        edit={{
+                          amount: installationLumpsum,
+                          onChange: setInstallationLumpsum,
+                        }}
+                      />
+
+                      <div className="border-t border-slate-100 pt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-500">
+                            Taxable Amount
+                          </span>
+
+                          <span className="text-xs font-semibold text-slate-800">
+                            {money(orderTaxableAmount)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between mt-3">
+                          <span className="text-xs text-slate-500">
+                            Estimated GST ({ORDER_GST_PERCENT}%)
+                          </span>
+
+                          <span className="text-xs font-semibold text-slate-800">
+                            {money(orderGst)}
+                          </span>
+                        </div>
+                      </div>
+
+                  {/* What the customer pays. The right panel splits this into
+                      the advance and the balance. */}
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-[#17304a]">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      Total Payable:
+                    </span>
+
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">
+                      {money(orderGrandTotal)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* =================================================
+                TERMS, CONDITIONS & TECHNICAL NOTES
+            ================================================= */}
+
+              <div className="border-t border-slate-100 mt-6 pt-5 dark:border-[#17304a]">
+                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
+                  <FiShield size={16} className="text-slate-600" />
+
+                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+                    Terms, Conditions & Technical Notes
+                  </h3>
+                </div>
+
+                <div className="rounded-xl bg-slate-50 p-4 dark:bg-[#0b2034]">
+                  <p className="mb-3 text-[11px] font-semibold text-slate-500">
+                    Pre-filled Commercial Conditions
+                  </p>
+
+                  <div className="space-y-2.5">
+                    {commercialTerms.map((term, index) => (
+                      <div key={index} className="flex items-start gap-2">
+                        <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#24395f]" />
+
+                        {/* Editable, so a condition that does not apply to
+                            this order can be changed or emptied out rather
+                            than being printed regardless. */}
+                        <textarea
+                          rows={2}
+                          value={term}
+                          onChange={(e) =>
+                            setCommercialTerms((current) =>
+                              current.map((item, i) =>
+                                i === index ? e.target.value : item,
+                              ),
+                            )
+                          }
+                          className="min-h-[34px] w-full resize-none rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[11px] leading-5 text-slate-600 outline-none hover:border-slate-200 focus:border-slate-300 focus:bg-white dark:text-slate-300 dark:hover:border-[#17304a] dark:focus:bg-[#051422]"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCommercialTerms((current) =>
+                              current.filter((_, i) => i !== index),
+                            )
+                          }
+                          title="Remove condition"
+                          className="mt-1 shrink-0 rounded-md p-1 text-slate-400 hover:bg-white hover:text-rose-500 dark:hover:bg-[#051422]"
+                        >
+                          <FiX size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCommercialTerms((current) => [...current, ""])
+                    }
+                    className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-[#24395f] hover:underline dark:text-slate-300"
+                  >
+                    <FiPlus size={12} />
+                    Add Condition
+                  </button>
+                </div>
+
+                <div className="mt-4">
+                  <p className="mb-2 text-[11px] font-medium text-slate-500">
+                    Technical Scope & Deployment Notes
+                  </p>
+
+                  <textarea
+                    rows={3}
+                    value={newOrder.technicalNotes}
+                    onChange={(e) =>
+                      updateNewOrder("technicalNotes", e.target.value)
+                    }
+                    placeholder="Agreed scope includes unboxing, wall-mounting bracket rigging, firmware calibration and operations training."
+                    className="w-full resize-none rounded-xl bg-slate-50 p-3 text-[11px] leading-5 text-slate-600 outline-none focus:ring-1 focus:ring-slate-300 dark:bg-[#0b2034] dark:text-slate-300"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* =================================================
@@ -2049,6 +2437,10 @@ export default function OrdersListPage() {
           ================================================= */}
 
             <div className="space-y-3">
+              {/* =================================================
+                ORDER SUMMARY
+            ================================================= */}
+
               {/* =================================================
                 ORDER SUMMARY
             ================================================= */}
@@ -2062,139 +2454,86 @@ export default function OrdersListPage() {
                   </h3>
                 </div>
 
-                <div className="space-y-3">
+                <div className="rounded-lg bg-emerald-50 px-4 py-3 dark:bg-emerald-950/20">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500">
-                      Subtotal (Products)
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      Total Payable
                     </span>
 
-                    <span className="text-xs font-semibold text-slate-800">
-                      {money(orderSubtotal)}
+                    <span className="text-[17px] font-bold text-slate-900 dark:text-white">
+                      {money(orderGrandTotal)}
                     </span>
                   </div>
+                </div>
 
-                  {/* Discount defaults to the per-line total; entering one
-                      here overrides it, in rupees or as a percentage. */}
-                  <OrderSummaryRow
-                    label="Total Discount"
-                    value={`-${money(orderDiscount)}`}
-                    tone="rose"
-                    edit={{
-                      amount:
-                        discountInput === null
-                          ? Math.round(orderDiscount)
-                          : discountInput,
-                      mode: discountMode,
-                      base: orderSubtotal,
-                      onChange: setDiscountInput,
-                      onModeChange: setDiscountMode,
-                    }}
-                  />
-
-                  <OrderSummaryRow
-                    label={`ORC (${orderOrcPercent.toFixed(2)}%)`}
-                    name="ORC"
-                    value={`+${money(orderOrc)}`}
-                    edit={{
-                      amount: orcInput,
-                      mode: orcMode,
-                      base: orderSubtotal,
-                      onChange: setOrcInput,
-                      onModeChange: setOrcMode,
-                    }}
-                  />
-
-                  <OrderSummaryRow
-                    label="Freight Charges"
-                    value={`+${money(freightCharges)}`}
-                    edit={{
-                      amount: freightCharges,
-                      onChange: setFreightCharges,
-                    }}
-                  />
-
-                  <OrderSummaryRow
-                    label="Lumpsum (Installation)"
-                    value={`+${money(installationLumpsum)}`}
-                    edit={{
-                      amount: installationLumpsum,
-                      onChange: setInstallationLumpsum,
-                    }}
-                  />
-
-                  <div className="border-t border-slate-100 pt-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-500">
-                        Taxable Amount
-                      </span>
-
-                      <span className="text-xs font-semibold text-slate-800">
-                        {money(orderTaxableAmount)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs text-slate-500">
-                        Estimated GST ({ORDER_GST_PERCENT}%)
-                      </span>
-
-                      <span className="text-xs font-semibold text-slate-800">
-                        {money(orderGst)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Grand Total */}
-
-                  <div className="mt-1 rounded-lg bg-slate-100 border-b border-[#24395f] px-3 py-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-slate-700">
-                        Grand Total
-                      </span>
-
-                      <span className="text-sm font-bold text-slate-800">
-                        {money(orderGrandTotal)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Commission */}
-
-                  <div className="pt-1 flex items-center justify-between">
-                    <span className="text-xs text-slate-500">
-                      Estimated Commission
-                    </span>
-
-                    <span className="text-xs font-semibold text-slate-800">
-                      ₹0
-                    </span>
-                  </div>
-
-                  <OrderSummaryRow
-                    label="Advance Received"
-                    value={money(orderAdvance)}
-                    tone="emerald"
-                    edit={{
-                      amount: advanceReceived,
-                      onChange: setAdvanceReceived,
-                    }}
-                  />
-
-                  {/* Grand total less whatever has already been received. */}
+                {/* The advance share drives both figures, so they always sum
+                    back to the total rather than being two fixed labels. */}
+                <div className="mt-4 space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500">
-                      Outstanding Balance
+                    <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                      Advance Expected (
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={advancePercent}
+                        onChange={(e) =>
+                          setAdvancePercent(
+                            Math.min(
+                              100,
+                              Math.max(0, Number(e.target.value) || 0),
+                            ),
+                          )
+                        }
+                        className="w-9 border-0 bg-transparent p-0 text-[11px] text-slate-500 outline-none [appearance:textfield] focus:text-slate-800 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none dark:focus:text-white"
+                      />
+                      %)
                     </span>
 
-                    <span className="text-xs font-semibold text-amber-500">
-                      {money(orderOutstanding)}
+                    <span className="text-[11px] font-semibold text-[#3b82f6]">
+                      {money(orderAdvanceExpected)}
                     </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-slate-500">
+                      Balance Expected ({100 - advancePercent}%)
+                    </span>
+
+                    <span className="text-[11px] font-semibold text-slate-800 dark:text-white">
+                      {money(orderBalanceExpected)}
+                    </span>
+                  </div>
+
+                  {/* Kept from the previous build: what has actually been
+                      received, and what that leaves outstanding. The two rows
+                      above are expectations, these are the real position. */}
+                  <div className="border-t border-slate-100 pt-2.5 dark:border-[#17304a]">
+                    <OrderSummaryRow
+                      label="Advance Received"
+                      value={money(orderAdvance)}
+                      tone="emerald"
+                      edit={{
+                        amount: advanceReceived,
+                        onChange: setAdvanceReceived,
+                      }}
+                    />
+
+                    <div className="mt-2.5 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-500">
+                        Outstanding Balance
+                      </span>
+
+                      <span className="text-[11px] font-semibold text-amber-500">
+                        {money(orderOutstanding)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* =================================================
-                REQUIREMENTS & FILES
+                ATTACHED DOCUMENTS & ANNEXURES
             ================================================= */}
 
               <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 dark:border-[#17304a] dark:bg-[#071929]">
@@ -2202,12 +2541,12 @@ export default function OrdersListPage() {
                   <FiUpload size={16} className="text-slate-600" />
 
                   <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
-                    Requirements & Files
+                    Attached Documents & Annexures
                   </h3>
                 </div>
 
-                {/* Remarks */}
-
+                {/* Remarks stays here: it is the one free-text field on the
+                    order and the design has nowhere else for it. */}
                 <label className="block text-[11px] text-slate-500 mb-1.5">
                   Remarks
                 </label>
@@ -2216,15 +2555,10 @@ export default function OrdersListPage() {
                   value={newOrder.remarks}
                   onChange={(e) => updateNewOrder("remarks", e.target.value)}
                   placeholder="Enter specific hardware requirements or customization requests..."
-                  className="w-full h-28 rounded-xl border border-slate-300 bg-white p-3 text-xs resize-none outline-none focus:border-slate-400"
+                  className="w-full h-24 rounded-xl border border-slate-300 bg-white p-3 text-xs resize-none outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
                 />
 
-                {/* Attachments */}
                 <div className="mt-5">
-                  <p className="text-[11px] font-medium text-slate-500 mb-2">
-                    Attachments
-                  </p>
-
                   {/* Hidden File Input */}
 
                   <input
@@ -3093,9 +3427,17 @@ export default function OrdersListPage() {
                   return (
                     <tr
                       key={order._id}
-                      className="border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                      /* The whole row opens the order, not only the action
+                         menu's View Order - that is where the cursor already
+                         is. The checkbox and the menu cell stop the event so
+                         both still work on their own. */
+                      onClick={() => router.push(`/sales/orders/${order._id}`)}
+                      className="cursor-pointer border-b border-slate-100 hover:bg-slate-50 transition-colors"
                     >
-                      <td className="px-4 py-3">
+                      <td
+                        className="px-4 py-3"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         <input type="checkbox" className="rounded" />
                       </td>
 
@@ -3148,7 +3490,10 @@ export default function OrdersListPage() {
                         <StatusPill status={order.status} label={status} />
                       </td>
 
-                      <td className="px-3 py-3 relative">
+                      <td
+                        className="px-3 py-3 relative"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         <button
                           type="button"
                           onClick={() =>

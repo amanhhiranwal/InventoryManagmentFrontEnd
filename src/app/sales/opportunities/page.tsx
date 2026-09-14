@@ -3350,7 +3350,18 @@ function NewOpportunityPage({
         remarks,
         attachments,
         opportunityName,
-        dealValue: totalEstValue,
+        /* Left blank, the estimate is what the lines already add up to.
+           Defaulting to 0 instead meant an opportunity worth lakhs counted
+           as nothing towards Pipeline Value. */
+        dealValue: totalEstValue.trim()
+          ? totalEstValue
+          : String(
+              Math.round(
+                productTotals.subtotal -
+                  productTotals.discount +
+                  productTotals.tax,
+              ),
+            ),
         lineItems,
       });
     } finally {

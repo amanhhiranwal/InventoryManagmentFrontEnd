@@ -1,0 +1,1186 @@
+"use client";
+
+/**
+ * Sales Order detail page.
+ *
+ * The list already linked here through "View Order", but the route did not
+ * exist, so the link 404'd. This is that page: the order as saved, the
+ * account it belongs to, where it has got to in the process, and its history.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+
+import { useUIStore } from "@/lib/store/ui.store";
+import StatCard from "@/components/crm/StatCard";
+import { StatusPill } from "@/components/crm/Pill";
+import {
+  SALES_ORDER_STATUS,
+  SalesOrderModel,
+  SalesOrderActivity,
+  getSalesOrderActivitiesApi,
+  getSalesOrderApi,
+  getSalesOrdersApi,
+  logSalesOrderActivityApi,
+  nextSalesOrderStatuses,
+  salesOrderStatusLabel,
+  SALES_ORDER_STATUS_LABEL,
+} from "@/features/salesOrders/api/salesOrders.api";
+import {
+  getOpportunitiesApi,
+  OpportunityModel,
+} from "@/features/opportunities/api/opportunities.api";
+
+import {
+  FiArrowLeft,
+  FiCalendar,
+  FiCheckCircle,
+  FiChevronRight,
+  FiClock,
+  FiEdit2,
+  FiFileText,
+  FiInfo,
+  FiMapPin,
+  FiPackage,
+  FiPlus,
+  FiSend,
+  FiShield,
+  FiUploadCloud,
+} from "react-icons/fi";
+import { CgSpinner } from "react-icons/cg";
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+const money = (value?: number | null) =>
+  `₹${Number(value || 0).toLocaleString("en-IN", {
+    maximumFractionDigits: 0,
+  })}`;
+
+/** Compact rupee figure for the KPI row, e.g. ₹56.2 L. */
+function shortMoney(value?: number | null) {
+  const amount = Number(value || 0);
+
+  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(1)} Cr`;
+  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)} L`;
+  if (amount >= 1000) return `₹${(amount / 1000).toFixed(0)}K`;
+
+  return `₹${amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+/* Recent entries read better relative, because the timeline is mostly
+   consulted for what just happened. */
+function formatActivityStamp(value?: string) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  const startOfDay = (input: Date) =>
+    new Date(input.getFullYear(), input.getMonth(), input.getDate()).getTime();
+
+  const dayDiff = Math.round(
+    (startOfDay(new Date()) - startOfDay(date)) / 86400000,
+  );
+
+  if (dayDiff === 0) {
+    return `Today, ${date.toLocaleTimeString("en-IN", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })}`;
+  }
+
+  if (dayDiff === 1) return "Yesterday";
+
+  return formatDate(value);
+}
+
+/** The order's reference as one string. Stored numbers already carry their
+    own "SO-" prefix, so prefixing again would print SO-#SO-00001. */
+function orderReference(order: { order_number?: string | null; id: number }) {
+  const reference = (order.order_number || "").trim();
+
+  if (!reference) return `SO-#${order.id}`;
+
+  return reference.toUpperCase().startsWith("SO") ? `#${reference}` : `SO-#${reference}`;
+}
+
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === "object" ? (value as Record<string, any>) : {};
+}
+
+/** One line's own figures, matching compute_order_totals on the backend. */
+function lineTotals(item: Record<string, any>) {
+  const quantity = Number(item.quantity_case ?? item.qty ?? 1) || 0;
+  const unitPrice = Number(item.price ?? item.rate ?? 0) || 0;
+
+  const line = quantity * unitPrice;
+  const discount = (line * (Number(item.discount) || 0)) / 100;
+  const taxable = line - discount;
+
+  return { quantity, unitPrice, line, discount, taxable };
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
+export default function SalesOrderDetailPage() {
+  const params = useParams<{ orderId: string }>();
+  const router = useRouter();
+  const { addToast } = useUIStore();
+
+  const orderId = params?.orderId;
+
+  const [order, setOrder] = useState<SalesOrderModel | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const [activities, setActivities] = useState<SalesOrderActivity[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+
+  /* Every order and opportunity for this customer, so the KPI row reports the
+     account rather than four numbers with nothing behind them. */
+  const [siblingOrders, setSiblingOrders] = useState<SalesOrderModel[]>([]);
+  const [opportunities, setOpportunities] = useState<OpportunityModel[]>([]);
+
+  const [sending, setSending] = useState(false);
+  const [showActivityForm, setShowActivityForm] = useState(false);
+
+  const loadOrder = useCallback(async () => {
+    if (!orderId) return;
+
+    try {
+      setLoading(true);
+
+      setOrder(await getSalesOrderApi(orderId));
+    } catch (error: any) {
+      console.error(error);
+
+      addToast(
+        error?.response?.data?.detail || "Unable to load this sales order.",
+        "error",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [orderId, addToast]);
+
+  const loadActivities = useCallback(async () => {
+    if (!orderId) return;
+
+    try {
+      setActivitiesLoading(true);
+
+      setActivities(await getSalesOrderActivitiesApi(orderId));
+    } catch (error) {
+      console.error(error);
+
+      setActivities([]);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  }, [orderId]);
+
+  useEffect(() => {
+    loadOrder();
+    loadActivities();
+  }, [loadOrder, loadActivities]);
+
+  /* The account context is a nice-to-have: a failure here must not stop the
+     order itself from rendering. */
+  useEffect(() => {
+    getSalesOrdersApi()
+      .then(setSiblingOrders)
+      .catch(() => setSiblingOrders([]));
+
+    getOpportunitiesApi()
+      .then(setOpportunities)
+      .catch(() => setOpportunities([]));
+  }, []);
+
+  const customerInfo = asRecord(order?.customer_information);
+  const primaryContact = asRecord(customerInfo.primary_contact);
+  const billing = asRecord(order?.billing_address);
+  const shipping = asRecord(order?.shipping_address);
+
+  const items = useMemo(
+    () => (Array.isArray(order?.items) ? (order!.items as any[]) : []),
+    [order],
+  );
+
+  /* ---------------------------------------------------------------
+     ACCOUNT KPIs
+  --------------------------------------------------------------- */
+
+  const account = useMemo(() => {
+    const company = (order?.company_name || "").trim().toLowerCase();
+    const customer = (order?.customer_name || "").trim().toLowerCase();
+
+    const matches = (a?: string | null, b?: string | null) =>
+      Boolean(a && b && a.trim().toLowerCase() === b.trim().toLowerCase());
+
+    const ownOrders = siblingOrders.filter(
+      (item) =>
+        matches(item.company_name, order?.company_name) ||
+        matches(item.customer_name, order?.customer_name),
+    );
+
+    /* Cancelled orders are not revenue, so counting them would overstate what
+       the account is actually worth. */
+    const revenue = ownOrders
+      .filter((item) => item.status !== SALES_ORDER_STATUS.CANCELLED)
+      .reduce((sum, item) => sum + (item.grand_total || 0), 0);
+
+    const outstanding = ownOrders
+      .filter((item) => item.status !== SALES_ORDER_STATUS.CANCELLED)
+      .reduce((sum, item) => sum + (item.outstanding_balance || 0), 0);
+
+    const openOpportunities = opportunities.filter((opp) => {
+      const sameAccount =
+        (company && (opp.organization_name || "").toLowerCase() === company) ||
+        (customer && (opp.contact_name || "").toLowerCase() === customer);
+
+      return sameAccount && opp.status !== "WON" && opp.status !== "LOST";
+    }).length;
+
+    return {
+      revenue,
+      outstanding,
+      openOpportunities,
+      orderCount: ownOrders.length,
+    };
+  }, [siblingOrders, opportunities, order]);
+
+  /* ---------------------------------------------------------------
+     ACTIONS
+  --------------------------------------------------------------- */
+
+  const isDraft = order?.status === SALES_ORDER_STATUS.DRAFT;
+
+  const sendForApproval = async () => {
+    if (!order) return;
+
+    setSending(true);
+
+    try {
+      const result = await logSalesOrderActivityApi(order.id, {
+        status: SALES_ORDER_STATUS.CONFIRMED,
+        remarks: "Sent for approval from the order detail page.",
+      });
+
+      setOrder(result.order);
+
+      addToast("Sales order sent for approval.", "success");
+
+      await loadActivities();
+    } catch (error: any) {
+      console.error(error);
+
+      addToast(
+        error?.response?.data?.detail || "Failed to send for approval.",
+        "error",
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const logActivity = async (payload: {
+    status?: string;
+    remarks?: string;
+  }) => {
+    if (!order) return false;
+
+    setSending(true);
+
+    try {
+      const result = await logSalesOrderActivityApi(order.id, payload as any);
+
+      setOrder(result.order);
+
+      addToast(
+        payload.status
+          ? `Order moved to ${salesOrderStatusLabel(result.order.status)}.`
+          : "Activity logged.",
+        "success",
+      );
+
+      await loadActivities();
+
+      return true;
+    } catch (error: any) {
+      console.error(error);
+
+      addToast(
+        error?.response?.data?.detail || "Failed to log the activity.",
+        "error",
+      );
+
+      return false;
+    } finally {
+      setSending(false);
+    }
+  };
+
+  /* ---------------------------------------------------------------
+     RENDER
+  --------------------------------------------------------------- */
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[400px] flex-col items-center justify-center gap-3 text-slate-400">
+        <CgSpinner className="animate-spin text-3xl text-[#233353]" />
+        <p className="text-xs font-semibold">Loading sales order...</p>
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="flex min-h-[400px] flex-col items-center justify-center gap-3">
+        <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+          Sales order not found
+        </p>
+
+        <button
+          type="button"
+          onClick={() => router.push("/sales/orders")}
+          className="rounded-lg bg-[#233353] px-4 py-2 text-xs font-bold text-white"
+        >
+          Back to all Sales Order
+        </button>
+      </div>
+    );
+  }
+
+  const gstPercent =
+    order.gst_percent === null || order.gst_percent === undefined
+      ? 18
+      : order.gst_percent;
+
+  return (
+    <div className="min-h-full space-y-4 pb-8">
+      {/* =========================================================
+          HEADER
+      ========================================================= */}
+
+      <div>
+        <button
+          type="button"
+          onClick={() => router.push("/sales/orders")}
+          className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-[#233353] dark:hover:text-white"
+        >
+          <FiArrowLeft size={12} />
+          Back to all Sales Order
+        </button>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+              {orderReference(order)}
+              {order.company_name ? ` - ${order.company_name}` : ""}
+            </h1>
+
+            <StatusPill
+              status={order.status}
+              label={salesOrderStatusLabel(order.status)}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Editing reopens the New Sales Order form, which is the only
+                place the order's fields can actually be changed. */}
+            <button
+              type="button"
+              onClick={() =>
+                router.push(`/sales/orders?edit=${order.id}`)
+              }
+              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+            >
+              <FiEdit2 size={13} />
+              Edit Order
+            </button>
+
+            {/* Only a draft can be sent for approval; past that the row menu
+                and the activity log drive the rest of the pipeline. */}
+            {isDraft && (
+              <button
+                type="button"
+                onClick={sendForApproval}
+                disabled={sending}
+                className="flex items-center gap-2 rounded-lg bg-[#233353] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <FiSend size={13} />
+                {sending ? "Sending..." : "Send For Approval"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* =========================================================
+          ACCOUNT KPIs
+      ========================================================= */}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Total Revenue"
+          value={shortMoney(account.revenue)}
+          caption="this account"
+        />
+
+        <StatCard
+          label="Open Opportunities"
+          value={account.openOpportunities}
+          caption="still in play"
+        />
+
+        <StatCard
+          label="Sales Orders"
+          value={account.orderCount}
+          caption="this account"
+        />
+
+        <StatCard
+          label="Outstanding Amount"
+          value={shortMoney(account.outstanding)}
+          caption="awaiting payment"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        {/* =====================================================
+            LEFT COLUMN
+        ===================================================== */}
+
+        <div className="space-y-4">
+          {/* ORDER & ACCOUNT OVERVIEW */}
+          <Card icon={<FiInfo size={15} />} title="Order & Account Overview">
+            <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
+              <Field label="Customer Type" value={order.customer_type} />
+              <Field label="Organization Name" value={order.company_name} />
+              <Field label="GST" value={customerInfo.gst} />
+              <Field label="PAN" value={customerInfo.pan} />
+              <Field label="COI Number" value={customerInfo.cin} />
+              <Field label="Registration" value={customerInfo.registration} />
+
+              <div className="flex items-center">
+                <span className="w-[130px] shrink-0 text-[11px] text-slate-500">
+                  Assigned To:
+                </span>
+
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 dark:bg-[#0b2034] dark:text-slate-200">
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] dark:bg-[#17304a]">
+                    {(order.assigned_to || "U").charAt(0).toUpperCase()}
+                  </span>
+                  {order.assigned_to || "Unassigned"}
+                </span>
+              </div>
+
+              <Field label="Quotation ID" value={order.quotation_id} />
+              <Field label="PO Number" value={order.po_number} />
+              <Field label="PO Date" value={formatDate(order.po_date)} />
+              <Field label="Order Date" value={formatDate(order.order_date)} />
+            </div>
+
+            <div className="mt-5 border-t border-slate-100 pt-4 dark:border-[#17304a]">
+              <p className="mb-3 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Primary Contact
+              </p>
+
+              <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
+                <Field
+                  label="Customer"
+                  value={primaryContact.name || order.customer_name}
+                />
+                <Field label="Designation" value={primaryContact.designation} />
+                <Field label="Phone" value={primaryContact.phone} />
+                <Field label="Email" value={primaryContact.email} />
+              </div>
+            </div>
+          </Card>
+
+          {/* BILLING & SHIPPING */}
+          <Card icon={<FiMapPin size={15} />} title="Billing & Shipping">
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+              <AddressBlock title="Billing Address" address={billing} />
+              <AddressBlock title="Shipping Address" address={shipping} />
+            </div>
+          </Card>
+
+          {/* PRODUCTS & ORDER ITEMS */}
+          <Card icon={<FiPackage size={15} />} title="Products & Order Items">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px] border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-slate-200 text-[10px] font-semibold text-slate-500 dark:border-[#17304a]">
+                    <th className="px-3 py-2.5">Product</th>
+                    <th className="px-3 py-2.5">Model / Variant</th>
+                    <th className="px-3 py-2.5">Qty</th>
+                    <th className="px-3 py-2.5">Discount</th>
+                    <th className="px-3 py-2.5">Tax</th>
+                    <th className="px-3 py-2.5 text-right">Unit Price</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {items.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="py-10 text-center text-xs text-slate-400"
+                      >
+                        No products on this order.
+                      </td>
+                    </tr>
+                  ) : (
+                    items.map((item, index) => {
+                      const totals = lineTotals(item);
+
+                      return (
+                        <tr
+                          key={`${item.product_id || item.description}-${index}`}
+                          className="border-b border-slate-100 dark:border-[#17304a]/70"
+                        >
+                          <td className="px-3 py-3">
+                            <p className="text-[11px] font-bold text-slate-800 dark:text-white">
+                              {item.description || item.item || "Product"}
+                            </p>
+
+                            {item.product_id && (
+                              <p className="text-[9px] text-slate-400">
+                                SKU: {item.product_id}
+                              </p>
+                            )}
+                          </td>
+
+                          <td className="px-3 py-3 text-[10px] text-slate-500">
+                            {item.model || "-"}
+                          </td>
+
+                          <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">
+                            {totals.quantity}
+                          </td>
+
+                          <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">
+                            {Number(item.discount) || 0} %
+                          </td>
+
+                          <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">
+                            {Number(item.tax_rate) || 0} %
+                          </td>
+
+                          <td className="px-3 py-3 text-right text-[11px] font-semibold text-slate-800 dark:text-white">
+                            {Number(totals.unitPrice).toLocaleString("en-IN")}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Totals, as stored. Every figure here was computed by the
+                backend from the lines and charges above. */}
+            <div className="mt-5 flex justify-end">
+              <div className="w-full max-w-[400px] space-y-2.5">
+                <SummaryLine
+                  label="Subtotal:"
+                  value={money(order.total_amount)}
+                />
+
+                <SummaryLine
+                  label="Total Discount:"
+                  value={`-${money(order.discount_amount)}`}
+                  tone="rose"
+                />
+
+                <SummaryLine
+                  label={`ORC (${Number(order.orc_percent || 0).toFixed(2)}%):`}
+                  value={`-${money(order.orc_amount)}`}
+                  tone="rose"
+                />
+
+                <SummaryLine
+                  label="Freight Charges:"
+                  value={`+${money(order.freight_charges)}`}
+                />
+
+                <SummaryLine
+                  label="Lumpsum (Installation):"
+                  value={`+${money(order.installation_lumpsum)}`}
+                />
+
+                <div className="border-t border-slate-100 pt-2.5 dark:border-[#17304a]">
+                  <SummaryLine
+                    label="Taxable Amount:"
+                    value={money(order.taxable_amount)}
+                  />
+                </div>
+
+                <SummaryLine
+                  label={`Estimated GST (${gstPercent}%):`}
+                  value={`+${money(order.gst_amount)}`}
+                />
+
+                <div className="flex items-center justify-between border-t border-slate-200 pt-2.5 dark:border-[#17304a]">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    Total Payable:
+                  </span>
+
+                  <span className="text-sm font-bold text-slate-900 dark:text-white">
+                    {money(order.grand_total)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* TERMS */}
+          <Card
+            icon={<FiShield size={15} />}
+            title="Terms, Conditions & Technical Notes"
+          >
+            <div className="rounded-xl bg-slate-50 p-4 dark:bg-[#0b2034]">
+              <p className="mb-3 text-[11px] font-semibold text-slate-500">
+                Pre-filled Commercial Conditions
+              </p>
+
+              {order.commercial_terms?.length ? (
+                <ul className="space-y-2.5">
+                  {order.commercial_terms.map((term, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#24395f]" />
+
+                      <span className="text-[11px] leading-5 text-slate-600 dark:text-slate-300">
+                        {term}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[11px] text-slate-400">
+                  No commercial conditions recorded on this order.
+                </p>
+              )}
+            </div>
+
+            {order.technical_notes && (
+              <div className="mt-4">
+                <p className="mb-2 text-[11px] font-medium text-slate-500">
+                  Technical Scope & Deployment Notes
+                </p>
+
+                <p className="rounded-xl bg-slate-50 p-3 text-[11px] leading-5 text-slate-600 dark:bg-[#0b2034] dark:text-slate-300">
+                  {order.technical_notes}
+                </p>
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {/* =====================================================
+            RIGHT COLUMN
+        ===================================================== */}
+
+        <div className="space-y-4">
+          {/* ORDER PROCESS */}
+          <Card icon={<FiClock size={15} />} title="Order Process">
+            <div className="space-y-4">
+              {/* Each step reads the order rather than being a fixed picture
+                  of one, so a step is only ticked once it has happened. */}
+              <ProcessStep
+                done={Boolean(order.po_number)}
+                title="PO Received"
+                caption={
+                  order.po_number
+                    ? `${order.po_number} recorded${
+                        order.po_date ? ` on ${formatDate(order.po_date)}` : ""
+                      }`
+                    : "No customer PO recorded"
+                }
+              />
+
+              <ProcessStep
+                done={order.status !== SALES_ORDER_STATUS.DRAFT}
+                title="PI Generated"
+                caption={
+                  order.status === SALES_ORDER_STATUS.DRAFT
+                    ? "Not generated while the order is a draft"
+                    : `Order ${salesOrderStatusLabel(order.status)}`
+                }
+              />
+
+              <ProcessStep
+                done={(order.advance_received || 0) > 0}
+                title="Advance Payment"
+                caption={
+                  (order.advance_received || 0) > 0
+                    ? `${money(order.advance_received)} received`
+                    : `Awaiting ${Number(
+                        order.advance_percent ?? 30,
+                      )}% advance (${money(order.advance_expected)})`
+                }
+                last
+              />
+            </div>
+          </Card>
+
+          {/* LINKED DOCUMENTS */}
+          <Card icon={<FiFileText size={15} />} title="Linked Documents">
+            <div className="space-y-2.5">
+              <LinkedDocument
+                title={
+                  order.quotation_id
+                    ? `Quotation ${order.quotation_id}`
+                    : "Quotation"
+                }
+                subtitle={order.quotation_id ? "Linked" : "Not linked"}
+                href={order.quotation_id ? "/sales/quotations" : undefined}
+              />
+
+              <LinkedDocument
+                title={
+                  order.po_number
+                    ? `Customer PO: ${order.po_number}`
+                    : "Customer PO"
+                }
+                subtitle={order.po_number ? "Received" : "Not received"}
+              />
+
+              <LinkedDocument
+                title={`Sales Order ${orderReference(order)}`}
+                subtitle={salesOrderStatusLabel(order.status)}
+              />
+
+              <LinkedDocument
+                title="Proforma Invoice"
+                subtitle={
+                  order.status === SALES_ORDER_STATUS.DRAFT
+                    ? "Not Generated"
+                    : "Pending generation"
+                }
+              />
+            </div>
+          </Card>
+
+          {/* BASIC DOCUMENTS */}
+          <Card
+            icon={<FiUploadCloud size={15} />}
+            title="Basic Documents"
+            action={
+              <span
+                title="Documents are attached while creating or editing the order"
+                className="text-[10px] font-semibold text-slate-400"
+              >
+                + Upload Documents
+              </span>
+            }
+          >
+            {order.attachments?.length ? (
+              <div className="flex flex-wrap gap-2">
+                {order.attachments.map((file, index) => (
+                  <span
+                    key={`${file.name}-${index}`}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 dark:border-[#17304a] dark:bg-[#0b2034] dark:text-slate-300"
+                  >
+                    <FiFileText size={11} className="shrink-0 text-rose-500" />
+                    <span className="truncate">{file.name}</span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400">
+                No documents attached to this order.
+              </p>
+            )}
+          </Card>
+
+          {/* ACTIVITY HISTORY */}
+          <Card
+            icon={<FiClock size={15} />}
+            title="Activity History"
+            action={
+              <button
+                type="button"
+                onClick={() => setShowActivityForm((value) => !value)}
+                className="text-[10px] font-medium text-slate-500 hover:text-[#233353] dark:hover:text-white"
+              >
+                {showActivityForm ? "Cancel" : "+ Log Activity"}
+              </button>
+            }
+          >
+            {showActivityForm && (
+              <LogActivityForm
+                status={order.status}
+                saving={sending}
+                onCancel={() => setShowActivityForm(false)}
+                onSubmit={async (payload) => {
+                  const ok = await logActivity(payload);
+
+                  if (ok) setShowActivityForm(false);
+
+                  return ok;
+                }}
+              />
+            )}
+
+            {activitiesLoading ? (
+              <p className="py-3 text-[10px] font-medium text-slate-400">
+                Loading activity...
+              </p>
+            ) : activities.length === 0 ? (
+              <p className="py-3 text-[10px] text-slate-400">
+                No activity recorded yet.
+              </p>
+            ) : (
+              <div className="relative ml-1 border-l border-slate-200 pl-4 dark:border-[#17304a]">
+                {activities.map((activity, index) => (
+                  <div key={activity.id} className="relative mb-4 last:mb-0">
+                    <span
+                      className={`absolute -left-[21px] top-2 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-[#071929] ${
+                        index === 0
+                          ? "bg-[#233353]"
+                          : "bg-slate-300 dark:bg-slate-600"
+                      }`}
+                    />
+
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-[#17304a] dark:bg-[#0b1d2e]">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[11px] font-bold text-slate-800 dark:text-white">
+                          {activity.action}
+                        </p>
+
+                        <span className="shrink-0 text-[9px] text-slate-400">
+                          {formatActivityStamp(activity.created_at)}
+                        </span>
+                      </div>
+
+                      {activity.description && (
+                        <p className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
+                          {activity.description}
+                        </p>
+                      )}
+
+                      <p className="mt-1.5 flex items-center gap-1 text-[9px] text-slate-400">
+                        <FiCalendar size={9} />
+                        {formatDate(activity.created_at)}
+                        {activity.created_by_name
+                          ? ` • ${activity.created_by_name}`
+                          : ""}
+
+                        {/* The opportunity's entries are merged in, so say
+                            which record each one came from. */}
+                        {activity.source === "opportunity" && (
+                          <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[8px] font-semibold text-slate-500 dark:bg-[#0b2034]">
+                            Opportunity
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   LOG ACTIVITY FORM
+========================================================= */
+
+function LogActivityForm({
+  status,
+  saving,
+  onCancel,
+  onSubmit,
+}: {
+  status: string;
+  saving: boolean;
+  onCancel: () => void;
+  onSubmit: (payload: { status?: string; remarks?: string }) => Promise<boolean>;
+}) {
+  const nextStatuses = nextSalesOrderStatuses(status);
+
+  const [next, setNext] = useState<string>(nextStatuses[0] || "");
+  const [remarks, setRemarks] = useState("");
+
+  useEffect(() => {
+    setNext(nextSalesOrderStatuses(status)[0] || "");
+    setRemarks("");
+  }, [status]);
+
+  return (
+    <form
+      onSubmit={async (event) => {
+        event.preventDefault();
+
+        const ok = await onSubmit({
+          status: next || undefined,
+          remarks: remarks.trim() || undefined,
+        });
+
+        if (ok) setRemarks("");
+      }}
+      className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-[#17304a] dark:bg-[#0b2034]"
+    >
+      <label className="mb-1.5 block text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+        Move Status To
+      </label>
+
+      <select
+        value={next}
+        onChange={(event) => setNext(event.target.value)}
+        className="mb-3 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+      >
+        {/* Always available, so a note can be logged without moving the
+            order on. */}
+        <option value="">Keep as {salesOrderStatusLabel(status)}</option>
+
+        {nextStatuses.map((option) => (
+          <option key={option} value={option}>
+            {SALES_ORDER_STATUS_LABEL[option]}
+          </option>
+        ))}
+      </select>
+
+      <label className="mb-1.5 block text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+        Remarks
+      </label>
+
+      <textarea
+        rows={3}
+        value={remarks}
+        onChange={(event) => setRemarks(event.target.value)}
+        placeholder="What happened? e.g. Advance received against PI."
+        className="w-full resize-none rounded-lg border border-slate-200 bg-white p-2.5 text-[11px] text-slate-800 outline-none dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+      />
+
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg px-3 py-2 text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white"
+        >
+          Cancel
+        </button>
+
+        <button
+          type="submit"
+          disabled={saving || (!next && !remarks.trim())}
+          className="rounded-lg bg-[#233353] px-4 py-2 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {saving ? "Saving..." : "Submit"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/* =========================================================
+   SMALL PIECES
+========================================================= */
+
+function Card({
+  icon,
+  title,
+  action,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 dark:border-[#17304a] dark:bg-[#071929]">
+      <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-[#17304a]">
+        <div className="flex items-center gap-2">
+          <span className="text-slate-600 dark:text-slate-300">{icon}</span>
+
+          <h3 className="text-[13px] font-semibold text-slate-800 dark:text-white">
+            {title}
+          </h3>
+        </div>
+
+        {action}
+      </div>
+
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value?: unknown }) {
+  const text =
+    value === null || value === undefined || value === "" ? "-" : String(value);
+
+  return (
+    <div className="flex items-start">
+      <span className="w-[130px] shrink-0 text-[11px] text-slate-500">
+        {label}:
+      </span>
+
+      <span className="text-[11px] font-semibold text-slate-800 dark:text-white">
+        {text}
+      </span>
+    </div>
+  );
+}
+
+function AddressBlock({
+  title,
+  address,
+}: {
+  title: string;
+  address: Record<string, any>;
+}) {
+  const lines = [
+    address.street,
+    [address.city, address.state].filter(Boolean).join(", "),
+    [address.pin, address.country].filter(Boolean).join(" "),
+  ].filter((line) => line && String(line).trim());
+
+  return (
+    <div>
+      <p className="mb-2 border-b border-slate-100 pb-2 text-xs font-semibold text-slate-600 dark:border-[#17304a] dark:text-slate-300">
+        {title}
+      </p>
+
+      {lines.length ? (
+        <div className="space-y-1">
+          {lines.map((line, index) => (
+            <p
+              key={index}
+              className="text-[11px] text-slate-700 dark:text-slate-300"
+            >
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-slate-400">No address recorded.</p>
+      )}
+    </div>
+  );
+}
+
+function ProcessStep({
+  done,
+  title,
+  caption,
+  last,
+}: {
+  done: boolean;
+  title: string;
+  caption: string;
+  last?: boolean;
+}) {
+  return (
+    <div className="relative flex gap-3">
+      {!last && (
+        <span className="absolute left-[11px] top-6 h-[calc(100%-8px)] w-px bg-slate-200 dark:bg-[#17304a]" />
+      )}
+
+      <span
+        className={`relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+          done
+            ? "bg-emerald-500 text-white"
+            : "border border-slate-300 bg-white text-slate-300 dark:border-[#17304a] dark:bg-[#071929]"
+        }`}
+      >
+        {done ? <FiCheckCircle size={13} /> : <FiPlus size={11} />}
+      </span>
+
+      <div className="pb-1">
+        <p className="text-[11px] font-bold text-slate-800 dark:text-white">
+          {title}
+        </p>
+
+        <p className="mt-0.5 text-[10px] text-slate-500">{caption}</p>
+      </div>
+    </div>
+  );
+}
+
+function LinkedDocument({
+  title,
+  subtitle,
+  href,
+}: {
+  title: string;
+  subtitle: string;
+  href?: string;
+}) {
+  const router = useRouter();
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-[#0b2034]">
+      <div className="min-w-0">
+        <p className="truncate text-[11px] font-bold text-slate-800 dark:text-white">
+          {title}
+        </p>
+
+        <p className="text-[10px] text-slate-500">{subtitle}</p>
+      </div>
+
+      <button
+        type="button"
+        disabled={!href}
+        onClick={() => href && router.push(href)}
+        className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
+      >
+        View
+        <FiChevronRight size={11} />
+      </button>
+    </div>
+  );
+}
+
+function SummaryLine({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "rose";
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[11px] text-slate-500">{label}</span>
+
+      <span
+        className={`text-[11px] font-semibold ${
+          tone === "rose"
+            ? "text-rose-500"
+            : "text-slate-800 dark:text-white"
+        }`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}

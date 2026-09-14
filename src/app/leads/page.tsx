@@ -14,6 +14,8 @@ import {
 
 import * as XLSX from "xlsx";
 
+import api from "@/lib/axios";
+
 import { useUIStore } from "@/lib/store/ui.store";
 
 import {
@@ -230,7 +232,9 @@ function logActivityStatuses(status: string) {
   );
 }
 
-const LEAD_SOURCES = ["Marketing", "Cold Calling", "In-bound"];
+/* Fallback only. Lead sources are configured in Masters and fetched below;
+   this is what the picker offers if that endpoint is unavailable. */
+const FALLBACK_LEAD_SOURCES = ["Marketing", "Cold Calling", "In-bound"];
 
 const COUNTRIES = ["India", "United States", "China", "Malaysia", "Indonesia"];
 
@@ -531,6 +535,13 @@ export default function LeadsPage() {
   const [dbStates, setDbStates] = useState<string[]>([]);
   const [statesList, setStatesList] = useState<StateModel[]>([]);
 
+  /* Lead sources as configured in Masters. The form offered three fixed
+     names and sent none of them, so every lead was saved with no source -
+     which then left the Opportunity it converted into with a blank one. */
+  const [leadSourcesList, setLeadSourcesList] = useState<
+    Array<{ id: number | string; name: string }>
+  >([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -664,6 +675,22 @@ export default function LeadsPage() {
     }
   }, []);
 
+  const fetchLeadSources = useCallback(async () => {
+    try {
+      const response = await api.get("/api/v1/lead-sources");
+
+      if (response.data?.success) {
+        setLeadSourcesList(
+          (response.data.data || []).filter(
+            (source: any) => source.is_active !== false,
+          ),
+        );
+      }
+    } catch (error) {
+      console.warn("Lead sources endpoint unavailable.", error);
+    }
+  }, []);
+
   const fetchStates = useCallback(async () => {
     try {
       const response = await getStatesApi();
@@ -681,7 +708,14 @@ export default function LeadsPage() {
     fetchUsers();
     fetchCustomerTypes();
     fetchStates();
-  }, [fetchLeads, fetchUsers, fetchCustomerTypes, fetchStates]);
+    fetchLeadSources();
+  }, [
+    fetchLeads,
+    fetchUsers,
+    fetchCustomerTypes,
+    fetchStates,
+    fetchLeadSources,
+  ]);
 
   /* --------------------------------------------------------------------------
      CLOSE MENUS WHEN CLICKING OUTSIDE
@@ -948,6 +982,15 @@ export default function LeadsPage() {
       const selectedCt = customerTypesList.find((c) => c.name === form.customerType || String(c.id) === String(form.customerType));
       const selectedSt = statesList.find((s) => s.name === form.state || String(s.id) === String(form.state));
 
+      /* The form has always collected a Lead Source and never sent it, so
+         every lead was stored without one - and the Opportunity it converted
+         into inherited that blank. */
+      const selectedSource = leadSourcesList.find(
+        (item) =>
+          item.name === form.leadSource ||
+          String(item.id) === String(form.leadSource),
+      );
+
       await createLeadApi({
         title: `${details.contactName} (${details.organizationName})`,
         contact_name: details.contactName,
@@ -967,6 +1010,7 @@ export default function LeadsPage() {
         status: "NEW",
         customer_type_id: selectedCt?.id,
         state_id: selectedSt?.id,
+        lead_source_id: selectedSource?.id,
         assigned_to_id: form.assignedToId || undefined,
       });
 
@@ -1027,6 +1071,15 @@ export default function LeadsPage() {
       const selectedCt = customerTypesList.find((c) => c.name === form.customerType || String(c.id) === String(form.customerType));
       const selectedSt = statesList.find((s) => s.name === form.state || String(s.id) === String(form.state));
 
+      /* The form has always collected a Lead Source and never sent it, so
+         every lead was stored without one - and the Opportunity it converted
+         into inherited that blank. */
+      const selectedSource = leadSourcesList.find(
+        (item) =>
+          item.name === form.leadSource ||
+          String(item.id) === String(form.leadSource),
+      );
+
       const updated = await updateLeadApi(editingLead.id, {
         title: `${details.contactName} (${details.organizationName})`,
         contact_name: details.contactName,
@@ -1045,6 +1098,7 @@ export default function LeadsPage() {
         remarks: details.remarks,
         customer_type_id: selectedCt?.id,
         state_id: selectedSt?.id,
+        lead_source_id: selectedSource?.id,
         assigned_to_id: form.assignedToId || undefined,
       });
 
@@ -1298,6 +1352,10 @@ export default function LeadsPage() {
     Boolean(filters.assignedTo) ||
     filters.status !== "all" ||
     Boolean(filters.state);
+
+  const leadSourceNames = leadSourcesList.length
+    ? leadSourcesList.map((item) => item.name)
+    : FALLBACK_LEAD_SOURCES;
 
   const availableStates = Array.from(
     new Set([
@@ -1803,6 +1861,7 @@ export default function LeadsPage() {
         users={users}
         customerTypes={customerTypes}
         states={availableStates}
+        leadSources={leadSourceNames}
         saving={saving}
         onChange={updateForm}
         onSubmit={pageMode === "create" ? handleCreateLead : handleUpdateLead}
@@ -2693,6 +2752,7 @@ function LeadFormPage({
   users,
   customerTypes,
   states,
+  leadSources,
   saving,
   onChange,
   onSubmit,
@@ -2704,6 +2764,7 @@ function LeadFormPage({
   users: User[];
   customerTypes: string[];
   states: string[];
+  leadSources: string[];
   saving: boolean;
   onChange: <K extends keyof LeadFormState>(
     field: K,
@@ -2900,7 +2961,7 @@ function LeadFormPage({
                 required
                 value={form.leadSource}
                 onChange={(value) => onChange("leadSource", value)}
-                options={LEAD_SOURCES}
+                options={leadSources}
               />
 
               <UserSelect
