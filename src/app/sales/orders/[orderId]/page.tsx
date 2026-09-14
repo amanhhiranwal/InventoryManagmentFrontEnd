@@ -12,7 +12,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { useUIStore } from "@/lib/store/ui.store";
-import StatCard from "@/components/crm/StatCard";
 import { StatusPill } from "@/components/crm/Pill";
 import {
   SALES_ORDER_STATUS,
@@ -20,17 +19,11 @@ import {
   SalesOrderActivity,
   getSalesOrderActivitiesApi,
   getSalesOrderApi,
-  getSalesOrdersApi,
   logSalesOrderActivityApi,
   nextSalesOrderStatuses,
   salesOrderStatusLabel,
   SALES_ORDER_STATUS_LABEL,
 } from "@/features/salesOrders/api/salesOrders.api";
-import {
-  getOpportunitiesApi,
-  OpportunityModel,
-} from "@/features/opportunities/api/opportunities.api";
-
 import {
   FiArrowLeft,
   FiCalendar,
@@ -45,7 +38,6 @@ import {
   FiPlus,
   FiSend,
   FiShield,
-  FiUploadCloud,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 
@@ -57,17 +49,6 @@ const money = (value?: number | null) =>
   `₹${Number(value || 0).toLocaleString("en-IN", {
     maximumFractionDigits: 0,
   })}`;
-
-/** Compact rupee figure for the KPI row, e.g. ₹56.2 L. */
-function shortMoney(value?: number | null) {
-  const amount = Number(value || 0);
-
-  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(1)} Cr`;
-  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)} L`;
-  if (amount >= 1000) return `₹${(amount / 1000).toFixed(0)}K`;
-
-  return `₹${amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-}
 
 function formatDate(value?: string | null) {
   if (!value) return "-";
@@ -155,11 +136,6 @@ export default function SalesOrderDetailPage() {
   const [activities, setActivities] = useState<SalesOrderActivity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
 
-  /* Every order and opportunity for this customer, so the KPI row reports the
-     account rather than four numbers with nothing behind them. */
-  const [siblingOrders, setSiblingOrders] = useState<SalesOrderModel[]>([]);
-  const [opportunities, setOpportunities] = useState<OpportunityModel[]>([]);
-
   const [sending, setSending] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
 
@@ -203,18 +179,6 @@ export default function SalesOrderDetailPage() {
     loadActivities();
   }, [loadOrder, loadActivities]);
 
-  /* The account context is a nice-to-have: a failure here must not stop the
-     order itself from rendering. */
-  useEffect(() => {
-    getSalesOrdersApi()
-      .then(setSiblingOrders)
-      .catch(() => setSiblingOrders([]));
-
-    getOpportunitiesApi()
-      .then(setOpportunities)
-      .catch(() => setOpportunities([]));
-  }, []);
-
   const customerInfo = asRecord(order?.customer_information);
   const primaryContact = asRecord(customerInfo.primary_contact);
   const billing = asRecord(order?.billing_address);
@@ -224,49 +188,6 @@ export default function SalesOrderDetailPage() {
     () => (Array.isArray(order?.items) ? (order!.items as any[]) : []),
     [order],
   );
-
-  /* ---------------------------------------------------------------
-     ACCOUNT KPIs
-  --------------------------------------------------------------- */
-
-  const account = useMemo(() => {
-    const company = (order?.company_name || "").trim().toLowerCase();
-    const customer = (order?.customer_name || "").trim().toLowerCase();
-
-    const matches = (a?: string | null, b?: string | null) =>
-      Boolean(a && b && a.trim().toLowerCase() === b.trim().toLowerCase());
-
-    const ownOrders = siblingOrders.filter(
-      (item) =>
-        matches(item.company_name, order?.company_name) ||
-        matches(item.customer_name, order?.customer_name),
-    );
-
-    /* Cancelled orders are not revenue, so counting them would overstate what
-       the account is actually worth. */
-    const revenue = ownOrders
-      .filter((item) => item.status !== SALES_ORDER_STATUS.CANCELLED)
-      .reduce((sum, item) => sum + (item.grand_total || 0), 0);
-
-    const outstanding = ownOrders
-      .filter((item) => item.status !== SALES_ORDER_STATUS.CANCELLED)
-      .reduce((sum, item) => sum + (item.outstanding_balance || 0), 0);
-
-    const openOpportunities = opportunities.filter((opp) => {
-      const sameAccount =
-        (company && (opp.organization_name || "").toLowerCase() === company) ||
-        (customer && (opp.contact_name || "").toLowerCase() === customer);
-
-      return sameAccount && opp.status !== "WON" && opp.status !== "LOST";
-    }).length;
-
-    return {
-      revenue,
-      outstanding,
-      openOpportunities,
-      orderCount: ownOrders.length,
-    };
-  }, [siblingOrders, opportunities, order]);
 
   /* ---------------------------------------------------------------
      ACTIONS
@@ -370,6 +291,12 @@ export default function SalesOrderDetailPage() {
     );
   }
 
+  /* The order stops being the step in progress once it is released, which
+     is when the goods actually move. */
+  const orderStepDone =
+    order.status === SALES_ORDER_STATUS.RELEASED ||
+    order.status === SALES_ORDER_STATUS.COMPLETED;
+
   const gstPercent =
     order.gst_percent === null || order.gst_percent === undefined
       ? 18
@@ -433,36 +360,6 @@ export default function SalesOrderDetailPage() {
             )}
           </div>
         </div>
-      </div>
-
-      {/* =========================================================
-          ACCOUNT KPIs
-      ========================================================= */}
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Total Revenue"
-          value={shortMoney(account.revenue)}
-          caption="this account"
-        />
-
-        <StatCard
-          label="Open Opportunities"
-          value={account.openOpportunities}
-          caption="still in play"
-        />
-
-        <StatCard
-          label="Sales Orders"
-          value={account.orderCount}
-          caption="this account"
-        />
-
-        <StatCard
-          label="Outstanding Amount"
-          value={shortMoney(account.outstanding)}
-          caption="awaiting payment"
-        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -650,6 +547,24 @@ export default function SalesOrderDetailPage() {
                     {money(order.grand_total)}
                   </span>
                 </div>
+
+                {/* What has actually come in against the order, and what is
+                    still owed. Both are stored on the order. */}
+                <SummaryLine
+                  label="Amount Paid:"
+                  value={`-${money(order.advance_received)}`}
+                  tone="rose"
+                />
+
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-500">
+                    Balance Due:
+                  </span>
+
+                  <span className="text-[11px] font-semibold text-slate-800 dark:text-white">
+                    {money(order.outstanding_balance)}
+                  </span>
+                </div>
               </div>
             </div>
           </Card>
@@ -708,8 +623,18 @@ export default function SalesOrderDetailPage() {
               {/* Each step reads the order rather than being a fixed picture
                   of one, so a step is only ticked once it has happened. */}
               <ProcessStep
-                done={Boolean(order.po_number)}
-                title="PO Received"
+                state={order.quotation_id ? "done" : "todo"}
+                title="Quotation Approved"
+                caption={
+                  order.quotation_id
+                    ? `${order.quotation_id} linked`
+                    : "No quotation linked"
+                }
+              />
+
+              <ProcessStep
+                state={order.po_number ? "done" : "todo"}
+                title="Customer PO Received"
                 caption={
                   order.po_number
                     ? `${order.po_number} recorded${
@@ -719,33 +644,76 @@ export default function SalesOrderDetailPage() {
                 }
               />
 
+              {/* The order itself is the step in progress until it is
+                  released, which is when the goods actually move. */}
               <ProcessStep
-                done={order.status !== SALES_ORDER_STATUS.DRAFT}
-                title="PI Generated"
+                state={orderStepDone ? "done" : "current"}
+                title="Sales Order"
+                caption={`${order.order_number || order.id} · ${salesOrderStatusLabel(
+                  order.status,
+                )}`}
+              />
+
+              {/* Only the furthest step reached is highlighted - the design
+                  never shows two at once, and two ambers reads as two things
+                  happening rather than one. */}
+              <ProcessStep
+                state={
+                  (order.advance_received || 0) > 0
+                    ? "done"
+                    : orderStepDone
+                      ? "current"
+                      : "todo"
+                }
+                title="Proforma Invoice"
                 caption={
-                  order.status === SALES_ORDER_STATUS.DRAFT
-                    ? "Not generated while the order is a draft"
-                    : `Order ${salesOrderStatusLabel(order.status)}`
+                  (order.advance_received || 0) > 0
+                    ? `${money(order.advance_received)} received against it`
+                    : order.status === SALES_ORDER_STATUS.DRAFT
+                      ? "Not Generated"
+                      : `Awaiting ${Number(
+                          order.advance_percent ?? 30,
+                        )}% advance (${money(order.advance_expected)})`
                 }
               />
 
               <ProcessStep
-                done={(order.advance_received || 0) > 0}
-                title="Advance Payment"
+                state={
+                  order.status === SALES_ORDER_STATUS.COMPLETED
+                    ? "done"
+                    : order.status === SALES_ORDER_STATUS.RELEASED
+                      ? "current"
+                      : "todo"
+                }
+                title="Fulfillment"
                 caption={
-                  (order.advance_received || 0) > 0
-                    ? `${money(order.advance_received)} received`
-                    : `Awaiting ${Number(
-                        order.advance_percent ?? 30,
-                      )}% advance (${money(order.advance_expected)})`
+                  order.status === SALES_ORDER_STATUS.COMPLETED
+                    ? "Completed"
+                    : order.status === SALES_ORDER_STATUS.RELEASED
+                      ? "Released for dispatch"
+                      : "Not Released"
                 }
                 last
               />
             </div>
           </Card>
 
-          {/* LINKED DOCUMENTS */}
-          <Card icon={<FiFileText size={15} />} title="Linked Documents">
+          {/* ATTACHED DOCUMENTS
+
+              The design folds the linked records and the uploaded files into
+              one list, rather than the two panels this page had. */}
+          <Card
+            icon={<FiFileText size={15} />}
+            title="Attached Documents"
+            action={
+              <span
+                title="Documents are attached while creating or editing the order"
+                className="text-[10px] font-semibold text-slate-400"
+              >
+                + Upload Documents
+              </span>
+            }
+          >
             <div className="space-y-2.5">
               <LinkedDocument
                 title={
@@ -753,7 +721,7 @@ export default function SalesOrderDetailPage() {
                     ? `Quotation ${order.quotation_id}`
                     : "Quotation"
                 }
-                subtitle={order.quotation_id ? "Linked" : "Not linked"}
+                subtitle={order.quotation_id ? "Approved" : "Not linked"}
                 href={order.quotation_id ? "/sales/quotations" : undefined}
               />
 
@@ -779,39 +747,20 @@ export default function SalesOrderDetailPage() {
                     : "Pending generation"
                 }
               />
-            </div>
-          </Card>
 
-          {/* BASIC DOCUMENTS */}
-          <Card
-            icon={<FiUploadCloud size={15} />}
-            title="Basic Documents"
-            action={
-              <span
-                title="Documents are attached while creating or editing the order"
-                className="text-[10px] font-semibold text-slate-400"
-              >
-                + Upload Documents
-              </span>
-            }
-          >
-            {order.attachments?.length ? (
-              <div className="flex flex-wrap gap-2">
-                {order.attachments.map((file, index) => (
-                  <span
-                    key={`${file.name}-${index}`}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 dark:border-[#17304a] dark:bg-[#0b2034] dark:text-slate-300"
-                  >
-                    <FiFileText size={11} className="shrink-0 text-rose-500" />
-                    <span className="truncate">{file.name}</span>
+              {order.attachments?.map((file, index) => (
+                <div
+                  key={`${file.name}-${index}`}
+                  className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-[#0b2034]"
+                >
+                  <FiFileText size={12} className="shrink-0 text-rose-500" />
+
+                  <span className="truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                    {file.name}
                   </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[11px] text-slate-400">
-                No documents attached to this order.
-              </p>
-            )}
+                </div>
+              ))}
+            </div>
           </Card>
 
           {/* ACTIVITY HISTORY */}
@@ -1088,12 +1037,13 @@ function AddressBlock({
 }
 
 function ProcessStep({
-  done,
+  state,
   title,
   caption,
   last,
 }: {
-  done: boolean;
+  /** "current" is the step the order is sitting on right now. */
+  state: "done" | "current" | "todo";
   title: string;
   caption: string;
   last?: boolean;
@@ -1106,12 +1056,20 @@ function ProcessStep({
 
       <span
         className={`relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-          done
+          state === "done"
             ? "bg-emerald-500 text-white"
-            : "border border-slate-300 bg-white text-slate-300 dark:border-[#17304a] dark:bg-[#071929]"
+            : state === "current"
+              ? "bg-amber-400 text-white"
+              : "border border-slate-300 bg-white text-slate-300 dark:border-[#17304a] dark:bg-[#071929]"
         }`}
       >
-        {done ? <FiCheckCircle size={13} /> : <FiPlus size={11} />}
+        {state === "done" ? (
+          <FiCheckCircle size={13} />
+        ) : state === "current" ? (
+          <FiClock size={12} />
+        ) : (
+          <FiPlus size={11} />
+        )}
       </span>
 
       <div className="pb-1">

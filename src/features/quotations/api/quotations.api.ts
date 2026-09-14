@@ -135,6 +135,14 @@ export interface QuotationModel {
   advance_amount: number;
   on_delivery_amount: number;
 
+  /** How discount and ORC were entered, and the raw figures as typed. The
+      backend has always returned these; the type omitted them, so reopening
+      a quotation for edit could not restore what the user had entered. */
+  discount_mode?: "AMOUNT" | "PERCENT" | null;
+  orc_mode?: "AMOUNT" | "PERCENT" | null;
+  discount_input?: number | null;
+  orc_input?: number | null;
+
   attachments: QuotationAttachment[];
   terms: QuotationTerm[];
   remarks?: string | null;
@@ -279,6 +287,49 @@ export const sendQuotationApi = async (
 ): Promise<QuotationModel> => {
   const { data } = await api.post(
     `/api/v1/quotations/${quotationId}/send`,
+    payload,
+  );
+  return data.data || data;
+};
+
+/* =========================================================
+   ACTIVITY HISTORY
+========================================================= */
+
+export interface QuotationActivity {
+  id: string;
+  /** "quotation" or "opportunity" - which record the entry belongs to. The
+      detail page merges both so its timeline reads as one story. */
+  source: "quotation" | "opportunity";
+  action: string;
+  description?: string | null;
+  from_status?: string | null;
+  to_status?: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
+  created_at: string;
+}
+
+export const getQuotationActivitiesApi = async (
+  id: number | string,
+): Promise<QuotationActivity[]> => {
+  const { data } = await api.get(`/api/v1/quotations/${id}/activities`);
+  return Array.isArray(data?.data) ? data.data : [];
+};
+
+export interface LogQuotationActivityPayload {
+  /** Omitted for a note against the quotation; otherwise the status to move to. */
+  status?: QuotationStatus;
+  action?: string;
+  remarks?: string;
+}
+
+export const logQuotationActivityApi = async (
+  id: number | string,
+  payload: LogQuotationActivityPayload,
+): Promise<{ activity: QuotationActivity; quotation: QuotationModel }> => {
+  const { data } = await api.post(
+    `/api/v1/quotations/${id}/activities`,
     payload,
   );
   return data.data || data;

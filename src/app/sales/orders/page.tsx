@@ -1091,6 +1091,24 @@ export default function OrdersListPage() {
     router.replace("/sales/orders");
   }, [editParam, openOrderForEdit, router]);
 
+  /* Convert To Sales Order on a quotation lands here with ?quotation=QT-####.
+     Opening the form with that reference already filled is what ties the new
+     order back to the quotation - and through it to the opportunity. */
+  const quotationParam = searchParams.get("quotation");
+
+  useEffect(() => {
+    if (!quotationParam) return;
+
+    openCreateOrder();
+
+    setNewOrder((current) => ({
+      ...current,
+      quotationId: quotationParam,
+    }));
+
+    router.replace("/sales/orders");
+  }, [quotationParam, router]);
+
   /* =======================================================
      PRODUCT MODAL
   ======================================================= */

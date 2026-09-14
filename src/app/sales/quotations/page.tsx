@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { useRouter, useSearchParams } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
 
 import {
@@ -46,13 +47,17 @@ import {
 
 import {
   createQuotationApi,
+  getQuotationApi,
   getQuotationSenderApi,
   getQuotationsApi,
   sendQuotationApi,
+  updateQuotationApi,
   updateQuotationStatusApi,
   nextQuotationStatuses,
   quotationStatusLabel,
   QUOTATION_STATUS,
+  type QuotationAddress,
+  type QuotationAttachment,
   type QuotationItem,
   type QuotationModel,
   type QuotationSender,
@@ -375,6 +380,9 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function QuotationPage() {
   const { addToast } = useUIStore();
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [quotations, setQuotations] = useState<QuotationModel[]>([]);
   const [opportunities, setOpportunities] = useState<OpportunityModel[]>([]);
   const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
@@ -386,6 +394,11 @@ export default function QuotationPage() {
   const [saving, setSaving] = useState(false);
 
   const [pageMode, setPageMode] = useState<"list" | "create">("list");
+
+  /* Set when the detail page sent us here to edit an existing quotation; the
+     form then saves through the update endpoint instead of raising a second
+     quotation. */
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<"All" | QuotationStatus>("All");
@@ -707,8 +720,119 @@ export default function QuotationPage() {
 
   const openCreate = () => {
     resetForm();
+    setEditingId(null);
     setPageMode("create");
   };
+
+  /* -------------------------------------------------------
+     EDIT AN EXISTING QUOTATION
+
+     The detail page's Edit Quotation button navigates here with ?edit=<id>,
+     and its Send To Client with ?send=<id>. Everything the form collects is
+     read back off the saved record, so the user edits what is stored rather
+     than a blank form.
+  ------------------------------------------------------- */
+
+  const openForEdit = useCallback(
+    async (id: string) => {
+      try {
+        const saved = await getQuotationApi(id);
+
+        setOpportunityId(saved.opportunity_id ?? null);
+        setOpportunityName(saved.opportunity_name || "");
+        setOrganizationName(saved.organization_name || "");
+        setContactName(saved.contact_name || "");
+        setDesignation(saved.designation || "");
+        setEmail(saved.email || "");
+        setMobileNumber(saved.mobile_number || "");
+        setAssignedToId(saved.assigned_to_id || "");
+        setQuotationDate(toInputDate(saved.quotation_date));
+        setValidationDate(toInputDate(saved.validation_date));
+
+        const address = (raw?: QuotationAddress | null) => ({
+          street: raw?.street || "",
+          state: raw?.state || "",
+          city: raw?.city || "",
+          country: raw?.country || "",
+          zipCode: raw?.zip_code || "",
+        });
+
+        setBilling(address(saved.billing_address));
+        setShipping(address(saved.shipping_address));
+        setSameAsBilling(Boolean(saved.shipping_same_as_billing));
+
+        setItems(
+          (saved.items || []).map((item: QuotationItem, index: number) => ({
+            key: `${item.sku || item.product || "line"}-${index}`,
+            productId: String(item.sku || index),
+            product: item.product || "",
+            model: item.model || "",
+            sku: item.sku || "",
+            quantity: Number(item.quantity) || 1,
+            unitPrice: Number(item.unit_price) || 0,
+            discount: Number(item.discount) || 0,
+            tax: Number(item.tax) || 0,
+          })),
+        );
+
+        setDiscountMode((saved.discount_mode as AmountMode) || "AMOUNT");
+        setDiscountInput(
+          saved.discount_input === undefined ? null : saved.discount_input,
+        );
+        setOrcMode((saved.orc_mode as AmountMode) || "AMOUNT");
+        setOrcInput(saved.orc_input || 0);
+        setFreight(saved.freight_charges || 0);
+        setInstallation(saved.installation_lumpsum || 0);
+        setGstPercent(
+          saved.gst_percent === null || saved.gst_percent === undefined
+            ? 18
+            : saved.gst_percent,
+        );
+
+        setAttachments(
+          (saved.attachments || []).map((file: QuotationAttachment) => ({
+            name: file.name,
+            size: file.size || 0,
+            type: file.type || "",
+          })),
+        );
+
+        setTerms(saved.terms?.length ? saved.terms : DEFAULT_TERMS);
+        setRemarks(saved.remarks || "");
+
+        setEditingId(saved.id);
+        setPageMode("create");
+      } catch (error) {
+        console.error(error);
+
+        addToast("Unable to open this quotation.", "error");
+      }
+    },
+    [addToast],
+  );
+
+  const editParam = searchParams.get("edit");
+  const sendParam = searchParams.get("send");
+
+  useEffect(() => {
+    if (!editParam) return;
+
+    openForEdit(editParam);
+
+    /* Clear the parameter so a refresh, or closing the form, does not reopen
+       the editor behind the user's back. */
+    router.replace("/sales/quotations");
+  }, [editParam, openForEdit, router]);
+
+  useEffect(() => {
+    if (!sendParam || !quotations.length) return;
+
+    const target = quotations.find((q) => String(q.id) === sendParam);
+
+    if (target) setSendTarget(target);
+
+    router.replace("/sales/quotations");
+  }, [sendParam, quotations, router]);
 
   /** Prefills the form from the opportunity the quotation is raised against. */
   const applyOpportunity = (id: string) => {
@@ -869,14 +993,21 @@ export default function QuotationPage() {
     setSaving(true);
 
     try {
-      const created = await createQuotationApi(toPayload(QUOTATION_STATUS.DRAFT));
+      /* Editing saves through the update endpoint; status is left alone
+         there, because a quotation already sent must not drop back to draft
+         just because someone corrected an address. */
+      const created = editingId
+        ? await updateQuotationApi(editingId, toPayload(QUOTATION_STATUS.DRAFT))
+        : await createQuotationApi(toPayload(QUOTATION_STATUS.DRAFT));
 
       addToast(
-        `Quotation ${created.quote_number} saved as draft.`,
+        editingId
+          ? `Quotation ${created.quote_number} updated.`
+          : `Quotation ${created.quote_number} saved as draft.`,
         "success",
       );
 
-      if (opportunityId) {
+      if (opportunityId && !editingId) {
         addToast(
           "Linked opportunity moved to Proposal / Price Quote.",
           "info",
@@ -885,6 +1016,7 @@ export default function QuotationPage() {
 
       await fetchQuotations();
       setPageMode("list");
+      setEditingId(null);
       resetForm();
 
       return created;
@@ -915,6 +1047,7 @@ export default function QuotationPage() {
 
       await fetchQuotations();
       setPageMode("list");
+      setEditingId(null);
       resetForm();
       setSendTarget(created);
     } catch (error) {
@@ -1195,13 +1328,15 @@ export default function QuotationPage() {
     return (
       <div className="min-h-full pb-8">
         <FormPageHeader
-          title="New Quotation"
+          title={editingId ? "Edit Quotation" : "New Quotation"}
           parentLabel="Quotation"
+          currentLabel={editingId ? "Edit" : "New"}
           actions={
             <>
               <CancelButton
                 onClick={() => {
                   setPageMode("list");
+                  setEditingId(null);
                   resetForm();
                 }}
               />
@@ -1211,7 +1346,11 @@ export default function QuotationPage() {
                 disabled={saving}
                 withIcon
               >
-                {saving ? "Saving..." : "Save as Draft"}
+                {saving
+                  ? "Saving..."
+                  : editingId
+                    ? "Save Quotation"
+                    : "Save as Draft"}
               </DraftButton>
             </>
           }
@@ -1643,9 +1782,19 @@ export default function QuotationPage() {
                   value={money(totals.taxableAmount)}
                 />
 
+                {/* The rate carries a pencil in the design but nothing ever
+                    called setGstPercent, so it was fixed at 18 with no way
+                    to quote a line at 28% or an exempt supply at 0. */}
                 <SummaryRow
                   label={`Estimated GST (${gstPercent}%):`}
+                  name="Estimated GST"
                   value={`+${money(totals.gstAmount)}`}
+                  edit={{
+                    amount: gstPercent,
+                    unit: "%",
+                    onChange: (next) =>
+                      setGstPercent(Math.min(100, Math.max(0, next))),
+                  }}
                 />
 
                 <div className="border-t border-slate-200 pt-2.5 dark:border-[#17304a]">
@@ -2089,9 +2238,19 @@ export default function QuotationPage() {
                 paginated.map((quotation) => (
                   <tr
                     key={quotation.id}
-                    className="transition hover:bg-slate-50 dark:hover:bg-[#071929]/50"
+                    /* The whole row opens the quotation, not just the action
+                       menu - that is where the cursor already is. The
+                       checkbox and the action cell stop the event so both
+                       still work on their own. */
+                    onClick={() =>
+                      router.push(`/sales/quotations/${quotation.id}`)
+                    }
+                    className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-[#071929]/50"
                   >
-                    <td className="px-4 py-4">
+                    <td
+                      className="px-4 py-4"
+                      onClick={(event) => event.stopPropagation()}
+                    >
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-slate-300"
@@ -2163,7 +2322,10 @@ export default function QuotationPage() {
                       <StatusPill status={quotation.status} />
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td
+                      className="px-4 py-4"
+                      onClick={(event) => event.stopPropagation()}
+                    >
                       <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"
@@ -2455,6 +2617,8 @@ function SummaryRow({
     amount: number;
     mode?: AmountMode;
     base?: number;
+    /** "%" for a plain rate, where a rupee alternative makes no sense. */
+    unit?: "%";
     onChange: (next: number) => void;
     onModeChange?: (next: AmountMode) => void;
   };
@@ -2503,17 +2667,42 @@ function SummaryRow({
       {/* Fixed width: the input replaces the figure without moving it. */}
       <div className="flex w-36 justify-end">
         {edit && editing ? (
-          <AmountInput
-            ariaLabel={name || label}
-            width="w-full"
-            autoFocus
-            value={edit.amount}
-            mode={edit.mode}
-            base={edit.base}
-            onChange={edit.onChange}
-            onModeChange={edit.onModeChange}
-            onDone={() => setEditing(false)}
-          />
+          edit.unit === "%" ? (
+            /* A rate has no rupee alternative, so it gets a plain input
+               rather than the ₹ / % selector the charges use. */
+            <div className="flex w-full items-center justify-end gap-1">
+              <input
+                autoFocus
+                type="text"
+                inputMode="decimal"
+                aria-label={name || label}
+                value={String(edit.amount)}
+                onChange={(event) =>
+                  edit.onChange(Number(event.target.value.replace(/[^\d.]/g, "")) || 0)
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === "Escape") {
+                    setEditing(false);
+                  }
+                }}
+                className="h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+              />
+
+              <span className="text-[11px] text-slate-500">%</span>
+            </div>
+          ) : (
+            <AmountInput
+              ariaLabel={name || label}
+              width="w-full"
+              autoFocus
+              value={edit.amount}
+              mode={edit.mode}
+              base={edit.base}
+              onChange={edit.onChange}
+              onModeChange={edit.onModeChange}
+              onDone={() => setEditing(false)}
+            />
+          )
         ) : (
           <span
             className={`text-right text-[11px] ${
