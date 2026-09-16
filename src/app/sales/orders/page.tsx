@@ -166,6 +166,7 @@ const CUSTOMER_TYPES = [
   "End Customer",
   "Institution",
   "Corporate",
+  "Other",
 ];
 
 const COUNTRIES = ["India", "United States", "China", "Malaysia", "Indonesia"];

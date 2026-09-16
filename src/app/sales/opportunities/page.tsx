@@ -117,7 +117,12 @@ interface OpportunityLineItem {
 }
 
 type CustomerType =
-  "Distributor" | "OEM" | "End Customer" | "Institution" | "Corporate";
+  | "Distributor"
+  | "OEM"
+  | "End Customer"
+  | "Institution"
+  | "Corporate"
+  | "Other";
 
 type OpportunityStage =
   | "Qualified"
@@ -239,6 +244,7 @@ const CUSTOMER_TYPES: CustomerType[] = [
   "End Customer",
   "Institution",
   "Corporate",
+  "Other",
 ];
 
 const STATES = [
@@ -411,6 +417,7 @@ function normalizeCustomerType(value: any): CustomerType {
   if (type === "end customer") return "End Customer";
   if (type === "institution") return "Institution";
   if (type === "corporate") return "Corporate";
+  if (type === "other") return "Other";
 
   return "Distributor";
 }

@@ -75,6 +75,7 @@ const CUSTOMER_TYPES = [
   "End Customer",
   "Institution",
   "Corporate",
+  "Other",
 ];
 
 const STATUS_OPTIONS = ["All", "Active", "Inactive"];
