@@ -115,19 +115,6 @@ interface LeadFormState extends LeadDetails {
   assignedToId: string;
 }
 
-/* Shape of the third-party integration capture form. The type was referenced
-   but never declared, which left the project unable to type-check or build. */
-interface IntegrationLeadState {
-  source: string;
-  contactName: string;
-  organizationName: string;
-  email: string;
-  mobileNumber: string;
-  website: string;
-  remarks: string;
-  assignedToId: string;
-}
-
 interface LeadFilters {
   dateFrom: string;
   dateTo: string;
@@ -371,10 +358,6 @@ function getLeadDetails(lead: Lead): LeadDetails {
   };
 }
 
-function serializeLeadDetails(details: LeadDetails) {
-  return `CRM_META:${JSON.stringify(details)}`;
-}
-
 function getLeadDisplayName(lead: Lead) {
   const details = getLeadDetails(lead);
 
@@ -390,10 +373,6 @@ function getLeadCompany(lead: Lead) {
   const details = getLeadDetails(lead);
 
   return details.organizationName || lead.title?.match(/\((.*?)\)/)?.[1] || "—";
-}
-
-function getLeadState(lead: Lead) {
-  return getLeadDetails(lead).state || "—";
 }
 
 /* Shown under the email in the Customer Name column: the most specific
@@ -559,18 +538,6 @@ export default function LeadsPage() {
   const [draftFilters, setDraftFilters] = useState<LeadFilters>(EMPTY_FILTERS);
 
   const [showExcelModal, setShowExcelModal] = useState(false);
-  const [selectedIntegration, setSelectedIntegration] = useState("");
-  const [showIntegrationModal, setShowIntegrationModal] = useState(false);
-  const [integrationLead, setIntegrationLead] = useState<IntegrationLeadState>({
-    source: "",
-    contactName: "",
-    organizationName: "",
-    email: "",
-    mobileNumber: "",
-    website: "",
-    remarks: "",
-    assignedToId: "",
-  });
 
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [detailsLead, setDetailsLead] = useState<Lead | null>(null);
