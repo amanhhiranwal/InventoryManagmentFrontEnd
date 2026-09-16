@@ -138,6 +138,11 @@ export interface OpportunityModel {
   creator_id?: string | null;
   assigned_to_id?: string | null;
 
+  /** Resolved server-side in one bulk lookup, so a board card or list row
+      can name the owner rather than falling back to a placeholder. */
+  creator_name?: string | null;
+  assigned_to_name?: string | null;
+
   won_at?: string | null;
   won_by?: string | null;
   won_reason?: string | null;

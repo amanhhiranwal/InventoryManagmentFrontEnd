@@ -104,6 +104,12 @@ export interface SalesOrderModel {
   state?: string | null;
   order_date?: string | null;
 
+  /** Quotation this order was raised against. */
+  quotation_id?: string | null;
+  /** The customer's own purchase order reference and the date they raised it. */
+  po_number?: string | null;
+  po_date?: string | null;
+
   assigned_to?: string | null;
   sales_executive?: string | null;
 
@@ -140,6 +146,16 @@ export interface SalesOrderModel {
 
   remarks?: string | null;
 
+  /** Share of the total expected up front, and the split it produces. Both
+      amounts are derived server-side so they cannot drift from the total. */
+  advance_percent?: number | null;
+  advance_expected?: number | null;
+  balance_expected?: number | null;
+
+  commercial_terms?: string[] | null;
+  technical_notes?: string | null;
+  attachments?: Array<{ name: string; size?: number; type?: string }> | null;
+
   creator_id?: string | null;
   creator_name?: string | null;
 
@@ -158,6 +174,10 @@ export interface CreateSalesOrderPayload {
   customer_type?: string;
   state?: string;
   order_date?: string;
+
+  quotation_id?: string;
+  po_number?: string;
+  po_date?: string | null;
 
   assigned_to?: string;
   sales_executive?: string;
@@ -194,6 +214,11 @@ export interface CreateSalesOrderPayload {
   aging_above_180?: number;
 
   remarks?: string;
+
+  advance_percent?: number;
+  commercial_terms?: string[];
+  technical_notes?: string;
+  attachments?: Array<{ name: string; size?: number; type?: string }>;
 }
 
 export type UpdateSalesOrderPayload = Partial<
@@ -243,4 +268,44 @@ export const deleteSalesOrderApi = async (
   id: number | string,
 ): Promise<void> => {
   await api.delete(`/api/v1/orders/${id}`);
+};
+
+/* =========================================================
+   ACTIVITY HISTORY
+========================================================= */
+
+export interface SalesOrderActivity {
+  id: string;
+  /** "order" or "opportunity" - which record the entry belongs to. The order
+      detail page merges both so its timeline reads as one story. */
+  source: "order" | "opportunity";
+  action: string;
+  description?: string | null;
+  from_status?: string | null;
+  to_status?: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
+  created_at: string;
+}
+
+export const getSalesOrderActivitiesApi = async (
+  id: number | string,
+): Promise<SalesOrderActivity[]> => {
+  const { data } = await api.get(`/api/v1/orders/${id}/activities`);
+  return Array.isArray(data?.data) ? data.data : [];
+};
+
+export interface LogSalesOrderActivityPayload {
+  /** Omitted for a note against the order; otherwise the status to move to. */
+  status?: SalesOrderStatus;
+  action?: string;
+  remarks?: string;
+}
+
+export const logSalesOrderActivityApi = async (
+  id: number | string,
+  payload: LogSalesOrderActivityPayload,
+): Promise<{ activity: SalesOrderActivity; order: SalesOrderModel }> => {
+  const { data } = await api.post(`/api/v1/orders/${id}/activities`, payload);
+  return data.data || data;
 };
