@@ -28,6 +28,7 @@ import {
 } from "@/features/salesOrders/api/salesOrders.api";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
 import StatCard from "@/components/crm/StatCard";
+import { monthOverMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
 import FormPageHeader, {
@@ -585,9 +586,16 @@ export default function OrdersListPage() {
       (order) => normalizeStatus(order.status) === "Completed",
     ).length;
 
+    const value = (items: Order[]) =>
+      items.reduce((sum, order) => sum + Number(order.grand_total || 0), 0);
+
+    const createdAt = (order: Order) => order.created_at || order.order_date;
+
     return {
       totalProposal,
+      totalProposalChange: monthOverMonth(orders, createdAt, (items) => items.length),
       orderValue,
+      orderValueChange: monthOverMonth(orders, createdAt, value),
       pendingOrders,
       completedOrders,
     };
@@ -3073,15 +3081,15 @@ export default function OrdersListPage() {
         <StatCard
           label="Total Proposal"
           value={kpis.totalProposal}
-          change="12.4%"
-          positive
+          change={kpis.totalProposalChange.text}
+          positive={kpis.totalProposalChange.up}
         />
 
         <StatCard
           label="Order Value"
           value={money(kpis.orderValue)}
-          change="8.7%"
-          positive
+          change={kpis.orderValueChange.text}
+          positive={kpis.orderValueChange.up}
         />
 
         <StatCard
