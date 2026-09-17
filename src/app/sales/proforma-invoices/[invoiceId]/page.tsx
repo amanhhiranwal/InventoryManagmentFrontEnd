@@ -23,6 +23,7 @@ import {
   LuGitFork,
   LuHistory,
   LuHourglass,
+  LuIndianRupee,
   LuInfo,
   LuMapPin,
   LuPackage,
@@ -36,8 +37,8 @@ import { CgSpinner } from "react-icons/cg";
 import { useUIStore } from "@/lib/store/ui.store";
 import { StatusPill } from "@/components/crm/Pill";
 import {
+  PROFORMA_INVOICE_STATUS_TONE,
   PROFORMA_INVOICE_TRANSITIONS,
-  editableProformaFields,
   generateProformaInvoiceApi,
   getCompanyProfileApi,
   getProformaInvoiceActivitiesApi,
@@ -64,9 +65,11 @@ import {
   UserChip,
   formatDate,
   itemToLine,
+  money,
 } from "@/features/proformaInvoices/components/ProformaParts";
-import ProformaInvoiceDocument, {
+import {
   PrintableProformaInvoice,
+  ProformaInvoiceSheet,
   usePrintProformaInvoice,
 } from "@/features/proformaInvoices/components/ProformaInvoiceDocument";
 import SendProformaInvoiceModal from "@/features/proformaInvoices/components/SendProformaInvoiceModal";
@@ -105,6 +108,7 @@ function ProformaInvoiceDetail() {
 
   const [showPreview, setShowPreview] = useState(false);
   const [showSend, setShowSend] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
 
   const [billing, setBilling] = useState<ProformaAddress>({});
   const [shipping, setShipping] = useState<ProformaAddress>({});
@@ -162,7 +166,7 @@ function ProformaInvoiceDetail() {
   useEffect(() => {
     if (!sendParam || !invoice) return;
 
-    if (invoice.status === "GENERATED" || invoice.status === "SENT") setShowSend(true);
+    if (invoice.status === "GENERATED") setShowSend(true);
 
     router.replace(`/sales/proforma-invoices/${invoice.id}`);
   }, [sendParam, invoice, router]);
@@ -222,21 +226,13 @@ function ProformaInvoiceDetail() {
       "Address updated.",
     );
 
-  const editCharge = (field: "freight" | "lumpsum" | "gstPercent" | "paid", value: number) => {
-    if (!invoice) return;
-
-    const payload = {
-      freight: { freight_charges: value },
-      lumpsum: { installation_lumpsum: value },
-      gstPercent: { gst_percent: value },
-      paid: { amount_paid: value },
-    }[field];
-
-    run(
-      () => updateProformaInvoiceApi(invoice.id, payload),
-      field === "paid" ? "Payment recorded." : "Invoice totals updated.",
-    );
-  };
+  const recordPayment = (amountPaid: number) =>
+    invoice
+      ? run(
+          () => updateProformaInvoiceApi(invoice.id, { amount_paid: amountPaid }),
+          "Payment recorded.",
+        )
+      : Promise.resolve(false);
 
   const download = () => {
     if (!invoice) return;
@@ -275,8 +271,6 @@ function ProformaInvoiceDetail() {
   }
 
   const isDraft = invoice.status === "DRAFT";
-  const canSend = invoice.status === "GENERATED" || invoice.status === "SENT";
-  const editable = editableProformaFields(invoice.status);
   const contact = (invoice.customer_information?.primary_contact || {}) as Record<string, string>;
   const order = invoice.sales_order;
 
@@ -302,7 +296,11 @@ function ProformaInvoiceDetail() {
               {piReference(invoice)}
               {invoice.company_name ? ` - ${invoice.company_name}` : ""}
             </h1>
-            <StatusPill status={invoice.status} label={proformaInvoiceStatusLabel(invoice.status)} />
+            <StatusPill
+              status={invoice.status}
+              label={proformaInvoiceStatusLabel(invoice.status)}
+              tone={PROFORMA_INVOICE_STATUS_TONE[invoice.status]}
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -322,12 +320,10 @@ function ProformaInvoiceDetail() {
               Download PDF
             </button>
 
-            {isDraft && (
-              <button type="button" onClick={() => setShowPreview(true)} className={headerButton}>
-                <LuEye size={14} />
-                Preview
-              </button>
-            )}
+            <button type="button" onClick={() => setShowPreview(true)} className={headerButton}>
+              <LuEye size={14} />
+              Preview
+            </button>
 
             {isDraft && (
               <button
@@ -341,7 +337,7 @@ function ProformaInvoiceDetail() {
               </button>
             )}
 
-            {canSend && (
+            {invoice.status === "GENERATED" && (
               <button
                 type="button"
                 onClick={() => setShowSend(true)}
@@ -351,267 +347,277 @@ function ProformaInvoiceDetail() {
                 Send PI To Customer
               </button>
             )}
+
+            {/* Once the invoice is with the customer, what matters next is
+                what they have paid against it. */}
+            {invoice.status === "SENT" && (
+              <button
+                type="button"
+                onClick={() => setShowPayment(true)}
+                className="flex h-9 items-center gap-2 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#18243a]"
+              >
+                <LuIndianRupee size={14} />
+                View Payment
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {isDraft ? (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[minmax(0,1fr)_340px]">
-          {/* LEFT */}
-          <div className="space-y-8 rounded-2xl bg-white px-5 py-5 dark:bg-[#071929]">
-            <section>
-              <SectionTitle icon={<LuInfo size={17} />} title="PI & Organization Overview" />
-
-              <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
-                <InfoRow label="PI ID" value={piReference(invoice)} />
-                <div className="flex items-center">
-                  <span className="w-[110px] shrink-0 text-[11px] text-slate-500">Assigned To:</span>
-                  <UserChip name={invoice.assigned_to} />
-                </div>
-                <InfoRow
-                  label="Sales Order ID"
-                  value={order?.order_number ? `#${order.order_number}` : undefined}
-                />
-                <div className="hidden md:block" />
-                <InfoRow label="PI Date (Issue)" value={formatDate(invoice.issue_date)} />
-                <InfoRow label="PI Date (Due)" value={formatDate(invoice.due_date)} />
-              </div>
-
-              <p className="mb-3 mt-6 border-b border-slate-200 pb-2 text-xs font-semibold text-slate-600 dark:border-[#17304a] dark:text-slate-300">
-                Organization Details
-              </p>
-
-              <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
-                <InfoRow label="Customer Type" value={invoice.customer_type} />
-                <InfoRow label="Organization Name" value={invoice.company_name} />
-                <InfoRow label="GST" value={invoice.customer_information?.gst} />
-                <InfoRow label="PAN" value={invoice.customer_information?.pan} />
-                <InfoRow label="COI Number" value={invoice.customer_information?.cin} />
-                <InfoRow label="Registration" value={invoice.customer_information?.registration} />
-                <InfoRow label="Contact Name" value={contact.name || invoice.customer_name} />
-                <InfoRow label="Designation" value={contact.designation} />
-                <InfoRow label="Phone" value={contact.phone} />
-                <InfoRow label="Email" value={contact.email} />
-              </div>
-            </section>
-
-            <section>
-              <SectionTitle
-                icon={<LuMapPin size={17} />}
-                title="Location Information"
-                action={
-                  addressDirty && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => syncAddresses(invoice)}
-                        className="px-2 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800"
-                      >
-                        Discard
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={saveAddresses}
-                        className="rounded-md bg-[#233353] px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
-                      >
-                        Save Address
-                      </button>
-                    </div>
-                  )
-                }
-              />
-
-              <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-                <AddressFields title="Billing Address" address={billing} onChange={setBilling} />
-                <AddressFields
-                  title="Shipping Address"
-                  address={sameAsBilling ? billing : shipping}
-                  onChange={setShipping}
-                  disabled={sameAsBilling}
-                  header={
-                    <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={sameAsBilling}
-                        onChange={(event) => {
-                          setSameAsBilling(event.target.checked);
-                          if (event.target.checked) setShipping(billing);
-                        }}
-                        className="h-3.5 w-3.5 rounded border-slate-300 accent-[#233353]"
-                      />
-                      Same as Billing
-                    </label>
-                  }
-                />
-              </div>
-            </section>
-
-            <section>
-              <SectionTitle icon={<LuPackage size={17} />} title="Products & Order Items" />
-              <ProductsTable lines={invoice.items.map(itemToLine)} />
-              <TotalsBlock
-                figures={{
-                  subtotal: invoice.total_amount,
-                  discount: invoice.discount_amount,
-                  orc: invoice.orc_amount,
-                  freight: invoice.freight_charges,
-                  lumpsum: invoice.installation_lumpsum,
-                  taxable: invoice.taxable_amount,
-                  gstPercent: invoice.gst_percent,
-                  gst: invoice.gst_amount,
-                  total: invoice.grand_total,
-                  paid: invoice.amount_paid,
-                  balance: invoice.balance_due,
-                }}
-              />
-            </section>
-
-            <BankingDetails
-              profile={profile}
-              reference={invoice.pi_number || `PI-${invoice.id}`}
-              onCopied={(message) => addToast(message, "success")}
-            />
-
-            <TermsBlock terms={invoice.commercial_terms} notes={invoice.technical_notes} />
-          </div>
-
-          {/* RIGHT */}
-          <div className="space-y-4">
-            <OrderSummaryCard
-              icon={<LuClipboardList size={17} />}
-              total={invoice.grand_total}
-              advancePercent={invoice.advance_percent}
-            />
-
-            <SideCard icon={<LuGitFork size={17} />} title="Order Process">
-              <OrderProcess invoice={invoice} />
-            </SideCard>
-
-            <SideCard
-              icon={<LuFileText size={17} />}
-              title="Attached Documents"
-              action={
-                <button
-                  type="button"
-                  onClick={() => router.push(`/sales/proforma-invoices/new?edit=${invoice.id}`)}
-                  className="whitespace-nowrap text-[10px] font-medium text-slate-600 hover:text-[#233353] dark:text-slate-300"
-                >
-                  + Upload Documents
-                </button>
-              }
-            >
-              <div className="space-y-2.5">
-                <LinkedDocument
-                  title={order?.quotation_id ? `Quotation ${order.quotation_id}` : "Quotation"}
-                  subtitle={order?.quotation_id ? "Approved" : "Not linked"}
-                  onView={order?.quotation_id ? () => router.push("/sales/quotations") : undefined}
-                />
-                <LinkedDocument
-                  title={order?.po_number ? `Customer PO: ${order.po_number}` : "Customer PO"}
-                  subtitle={order?.po_number ? "Received" : "Not received"}
-                />
-                <LinkedDocument
-                  title={`Sales Order #${order?.order_number || invoice.sales_order_id || "-"}`}
-                  subtitle={order ? salesOrderStatusLabel(order.status) : "Not linked"}
-                  onView={order ? () => router.push(`/sales/orders/${order.id}`) : undefined}
-                />
-                <LinkedDocument
-                  title="Proforma Invoice"
-                  subtitle="Not Generated"
-                  onView={() => setShowPreview(true)}
-                />
-
-                {invoice.attachments.map((file) => (
-                  <div
-                    key={file.name}
-                    className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2.5 dark:bg-[#0b2034]"
-                  >
-                    {/\.(xlsx?|csv)$/i.test(file.name) ? (
-                      <LuFileSpreadsheet size={13} className="shrink-0 text-emerald-600" />
-                    ) : (
-                      <LuFileText size={13} className="shrink-0 text-rose-500" />
-                    )}
-                    <span className="truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                      {file.name}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </SideCard>
-
-            <SideCard
-              icon={<LuHistory size={17} />}
-              title="Activity History"
-              action={
-                <button
-                  type="button"
-                  onClick={() => setShowActivityForm((value) => !value)}
-                  className="whitespace-nowrap text-[10px] font-medium text-slate-600 hover:text-[#233353] dark:text-slate-300"
-                >
-                  {showActivityForm ? "Cancel" : "+ Log Activity"}
-                </button>
-              }
-            >
-              {showActivityForm && (
-                <LogActivityForm
-                  status={invoice.status}
-                  saving={busy}
-                  onSubmit={async (payload) => {
-                    setBusy(true);
-
-                    try {
-                      const result = await logProformaInvoiceActivityApi(invoice.id, payload);
-
-                      setInvoice(result.invoice);
-                      setShowActivityForm(false);
-                      addToast(
-                        payload.status
-                          ? `Invoice moved to ${proformaInvoiceStatusLabel(result.invoice.status)}.`
-                          : "Activity logged.",
-                        "success",
-                      );
-                      loadActivities();
-                    } catch (error: any) {
-                      addToast(error?.response?.data?.detail || "Failed to log the activity.", "error");
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                />
-              )}
-
-              <ActivityTimeline loading={activitiesLoading} activities={activities} />
-            </SideCard>
-          </div>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-[#071929]">
-          {invoice.status === "CANCELLED" && (
-            <div className="border-b border-rose-100 bg-rose-50 px-6 py-3 text-[12px] font-medium text-rose-600">
-              This proforma invoice has been cancelled and is kept for the record only.
-            </div>
-          )}
-
-          <ProformaInvoiceDocument
-            invoice={invoice}
-            profile={profile}
-            saving={busy}
-            editable={{
-              freight: editable.charges,
-              lumpsum: editable.charges,
-              gstPercent: editable.charges,
-              paid: editable.amountPaid,
-            }}
-            onEdit={editCharge}
-            onCopied={(message) => addToast(message, "success")}
-          />
+      {invoice.status === "CANCELLED" && (
+        <div className="rounded-xl border border-rose-100 bg-rose-50 px-5 py-3 text-[12px] font-medium text-rose-600 dark:border-rose-900/40 dark:bg-rose-950/20">
+          This proforma invoice has been cancelled and is kept for the record only.
         </div>
       )}
 
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        {/* LEFT */}
+        <div className="space-y-8 rounded-2xl bg-white px-5 py-5 dark:bg-[#071929]">
+          <section>
+            <SectionTitle icon={<LuInfo size={17} />} title="PI & Organization Overview" />
+
+            <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
+              <InfoRow label="PI ID" value={piReference(invoice)} />
+              <div className="flex items-center">
+                <span className="w-[110px] shrink-0 text-[11px] text-slate-500">Assigned To:</span>
+                <UserChip name={invoice.assigned_to} />
+              </div>
+              <InfoRow
+                label="Sales Order ID"
+                value={order?.order_number ? `#${order.order_number}` : undefined}
+              />
+              <div className="hidden md:block" />
+              <InfoRow label="PI Date (Issue)" value={formatDate(invoice.issue_date)} />
+              <InfoRow label="PI Date (Due)" value={formatDate(invoice.due_date)} />
+            </div>
+
+            <p className="mb-3 mt-6 border-b border-slate-200 pb-2 text-xs font-semibold text-slate-600 dark:border-[#17304a] dark:text-slate-300">
+              Organization Details
+            </p>
+
+            <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
+              <InfoRow label="Customer Type" value={invoice.customer_type} />
+              <InfoRow label="Organization Name" value={invoice.company_name} />
+              <InfoRow label="GST" value={invoice.customer_information?.gst} />
+              <InfoRow label="PAN" value={invoice.customer_information?.pan} />
+              <InfoRow label="COI Number" value={invoice.customer_information?.cin} />
+              <InfoRow label="Registration" value={invoice.customer_information?.registration} />
+              <InfoRow label="Contact Name" value={contact.name || invoice.customer_name} />
+              <InfoRow label="Designation" value={contact.designation} />
+              <InfoRow label="Phone" value={contact.phone} />
+              <InfoRow label="Email" value={contact.email} />
+            </div>
+          </section>
+
+          <section>
+            <SectionTitle
+              icon={<LuMapPin size={17} />}
+              title="Location Information"
+              action={
+                isDraft && addressDirty && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => syncAddresses(invoice)}
+                      className="px-2 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+                    >
+                      Discard
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={saveAddresses}
+                      className="rounded-md bg-[#233353] px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50"
+                    >
+                      Save Address
+                    </button>
+                  </div>
+                )
+              }
+            />
+
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+              {/* Addresses are fixed once the invoice is generated, so past
+                  Draft they are shown as the saved values, not inputs that
+                  could not be saved. */}
+              <AddressFields
+                title="Billing Address"
+                address={billing}
+                onChange={setBilling}
+                readOnly={!isDraft}
+              />
+              <AddressFields
+                title="Shipping Address"
+                address={sameAsBilling ? billing : shipping}
+                onChange={setShipping}
+                disabled={isDraft && sameAsBilling}
+                readOnly={!isDraft}
+                header={
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      disabled={!isDraft}
+                      checked={
+                        sameAsBilling ||
+                        (!isDraft &&
+                          JSON.stringify(invoice.billing_address) ===
+                            JSON.stringify(invoice.shipping_address))
+                      }
+                      onChange={(event) => {
+                        setSameAsBilling(event.target.checked);
+                        if (event.target.checked) setShipping(billing);
+                      }}
+                      className="h-3.5 w-3.5 rounded border-slate-300 accent-[#233353]"
+                    />
+                    Same as Billing
+                  </label>
+                }
+              />
+            </div>
+          </section>
+
+          <section>
+            <SectionTitle icon={<LuPackage size={17} />} title="Products & Order Items" />
+            <ProductsTable lines={invoice.items.map(itemToLine)} />
+            <TotalsBlock
+              figures={{
+                subtotal: invoice.total_amount,
+                discount: invoice.discount_amount,
+                orc: invoice.orc_amount,
+                freight: invoice.freight_charges,
+                lumpsum: invoice.installation_lumpsum,
+                taxable: invoice.taxable_amount,
+                gstPercent: invoice.gst_percent,
+                gst: invoice.gst_amount,
+                total: invoice.grand_total,
+                paid: invoice.amount_paid,
+                balance: invoice.balance_due,
+              }}
+            />
+          </section>
+
+          <BankingDetails
+            profile={profile}
+            reference={invoice.pi_number || `PI-${invoice.id}`}
+            onCopied={(message) => addToast(message, "success")}
+          />
+
+          <TermsBlock terms={invoice.commercial_terms} notes={invoice.technical_notes} />
+        </div>
+
+        {/* RIGHT */}
+        <div className="space-y-4">
+          <OrderSummaryCard
+            icon={<LuClipboardList size={17} />}
+            total={invoice.grand_total}
+            advancePercent={invoice.advance_percent}
+          />
+
+          <SideCard icon={<LuGitFork size={17} />} title="Order Process">
+            <OrderProcess invoice={invoice} />
+          </SideCard>
+
+          <SideCard
+            icon={<LuFileText size={17} />}
+            title="Attached Documents"
+            action={
+              <button
+                type="button"
+                onClick={() => router.push(`/sales/proforma-invoices/new?edit=${invoice.id}`)}
+                className="whitespace-nowrap text-[10px] font-medium text-slate-600 hover:text-[#233353] dark:text-slate-300"
+              >
+                + Upload Documents
+              </button>
+            }
+          >
+            <div className="space-y-2.5">
+              <LinkedDocument
+                title={order?.quotation_id ? `Quotation ${order.quotation_id}` : "Quotation"}
+                subtitle={order?.quotation_id ? "Approved" : "Not linked"}
+                onView={order?.quotation_id ? () => router.push("/sales/quotations") : undefined}
+              />
+              <LinkedDocument
+                title={order?.po_number ? `Customer PO: ${order.po_number}` : "Customer PO"}
+                subtitle={order?.po_number ? "Received" : "Not received"}
+              />
+              <LinkedDocument
+                title={`Sales Order #${order?.order_number || invoice.sales_order_id || "-"}`}
+                subtitle={order ? salesOrderStatusLabel(order.status) : "Not linked"}
+                onView={order ? () => router.push(`/sales/orders/${order.id}`) : undefined}
+              />
+              <LinkedDocument
+                title={isDraft ? "Proforma Invoice" : `Proforma Invoice ${piReference(invoice)}`}
+                subtitle={isDraft ? "Not Generated" : proformaInvoiceStatusLabel(invoice.status)}
+                onView={() => setShowPreview(true)}
+              />
+
+              {invoice.attachments.map((file) => (
+                <div
+                  key={file.name}
+                  className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2.5 dark:bg-[#0b2034]"
+                >
+                  {/\.(xlsx?|csv)$/i.test(file.name) ? (
+                    <LuFileSpreadsheet size={13} className="shrink-0 text-emerald-600" />
+                  ) : (
+                    <LuFileText size={13} className="shrink-0 text-rose-500" />
+                  )}
+                  <span className="truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                    {file.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </SideCard>
+
+          <SideCard
+            icon={<LuHistory size={17} />}
+            title="Activity History"
+            action={
+              <button
+                type="button"
+                onClick={() => setShowActivityForm((value) => !value)}
+                className="whitespace-nowrap text-[10px] font-medium text-slate-600 hover:text-[#233353] dark:text-slate-300"
+              >
+                {showActivityForm ? "Cancel" : "+ Log Activity"}
+              </button>
+            }
+          >
+            {showActivityForm && (
+              <LogActivityForm
+                status={invoice.status}
+                saving={busy}
+                onSubmit={async (payload) => {
+                  setBusy(true);
+
+                  try {
+                    const result = await logProformaInvoiceActivityApi(invoice.id, payload);
+
+                    setInvoice(result.invoice);
+                    setShowActivityForm(false);
+                    addToast(
+                      payload.status
+                        ? `Invoice moved to ${proformaInvoiceStatusLabel(result.invoice.status)}.`
+                        : "Activity logged.",
+                      "success",
+                    );
+                    loadActivities();
+                  } catch (error: any) {
+                    addToast(error?.response?.data?.detail || "Failed to log the activity.", "error");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              />
+            )}
+
+            <ActivityTimeline loading={activitiesLoading} activities={activities} />
+          </SideCard>
+        </div>
+      </div>
+
       {showPreview && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
-          <div className="flex max-h-[94vh] w-full max-w-[980px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex max-h-[94vh] w-full max-w-[900px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
               <h2 className="text-sm font-semibold text-slate-800">
                 Preview · {piReference(invoice)}
@@ -635,11 +641,25 @@ function ProformaInvoiceDetail() {
                 </button>
               </div>
             </div>
-            <div className="overflow-y-auto">
-              <ProformaInvoiceDocument invoice={invoice} profile={profile} />
+            {/* The same A4 sheet Download PDF prints, on a grey desk. */}
+            <div className="overflow-auto bg-slate-200 p-6">
+              <ProformaInvoiceSheet invoice={invoice} profile={profile} />
             </div>
           </div>
         </div>
+      )}
+
+      {showPayment && (
+        <PaymentModal
+          invoice={invoice}
+          activities={activities.filter(
+            (activity) =>
+              activity.source === "proforma_invoice" && activity.action === "Payment Recorded",
+          )}
+          saving={busy}
+          onClose={() => setShowPayment(false)}
+          onRecord={recordPayment}
+        />
       )}
 
       {showSend && (
@@ -704,9 +724,7 @@ function OrderProcess({ invoice }: { invoice: ProformaInvoiceModel }) {
         caption={
           invoice.status === "DRAFT"
             ? "Not Generated"
-            : invoice.status === "CANCELLED"
-              ? "Cancelled"
-              : proformaInvoiceStatusLabel(invoice.status)
+            : `${invoice.pi_number} ${proformaInvoiceStatusLabel(invoice.status)}`
         }
       />
       <ProcessStep
@@ -765,6 +783,165 @@ function ProcessStep({
       <div>
         <p className="text-[12px] font-semibold text-slate-800 dark:text-white">{title}</p>
         <p className="mt-0.5 text-[11px] text-slate-500">{caption}</p>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   PAYMENT
+========================================================= */
+
+function PaymentModal({
+  invoice,
+  activities,
+  saving,
+  onClose,
+  onRecord,
+}: {
+  invoice: ProformaInvoiceModel;
+  /** The invoice's "Payment Recorded" entries, newest first. */
+  activities: ProformaInvoiceActivity[];
+  saving: boolean;
+  onClose: () => void;
+  onRecord: (amountPaid: number) => Promise<boolean>;
+}) {
+  const [received, setReceived] = useState("");
+
+  const outstanding = Math.max(0, invoice.balance_due);
+  const amount = Number(received.replace(/[^\d.]/g, "")) || 0;
+  const tooMuch = amount > outstanding;
+
+  const paidShare = invoice.grand_total
+    ? Math.min(100, (invoice.amount_paid / invoice.grand_total) * 100)
+    : 0;
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+
+    document.addEventListener("keydown", onKey);
+
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const row = (label: string, value: string, tone = "text-slate-900 dark:text-white") => (
+    <div className="flex items-center justify-between">
+      <span className="text-[12px] text-slate-500">{label}</span>
+      <span className={`text-[13px] font-semibold ${tone}`}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-[520px] overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#051422]">
+        <div className="flex h-14 items-center justify-between border-b border-slate-200 px-5 dark:border-[#17304a]">
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-white">
+            Payment · {piReference(invoice)}
+          </h2>
+          <button
+            type="button"
+            aria-label="Close payment"
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-700"
+          >
+            <LuX size={17} />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-5">
+          <div className="space-y-2.5 rounded-xl bg-slate-100 p-4 dark:bg-[#0b2034]">
+            {row("Total Payable", money(invoice.grand_total))}
+            {row(
+              `${Number(invoice.advance_percent)}% Advance Expected`,
+              money(invoice.advance_expected),
+            )}
+            {row("Amount Paid", money(invoice.amount_paid), "text-emerald-600")}
+            {row("Balance Due", money(invoice.balance_due), "text-rose-500")}
+
+            <div className="pt-1">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-[#17304a]">
+                <div className="h-full rounded-full bg-emerald-500" style={{ width: `${paidShare}%` }} />
+              </div>
+              <p className="mt-1.5 text-[10px] text-slate-500">
+                {paidShare.toFixed(0)}% of the invoice received
+              </p>
+            </div>
+          </div>
+
+          {invoice.status !== "CANCELLED" && outstanding > 0 && (
+            <form
+              onSubmit={async (event) => {
+                event.preventDefault();
+
+                if (!amount || tooMuch) return;
+
+                /* The invoice stores the running total received, so a new
+                   receipt is added to what is already there. */
+                if (await onRecord(invoice.amount_paid + amount)) setReceived("");
+              }}
+            >
+              <label className="mb-1.5 block text-[11px] text-slate-500">Record Payment Received</label>
+              <div className="flex items-center gap-2">
+                <span className="flex h-10 flex-1 items-center rounded-lg border border-slate-300 px-3 focus-within:border-[#233353] dark:border-[#17304a]">
+                  <span className="mr-1 text-[12px] text-slate-400">₹</span>
+                  <input
+                    inputMode="decimal"
+                    aria-label="Payment received"
+                    value={received}
+                    onChange={(event) => setReceived(event.target.value)}
+                    placeholder={Math.round(
+                      /* Suggest the advance until it is in, then the rest. */
+                      invoice.amount_paid < invoice.advance_expected
+                        ? Math.min(invoice.advance_expected - invoice.amount_paid, outstanding)
+                        : outstanding,
+                    ).toString()}
+                    className="w-full bg-transparent text-[12px] text-slate-800 outline-none dark:text-white"
+                  />
+                </span>
+                <button
+                  type="submit"
+                  disabled={saving || !amount || tooMuch}
+                  className="h-10 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {saving ? "Saving..." : "Record"}
+                </button>
+              </div>
+              {tooMuch && (
+                <p className="mt-1.5 text-[10px] text-rose-500">
+                  More than the {money(outstanding)} still due.
+                </p>
+              )}
+            </form>
+          )}
+
+          <div>
+            <p className="mb-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+              Payment History
+            </p>
+
+            {activities.length === 0 ? (
+              <p className="text-[11px] text-slate-400">No payments recorded yet.</p>
+            ) : (
+              <div className="max-h-[180px] space-y-2 overflow-y-auto">
+                {activities.map((activity) => (
+                  <div key={activity.id} className="rounded-lg bg-slate-100 px-3 py-2 dark:bg-[#0b2034]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-slate-800 dark:text-white">
+                        {activity.created_by_name || "System"}
+                      </span>
+                      <span className="text-[10px] text-slate-500">{formatDate(activity.created_at)}</span>
+                    </div>
+                    {activity.description && (
+                      <p className="mt-0.5 text-[10px] leading-[15px] text-slate-600 dark:text-slate-400">
+                        {activity.description}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
