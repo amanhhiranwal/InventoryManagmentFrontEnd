@@ -2791,12 +2791,7 @@ function LeadFormPage({
       <form
         id="lead-form"
         onSubmit={onSubmit}
-        className="
-    grid
-    grid-cols-1
-    gap-4
-    xl:grid-cols-[minmax(0,1fr)_360px]
-  "
+        className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_372px]"
       >
         {/* LEFT */}
 
@@ -2967,7 +2962,7 @@ function LeadFormPage({
             <div className="space-y-5">
               {/* Remarks */}
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+                <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
                   Remarks
                 </label>
 
@@ -2979,13 +2974,14 @@ function LeadFormPage({
                   className="
                     w-full
                     resize-none
-                    rounded-xl
+                    rounded-lg
                     border
-                    border-slate-200
-                    bg-slate-50/70
+                    border-[#d1d1d1]
+                    bg-[#f3f3f3]
                     p-3
-                    text-xs
-                    text-slate-800
+                    text-[13px]
+                    text-[#141414]
+                    placeholder:text-[#a9a9a9]
                     outline-none
                     transition
                     focus:border-primary
@@ -3000,7 +2996,7 @@ function LeadFormPage({
 
               {/* Attachments Heading */}
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+                <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
                   Attachments
                 </label>
 
@@ -4247,23 +4243,29 @@ function SelectInput({
   );
 }
 
+/* Form field look from the design: white, 39px, light grey border. */
 const filterInput = `
+  h-[39px]
   w-full
-  rounded-xl
+  rounded-lg
   border
-  border-slate-200
-  bg-slate-50/70
-  px-3.5
-  py-2.5
-  text-xs
-  text-slate-800
+  border-[#d1d1d1]
+  bg-white
+  px-3
+  text-[13px]
+  text-[#141414]
   outline-none
-  focus:ring-2
-  focus:ring-primary/30
+  focus:border-[#243454]
+  focus:ring-1
+  focus:ring-[#243454]/20
   dark:border-[#0d2336]
   dark:bg-[#071929]
   dark:text-white
 `;
+
+/* The shared Input keeps its own classes elsewhere; these win on this form. */
+const formInputOverride =
+  "h-[39px]! rounded-lg! border-[#d1d1d1]! px-3! text-[13px]! text-[#141414]! placeholder:text-[#a9a9a9]! dark:border-[#0d2336]! dark:text-white!";
 
 function FormInput({
   label,
@@ -4282,13 +4284,14 @@ function FormInput({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
         {label}
 
-        {required && <span className="ml-1 text-rose-500">*</span>}
+        {required && <span className="ml-0.5">*</span>}
       </label>
 
       <Input
+        className={formInputOverride}
         type={type}
         value={value}
         placeholder={placeholder || `Enter ${label.toLowerCase()}`}
@@ -4317,10 +4320,10 @@ function FormSelect({
 
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
         {label}
 
-        {required && <span className="ml-1 text-rose-500">*</span>}
+        {required && <span className="ml-0.5">*</span>}
       </label>
 
       <div className="relative">
@@ -4342,7 +4345,7 @@ function FormSelect({
           ))}
         </select>
 
-        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#141414] dark:text-slate-400" />
       </div>
 
       {/* {allowCustom && (
@@ -4375,34 +4378,17 @@ function UserSelect({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
         {label}
 
-        {required && <span className="ml-1 text-rose-500">*</span>}
+        {required && <span className="ml-0.5">*</span>}
       </label>
 
       <div className="relative">
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="
-            w-full
-            appearance-none
-            rounded-xl
-            border
-            border-slate-200
-            bg-slate-50/70
-            px-3
-            py-2.5
-            pr-9
-            text-xs
-            outline-none
-            focus:ring-2
-            focus:ring-primary/30
-            dark:border-[#0d2336]
-            dark:bg-[#071929]
-            dark:text-white
-          "
+          className={`${filterInput} appearance-none pr-9`}
         >
           <option value="">Select Assigned To</option>
 
@@ -4413,7 +4399,7 @@ function UserSelect({
           ))}
         </select>
 
-        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#141414] dark:text-slate-400" />
       </div>
     </div>
   );
@@ -4432,12 +4418,13 @@ function DocumentField({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
         {label}
       </label>
 
       <div className="grid grid-cols-[minmax(0,1fr)_150px] gap-3">
         <Input
+          className={formInputOverride}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={`Enter ${label}`}
@@ -4450,14 +4437,15 @@ function DocumentField({
             items-center
             justify-center
             gap-1.5
-            rounded-xl
-            border-2
+            h-[39px]
+            rounded-lg
+            border
             border-dashed
-            border-slate-200
+            border-[#c4c4c4]
             px-3
-            text-[10px]
-            font-bold
-            text-slate-500
+            text-[13px]
+            font-medium
+            text-[#a9a9a9]
             hover:bg-slate-50
             dark:border-[#0d2336]
             dark:hover:bg-[#071929]
