@@ -17,7 +17,7 @@ export function FormCard({
 }) {
   return (
     <div
-      className={`rounded-xl border border-slate-200 bg-white px-6 py-5 dark:border-[#17304a] dark:bg-[#071929] ${className}`}
+      className={`rounded-xl bg-white px-5 py-5 dark:border dark:border-[#17304a] dark:bg-[#071929] ${className}`}
     >
       {children}
     </div>
@@ -46,11 +46,11 @@ export function FormSectionBlock({
 }) {
   return (
     <section className={first ? "" : "mt-8"}>
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">{icon}</span>
+      <div className="flex items-center justify-between gap-3 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
+        <div className="flex items-center gap-2.5">
+          <span className="text-[18px] text-[#474747] dark:text-slate-400">{icon}</span>
 
-          <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+          <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
             {title}
           </h3>
         </div>

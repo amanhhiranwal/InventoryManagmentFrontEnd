@@ -1368,7 +1368,7 @@ export default function QuotationPage() {
         <form
           id="quotation-form"
           onSubmit={saveQuotation}
-          className="grid grid-cols-1 gap-5 px-5 lg:grid-cols-[minmax(0,1fr)_360px]"
+          className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_372px]"
         >
           {/* ---------------- LEFT ---------------- */}
 

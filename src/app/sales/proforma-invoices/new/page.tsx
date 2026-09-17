@@ -387,7 +387,7 @@ function GenerateProformaInvoice() {
                   editingId ? `/sales/proforma-invoices/${editingId}` : "/sales/proforma-invoices",
                 )
               }
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-4 text-xs font-semibold text-rose-500 transition hover:bg-rose-50 dark:bg-transparent"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-[#f7969e] bg-white px-3.5 text-[13px] font-medium text-[#d00517] transition hover:bg-rose-50 dark:bg-transparent dark:text-rose-400"
             >
               <LuX size={14} />
               Cancel
@@ -397,7 +397,7 @@ function GenerateProformaInvoice() {
               type="button"
               disabled={saving !== null}
               onClick={() => save(true)}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-white px-4 text-xs font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:bg-[#071929] dark:text-slate-200"
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-white px-3.5 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:opacity-50 dark:bg-[#071929] dark:text-slate-200"
             >
               {saving === "draft" ? <CgSpinner className="animate-spin" size={14} /> : <LuBookmark size={14} />}
               Save as Draft
@@ -407,7 +407,7 @@ function GenerateProformaInvoice() {
               type="button"
               disabled={saving !== null}
               onClick={() => save(false)}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#18243a] disabled:opacity-50"
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-[#243454] px-3.5 text-[13px] font-medium text-white shadow-sm transition hover:bg-[#18243a] disabled:opacity-50"
             >
               {saving === "generate" ? <CgSpinner className="animate-spin" size={14} /> : <LuSend size={14} />}
               Send For Approval
@@ -416,8 +416,8 @@ function GenerateProformaInvoice() {
         }
       />
 
-      <div className="px-5">
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div>
+        <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_372px]">
           <div className="space-y-8 rounded-2xl bg-white px-5 py-5 dark:bg-[#071929]">
             {/* PI INFORMATION */}
             <section>

@@ -3431,7 +3431,7 @@ function NewOpportunityPage({
         ======================================================= */}
 
         <div className="flex-1 overflow-y-auto">
-          <div className="grid grid-cols-1 gap-3 p-4 xl:grid-cols-[minmax(0,1fr)_310px]">
+          <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_372px]">
             {/* ===================================================
                 LEFT COLUMN
             =================================================== */}

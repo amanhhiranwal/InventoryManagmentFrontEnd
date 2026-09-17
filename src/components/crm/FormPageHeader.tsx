@@ -1,7 +1,9 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { FiDownload, FiUpload, FiX } from "react-icons/fi";
+
+import { useUIStore } from "@/lib/store/ui.store";
 
 /**
  * Header shared by the New Lead / New Opportunity / New Sales Order pages:
@@ -23,25 +25,34 @@ export default function FormPageHeader({
   badge?: string;
   actions?: ReactNode;
 }) {
+  const setFormFocus = useUIStore((state) => state.setFormFocus);
+
+  /* Form pages take the full width in the design: the sidebar hides while
+     one is open and comes back when it closes. */
+  useEffect(() => {
+    setFormFocus(true);
+    return () => setFormFocus(false);
+  }, [setFormFocus]);
+
   return (
-    <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+          <h1 className="text-[18px] font-medium text-[#141414] dark:text-white">
             {title}
           </h1>
 
           {badge && (
-            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600 dark:bg-blue-950/30 dark:text-blue-400">
+            <span className="rounded bg-[#dae8f4] px-1.5 py-0.5 text-[11px] text-[#038aff] dark:bg-blue-950/30 dark:text-blue-400">
               {badge}
             </span>
           )}
         </div>
 
-        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-400">
+        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[#777777]">
           <span>{parentLabel}</span>
           <span>›</span>
-          <span className="text-slate-500 dark:text-slate-300">
+          <span className="text-[#141414] dark:text-slate-300">
             {currentLabel}
           </span>
         </div>
@@ -64,7 +75,7 @@ export function CancelButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-4 text-xs font-semibold text-rose-500 transition hover:bg-rose-50 dark:border-rose-900/40 dark:bg-transparent dark:hover:bg-rose-950/20"
+      className="flex h-9 items-center gap-1.5 rounded-lg border border-[#f7969e] bg-white px-3.5 text-[13px] font-medium text-[#d00517] transition hover:bg-rose-50 dark:border-rose-900/40 dark:bg-transparent dark:text-rose-400 dark:hover:bg-rose-950/20"
     >
       <FiX size={13} />
       {children}
@@ -89,7 +100,7 @@ export function DraftButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200 dark:hover:bg-[#0b2034]"
+      className="flex h-9 items-center gap-1.5 rounded-lg border border-white bg-white px-3.5 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200 dark:hover:bg-[#0b2034]"
     >
       {withIcon && <FiDownload size={13} />}
       {children}
@@ -118,7 +129,7 @@ export function SubmitButton({
       form={formId}
       onClick={onClick}
       disabled={disabled}
-      className="flex h-9 items-center gap-1.5 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#18243a] disabled:opacity-50"
+      className="flex h-9 items-center gap-1.5 rounded-lg bg-[#243454] px-3.5 text-[13px] font-medium text-white shadow-sm transition hover:bg-[#18243a] disabled:opacity-50"
     >
       {withIcon && <FiUpload size={13} />}
       {children}

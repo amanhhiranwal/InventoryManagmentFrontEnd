@@ -1529,8 +1529,8 @@ export default function OrdersListPage() {
           MAIN GRID
       ================================================= */}
 
-        <div className="px-5">
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-3">
+        <div>
+          <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_372px]">
             {/* =================================================
               LEFT CONTENT
           ================================================= */}

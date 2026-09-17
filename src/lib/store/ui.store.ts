@@ -10,6 +10,9 @@ export interface ToastMessage {
 interface UIState {
   isSidebarOpen: boolean; // mobile drawer open state
   isSidebarCollapsed: boolean; // desktop collapsed state
+  /** A full-page create/edit form is showing; the design hides the sidebar. */
+  isFormFocus: boolean;
+  setFormFocus: (focus: boolean) => void;
   theme: "light" | "dark";
   toasts: ToastMessage[];
   addToast: (message: string, type: ToastMessage["type"]) => void;
@@ -27,6 +30,8 @@ export const useUIStore = create<UIState>()(
     (set) => ({
       isSidebarOpen: false,
       isSidebarCollapsed: false,
+      isFormFocus: false,
+      setFormFocus: (focus) => set({ isFormFocus: focus }),
       theme: "light",
       toasts: [],
       addToast: (message, type) =>
