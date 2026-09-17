@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
@@ -45,6 +46,7 @@ export default function Sidebar() {
   const {
     isSidebarOpen,
     isSidebarCollapsed,
+    isFormFocus,
     setSidebarOpen,
     toggleSidebarCollapsed,
   } = useUIStore();
@@ -97,6 +99,9 @@ export default function Sidebar() {
     );
   };
 
+  /* Create / edit forms use the full width, as in the design. */
+  if (isFormFocus) return null;
+
   return (
     <>
       {/* Mobile Drawer Backdrop */}
@@ -119,19 +124,24 @@ export default function Sidebar() {
         {/* Brand Header */}
         <div className="flex h-20 items-center justify-between px-5 shrink-0 border-b border-transparent">
           {(!isSidebarCollapsed || isSidebarOpen) ? (
-            <Link href="/dashboard" className="flex flex-col group transition-opacity">
-              <div className="flex items-baseline">
-                <span className="text-[26px] font-black tracking-tight text-[#16294a] dark:text-white font-sans">
-                  Synergy
-                </span>
-                <span className="text-[12px] font-bold text-[#16294a] dark:text-white ml-0.5 relative -top-2">
-                  ™
-                </span>
-                <span className="w-2.5 h-2.5 rounded-full bg-[#ea580c] inline-block ml-1 relative -top-1" />
-              </div>
-              <span className="text-[9.5px] font-black tracking-[0.22em] text-[#ea580c] uppercase pl-7 -mt-1 font-sans">
-                GLOBAL
-              </span>
+            <Link href="/dashboard" aria-label="Synergy Global home" className="block shrink-0">
+              {/* The design's logo artwork: navy wordmark on light, white on dark. */}
+              <Image
+                src="/logo-light.png"
+                alt="Synergy Global"
+                width={119}
+                height={33}
+                priority
+                className="h-[33px] w-[119px] object-contain dark:hidden"
+              />
+              <Image
+                src="/logo-dark.png"
+                alt="Synergy Global"
+                width={119}
+                height={33}
+                priority
+                className="hidden h-[33px] w-[119px] object-contain dark:block"
+              />
             </Link>
           ) : (
             <Link
