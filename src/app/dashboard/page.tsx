@@ -10,7 +10,21 @@ import {
   type SetStateAction,
 } from "react";
 
-import { FiDownload, FiEye, FiMoreVertical, FiRefreshCw } from "react-icons/fi";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { FiDownload, FiMoreVertical, FiRefreshCw } from "react-icons/fi";
+import { LuEllipsisVertical, LuMapPin } from "react-icons/lu";
+
+import { StatusPill } from "@/components/crm/Pill";
+import {
+  getSalesOrdersApi,
+  salesOrderStatusLabel,
+  type SalesOrderModel,
+} from "@/features/salesOrders/api/salesOrders.api";
+import {
+  compactMoney,
+  formatDate,
+} from "@/features/proformaInvoices/components/ProformaParts";
 
 import { getLeadsApi, Lead } from "@/features/workflows/api/workflows.api";
 
@@ -297,15 +311,51 @@ function getRegionLabel(value?: string) {
   return stateMap[normalized] || value;
 }
 
-function getCustomerName(lead: DashboardLead) {
-  return lead.customer_name || lead.customer || lead.title || "Customer";
-}
+/* Recent Orders lists real sales orders, with the columns of the Sales Order
+   list page. */
 
-function getProductName(lead: DashboardLead) {
-  const item = lead.quotation_items?.[0];
+type OrderSortKey =
+  | "order"
+  | "customer"
+  | "company"
+  | "value"
+  | "assigned"
+  | "date"
+  | "status";
 
-  return lead.product_category || item?.item || "Product";
-}
+const orderNumber = (order: SalesOrderModel) =>
+  `#${order.order_number || `SO-${order.id}`}`;
+
+const orderContactEmail = (order: SalesOrderModel) => {
+  const contact = (order.customer_information?.primary_contact || {}) as Record<
+    string,
+    unknown
+  >;
+
+  return typeof contact.email === "string" ? contact.email : "";
+};
+
+const orderDate = (order: SalesOrderModel) =>
+  order.order_date || order.created_at || "";
+
+const orderAssignee = (order: SalesOrderModel) =>
+  order.assigned_to || order.sales_executive || "Unassigned";
+
+const ORDER_SORT_VALUE: Record<
+  OrderSortKey,
+  (order: SalesOrderModel) => string | number
+> = {
+  order: (order) => order.id,
+  customer: (order) => order.customer_name.toLowerCase(),
+  company: (order) => (order.company_name || "").toLowerCase(),
+  value: (order) => Number(order.grand_total || 0),
+  assigned: (order) => orderAssignee(order).toLowerCase(),
+  date: (order) => new Date(orderDate(order) || 0).getTime(),
+  status: (order) => salesOrderStatusLabel(order.status),
+};
+
+const escapeSvgText = (value: string) =>
+  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /* ============================================================
    SVG DOWNLOAD
@@ -342,6 +392,8 @@ type DashboardMenuProps = {
   setOpenMenu: Dispatch<SetStateAction<MenuType>>;
   onExport: () => void;
   onDownloadChart?: () => void;
+  /** White square trigger, as the page-level menu in the design. */
+  boxed?: boolean;
 };
 
 function DashboardMenu({
@@ -350,6 +402,7 @@ function DashboardMenu({
   setOpenMenu,
   onExport,
   onDownloadChart,
+  boxed = false,
 }: DashboardMenuProps) {
   const isOpen = openMenu === menu;
 
@@ -361,9 +414,13 @@ function DashboardMenu({
         onClick={() => {
           setOpenMenu(isOpen ? null : menu);
         }}
-        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600 dark:hover:bg-[#071929] dark:hover:text-slate-200"
+        className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+          boxed
+            ? "bg-white text-slate-700 hover:bg-slate-50 dark:bg-[#051422] dark:text-slate-200 dark:hover:bg-[#071929]"
+            : "text-slate-700 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-[#071929] dark:hover:text-slate-200"
+        }`}
       >
-        <FiMoreVertical size={17} />
+        <FiMoreVertical size={16} />
       </button>
 
       {isOpen && (
@@ -399,18 +456,57 @@ function DashboardMenu({
   );
 }
 
+function OrderSortTh({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  className = "",
+}: {
+  label: string;
+  sortKey: OrderSortKey;
+  sort: { key: OrderSortKey; dir: 1 | -1 } | null;
+  onSort: (key: OrderSortKey) => void;
+  className?: string;
+}) {
+  const active = sort?.key === sortKey;
+
+  return (
+    <th
+      aria-sort={
+        active ? (sort!.dir === 1 ? "ascending" : "descending") : undefined
+      }
+      className={`border-r border-slate-100 px-3 py-3 text-left dark:border-[#0d2336] ${className}`}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="flex w-full items-center justify-between gap-2 text-xs font-normal text-[#777777] dark:text-slate-400"
+      >
+        <span className="text-left leading-4">{label}</span>
+        <span className="flex flex-col text-[7px] leading-[7px] text-slate-400">
+          <span className={active && sort!.dir === 1 ? "text-slate-800 dark:text-white" : ""}>▲</span>
+          <span className={active && sort!.dir === -1 ? "text-slate-800 dark:text-white" : ""}>▼</span>
+        </span>
+      </button>
+    </th>
+  );
+}
+
 /* ============================================================
    COMPONENT
 ============================================================ */
 
 export default function Dashboard() {
   const { addToast } = useUIStore();
+  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const [dbLeads, setDbLeads] = useState<DashboardLead[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [salesOrders, setSalesOrders] = useState<SalesOrderModel[]>([]);
 
   const [chartMode, setChartMode] = useState<ChartMode>("yearly");
 
@@ -423,6 +519,13 @@ export default function Dashboard() {
   const [openMenu, setOpenMenu] = useState<MenuType>(null);
 
   const [showAllOrders, setShowAllOrders] = useState(false);
+
+  const [orderSort, setOrderSort] = useState<{
+    key: OrderSortKey;
+    dir: 1 | -1;
+  } | null>(null);
+
+  const [orderRowMenu, setOrderRowMenu] = useState<number | null>(null);
 
   const [hoveredPipelineIndex, setHoveredPipelineIndex] = useState<number | null>(
   null, );
@@ -438,10 +541,20 @@ export default function Dashboard() {
     try {
       setRefreshing(true);
 
-      const [leadsResult, inventoryResult] = await Promise.allSettled([
-        getLeadsApi(),
-        getInventoryItemsApi(),
-      ]);
+      const [leadsResult, inventoryResult, ordersResult] =
+        await Promise.allSettled([
+          getLeadsApi(),
+          getInventoryItemsApi(),
+          getSalesOrdersApi(),
+        ]);
+
+      if (ordersResult.status === "fulfilled") {
+        setSalesOrders(ordersResult.value || []);
+      } else {
+        console.error("Failed to load sales orders:", ordersResult.reason);
+
+        setSalesOrders([]);
+      }
 
       if (leadsResult.status === "fulfilled") {
         setDbLeads((leadsResult.value || []) as DashboardLead[]);
@@ -874,9 +987,44 @@ export default function Dashboard() {
   }, [allOrders]);
 
   /* ==========================================================
-   DISPLAYED ORDERS
+   ORDERS TABLE
+   Newest sales orders first; a column header sorts the rows shown.
 ========================================================== */
-  const displayedOrders = showAllOrders ? allOrders : recentOrders;
+  const sortedSalesOrders = useMemo(
+    () =>
+      [...salesOrders].sort(
+        (a, b) =>
+          new Date(orderDate(b) || 0).getTime() -
+            new Date(orderDate(a) || 0).getTime() || b.id - a.id,
+      ),
+    [salesOrders],
+  );
+
+  const displayedOrders = useMemo(() => {
+    const rows = showAllOrders
+      ? sortedSalesOrders
+      : sortedSalesOrders.slice(0, 5);
+
+    if (!orderSort) return rows;
+
+    const valueOf = ORDER_SORT_VALUE[orderSort.key];
+
+    return [...rows].sort((a, b) => {
+      const left = valueOf(a);
+      const right = valueOf(b);
+
+      return (left < right ? -1 : left > right ? 1 : 0) * orderSort.dir;
+    });
+  }, [sortedSalesOrders, showAllOrders, orderSort]);
+
+  const toggleOrderSort = (key: OrderSortKey) =>
+    setOrderSort((current) =>
+      current?.key === key
+        ? current.dir === 1
+          ? { key, dir: -1 }
+          : null
+        : { key, dir: 1 },
+    );
 
   /* ==========================================================
      REVENUE CHART POINTS
@@ -1057,30 +1205,29 @@ export default function Dashboard() {
 
   const exportOrdersData = useCallback(() => {
     exportRows(`recent-orders-${new Date().toISOString().slice(0, 10)}.csv`, [
-      ["Order ID", "Customer", "Product", "Region", "Value", "Status"],
+      [
+        "Order ID",
+        "Customer Name",
+        "Email",
+        "State",
+        "Company",
+        "Order Value",
+        "Assigned To",
+        "Order Date",
+        "Status",
+      ],
 
-      ...displayedOrders.map((lead) => {
-        const date = getLeadDate(lead);
-
-        const year = date?.getFullYear() || new Date().getFullYear();
-
-        const shortId = String(lead.id).slice(-3);
-
-        const status = isWonLead(lead)
-          ? "Delivered"
-          : isQuotationLead(lead)
-            ? "In Transit"
-            : "Processing";
-
-        return [
-          `#ORD-${year}-${shortId}`,
-          getCustomerName(lead),
-          getProductName(lead),
-          getRegionLabel(lead.state || lead.region),
-          getLeadValue(lead),
-          status,
-        ];
-      }),
+      ...displayedOrders.map((order) => [
+        orderNumber(order),
+        order.customer_name,
+        orderContactEmail(order),
+        order.state || "",
+        order.company_name || "",
+        Number(order.grand_total || 0),
+        orderAssignee(order),
+        formatDate(orderDate(order)),
+        salesOrderStatusLabel(order.status),
+      ]),
     ]);
   }, [exportRows, displayedOrders]);
 
@@ -1730,108 +1877,49 @@ export default function Dashboard() {
 
     const rowHeight = 70;
 
-    const height = 90 + Math.max(recentOrders.length, 1) * rowHeight;
+    const height = 90 + Math.max(displayedOrders.length, 1) * rowHeight;
+
+    const columns = [
+      { x: 40, label: "Order ID" },
+      { x: 150, label: "Customer Name" },
+      { x: 360, label: "Company" },
+      { x: 560, label: "Order Value" },
+      { x: 680, label: "Assigned To" },
+      { x: 830, label: "Order Date" },
+      { x: 960, label: "Status" },
+    ];
+
+    const header = columns
+      .map(
+        (column) =>
+          `<text x="${column.x}" y="58" font-size="11" fill="#777777">${column.label}</text>`,
+      )
+      .join("");
 
     const rows = displayedOrders
-      .map((lead, index) => {
-        const y = 65 + index * rowHeight;
+      .map((order, index) => {
+        const y = 75 + index * rowHeight;
 
-        const date = getLeadDate(lead);
-
-        const year = date?.getFullYear() || new Date().getFullYear();
-
-        const shortId = String(lead.id).slice(-3);
-
-        const status = isWonLead(lead)
-          ? "Delivered"
-          : isQuotationLead(lead)
-            ? "In Transit"
-            : "Processing";
-
-        const statusFill =
-          status === "Delivered"
-            ? "#20c66b"
-            : status === "In Transit"
-              ? "#d99b28"
-              : "#5c6bc0";
+        const cells = [
+          orderNumber(order),
+          order.customer_name,
+          order.company_name || "-",
+          compactMoney(order.grand_total),
+          orderAssignee(order),
+          formatDate(orderDate(order)),
+          salesOrderStatusLabel(order.status),
+        ];
 
         return `
-                <rect
-                  x="20"
-                  y="${y}"
-                  width="1060"
-                  height="52"
-                  rx="8"
-                  fill="#f7f8fa"
-                />
-
-                <text
-                  x="40"
-                  y="${y + 22}"
-                  font-size="12"
-                  font-weight="700"
-                  fill="#18294a"
-                >
-                  #ORD-${year}-${shortId}
-                </text>
-
-                <text
-                  x="190"
-                  y="${y + 22}"
-                  font-size="12"
-                  fill="#38588f"
-                >
-                  ${getCustomerName(lead)}
-                </text>
-
-                <text
-                  x="410"
-                  y="${y + 22}"
-                  font-size="12"
-                  fill="#64748b"
-                >
-                  ${getProductName(lead)}
-                </text>
-
-                <text
-                  x="600"
-                  y="${y + 22}"
-                  font-size="12"
-                  fill="#64748b"
-                >
-                  ${getRegionLabel(lead.state || lead.region)}
-                </text>
-
-                <text
-                  x="760"
-                  y="${y + 22}"
-                  font-size="13"
-                  font-weight="700"
-                  fill="#233353"
-                >
-                  ${formatCurrency(getLeadValue(lead))}
-                </text>
-
-                <rect
-                  x="930"
-                  y="${y + 10}"
-                  width="120"
-                  height="28"
-                  rx="14"
-                  fill="${statusFill}"
-                  opacity="0.14"
-                />
-
-                <text
-                  x="990"
-                  y="${y + 29}"
-                  text-anchor="middle"
-                  font-size="11"
-                  font-weight="700"
-                  fill="${statusFill}"
-                >
-                  ${status}
-                </text>
+                <rect x="20" y="${y}" width="1060" height="52" rx="8" fill="#f7f8fa" />
+                ${cells
+                  .map(
+                    (cell, cellIndex) =>
+                      `<text x="${columns[cellIndex].x}" y="${y + 31}" font-size="12" fill="${
+                        cellIndex === 0 ? "#18294a" : "#475569"
+                      }">${escapeSvgText(String(cell))}</text>`,
+                  )
+                  .join("")}
               `;
       })
       .join("");
@@ -1856,8 +1944,10 @@ export default function Dashboard() {
             font-weight="700"
             fill="#18294a"
           >
-            Recent Orders
+            ${showAllOrders ? "All Orders" : "Recent Orders"}
           </text>
+
+          ${header}
 
           ${rows}
         </svg>
@@ -1869,7 +1959,7 @@ export default function Dashboard() {
     );
 
     addToast("Orders chart downloaded.", "success");
-  }, [recentOrders, displayedOrders, addToast]);
+  }, [displayedOrders, showAllOrders, addToast]);
 
   /* ==========================================================
      LOADING
@@ -1894,14 +1984,14 @@ export default function Dashboard() {
   ========================================================== */
 
   return (
-    <div className="min-h-full space-y-5 bg-[#f7f7f7] pb-8 dark:bg-[#020b12]">
+    <div className="-m-6 min-h-[calc(100%+3rem)] space-y-5 bg-[#f3f3f3] p-5 pb-8 dark:bg-[#020b12]">
       {/* ======================================================
           HEADER
       ====================================================== */}
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-2xl font-bold tracking-tight text-[#18294a] dark:text-white">
+          <h2 className="text-[18px] font-medium text-[#131313] dark:text-white">
             Dashboard
           </h2>
 
@@ -1909,17 +1999,18 @@ export default function Dashboard() {
             type="button"
             onClick={fetchData}
             title="Refresh dashboard"
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-[#0d2336] dark:bg-[#051422]"
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-[#0d2336] dark:bg-[#051422]"
           >
             <FiRefreshCw
               className={refreshing ? "animate-spin" : ""}
-              size={14}
+              size={11}
             />
           </button>
         </div>
 
         <DashboardMenu
           menu="dashboard"
+          boxed
           openMenu={openMenu}
           setOpenMenu={setOpenMenu}
           onExport={exportDashboardData}
@@ -1931,74 +2022,96 @@ export default function Dashboard() {
           KPI CARDS
       ====================================================== */}
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
-          <div className="flex items-start justify-between">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 min-[68.75rem]:grid-cols-4">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+          <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="text-xs font-medium text-slate-400">
+              <p className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
                 Revenue Performance
               </p>
 
-              <h3 className="mt-2 text-3xl font-bold tracking-tight text-[#233353] dark:text-white">
+              <h3 className="mt-1 text-[26px] font-medium leading-tight tracking-tight text-[#233353] dark:text-white">
                 {formatCurrency(wonRevenue)}
               </h3>
 
-              <p className="mt-1 text-[11px] font-medium text-emerald-500">
+              <p
+                className={`mt-0.5 text-[11px] ${
+                  currentMonthStats.revenueChange < 0 ? "text-rose-500" : "text-emerald-500"
+                }`}
+              >
                 vs last month
               </p>
             </div>
 
-            <span className="rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-500 dark:bg-emerald-500/10">
-              ↗ {Math.abs(currentMonthStats.revenueChange).toFixed(1)}%
+            <span
+              className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
+                currentMonthStats.revenueChange < 0
+                  ? "bg-rose-50 text-rose-500 dark:bg-rose-500/10"
+                  : "bg-emerald-50 text-emerald-500 dark:bg-emerald-500/10"
+              }`}
+            >
+              {currentMonthStats.revenueChange < 0 ? "↘" : "↗"}{" "}
+              {Math.abs(currentMonthStats.revenueChange).toFixed(1)}%
             </span>
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
-          <div className="flex items-start justify-between">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+          <div className="flex items-start justify-between gap-2">
             <div>
-              <p className="text-xs font-medium text-slate-400">Units Sold</p>
+              <p className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">Units Sold</p>
 
-              <h3 className="mt-2 text-3xl font-bold tracking-tight text-[#233353] dark:text-white">
+              <h3 className="mt-1 text-[26px] font-medium leading-tight tracking-tight text-[#233353] dark:text-white">
                 {unitsSold.toLocaleString("en-IN")} Units
               </h3>
 
-              <p className="mt-1 text-[11px] font-medium text-emerald-500">
+              <p
+                className={`mt-0.5 text-[11px] ${
+                  currentMonthStats.unitsChange < 0 ? "text-rose-500" : "text-emerald-500"
+                }`}
+              >
                 vs last month
               </p>
             </div>
 
-            <span className="rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-500 dark:bg-emerald-500/10">
-              ↗ {Math.abs(currentMonthStats.unitsChange).toFixed(1)}%
+            <span
+              className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
+                currentMonthStats.unitsChange < 0
+                  ? "bg-rose-50 text-rose-500 dark:bg-rose-500/10"
+                  : "bg-emerald-50 text-emerald-500 dark:bg-emerald-500/10"
+              }`}
+            >
+              {currentMonthStats.unitsChange < 0 ? "↘" : "↗"}{" "}
+              {Math.abs(currentMonthStats.unitsChange).toFixed(1)}%
             </span>
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
-          <p className="text-xs font-medium text-slate-400">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+          <p className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
             State Performance
           </p>
 
-          <h3 className="mt-2 text-3xl font-bold tracking-tight text-[#233353] dark:text-white">
+          <h3 className="mt-1 text-[26px] font-medium leading-tight tracking-tight text-[#233353] dark:text-white">
             {activeStates} Active
           </h3>
 
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
             Top State:{" "}
             <span className="font-medium">{topRegion?.name || "—"}</span>
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
-          <p className="text-xs font-medium text-slate-400">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+          <p className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
             Sales Team Performance
           </p>
 
-          <h3 className="mt-2 text-3xl font-bold tracking-tight text-[#233353] dark:text-white">
+          <h3 className="mt-1 text-[26px] font-medium leading-tight tracking-tight text-[#233353] dark:text-white">
             {salesTeam.length} Active
           </h3>
 
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
             Top Performer:{" "}
             <span className="font-medium">{topSalesPerson?.name || "—"}</span>
           </p>
@@ -2009,20 +2122,20 @@ export default function Dashboard() {
           REVENUE TREND
       ====================================================== */}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
+            <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
               Revenue Trend
             </h3>
 
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               Historical billing performance across regions
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 dark:border-[#0d2336] dark:bg-[#071929]">
+            <div className="flex rounded-lg border border-slate-200 bg-[#f3f3f3] p-0.5 dark:border-[#0d2336] dark:bg-[#071929]">
               <button
                 type="button"
                 onClick={() => {
@@ -2030,10 +2143,10 @@ export default function Dashboard() {
 
                   setActiveChartIndex(new Date().getMonth());
                 }}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                className={`rounded-md px-2.5 py-1 text-sm ${
                   chartMode === "monthly"
-                    ? "bg-white text-slate-700 shadow-sm dark:bg-[#051422] dark:text-white"
-                    : "text-slate-500"
+                    ? "bg-white text-slate-800 shadow-sm dark:bg-[#051422] dark:text-white"
+                    : "text-slate-600 dark:text-slate-400"
                 }`}
               >
                 Monthly
@@ -2046,10 +2159,10 @@ export default function Dashboard() {
 
                   setActiveChartIndex(Math.max(yearlyRevenue.length - 1, 0));
                 }}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                className={`rounded-md px-2.5 py-1 text-sm ${
                   chartMode === "yearly"
-                    ? "bg-white text-slate-700 shadow-sm dark:bg-[#051422] dark:text-white"
-                    : "text-slate-500"
+                    ? "bg-white text-slate-800 shadow-sm dark:bg-[#051422] dark:text-white"
+                    : "text-slate-600 dark:text-slate-400"
                 }`}
               >
                 Yearly
@@ -2066,21 +2179,12 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="relative mt-5 h-[300px] w-full">
-          <div className="pointer-events-none absolute inset-0 flex flex-col justify-between pb-8">
-            {[0, 1, 2, 3, 4].map((line) => (
-              <div
-                key={line}
-                className="border-t border-dashed border-slate-100 dark:border-slate-800"
-              />
-            ))}
-          </div>
-
+        <div className="relative mt-6 h-[250px] w-full">
           <svg
             ref={chartRef}
             viewBox="0 0 1000 300"
             preserveAspectRatio="none"
-            className="absolute inset-x-0 top-0 h-[260px] w-full overflow-visible"
+            className="absolute inset-x-0 top-0 h-[215px] w-full overflow-visible"
           >
             <defs>
               <linearGradient
@@ -2160,7 +2264,7 @@ export default function Dashboard() {
                 )}%`,
 
                 top: `${Math.max(
-                  (chartPoints[hoveredChartIndex].y / 260) * 100 - 12,
+                  ((chartPoints[hoveredChartIndex].y / 300) * 215 / 250) * 100 - 12,
                   2,
                 )}%`,
 
@@ -2189,10 +2293,10 @@ export default function Dashboard() {
                 onMouseEnter={() => setHoveredChartIndex(index)}
                 onMouseLeave={() => setHoveredChartIndex(null)}
                 onClick={() => setActiveChartIndex(index)}
-                className={`text-[10px] font-medium ${
+                className={`text-[10px] ${
                   activeChartIndex === index
                     ? "font-semibold text-[#233353] dark:text-white"
-                    : "text-slate-400"
+                    : "text-slate-600 dark:text-slate-400"
                 }`}
               >
                 {point.label}
@@ -2215,12 +2319,12 @@ export default function Dashboard() {
           PRODUCT / PIPELINE / REGION
       ====================================================== */}
 
-      <section className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* PRODUCT */}
 
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
+            <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
               Units by Product
             </h3>
 
@@ -2233,23 +2337,23 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="mt-6 space-y-5">
+          <div className="mt-5 space-y-6">
             {productDistribution.length > 0 ? (
               productDistribution.slice(0, 3).map((product) => (
                 <div key={product.name}>
-                  <div className="mb-2 flex justify-between gap-3 text-xs">
-                    <span className="font-medium text-slate-700 dark:text-slate-300">
+                  <div className="mb-2 flex justify-between gap-3 text-sm">
+                    <span className="text-[#131313] dark:text-slate-300">
                       {product.name}
                     </span>
 
-                    <span className="font-bold text-[#233353] dark:text-slate-200">
+                    <span className="font-medium text-[#233353] dark:text-slate-200">
                       {product.units.toLocaleString("en-IN")}
                     </span>
                   </div>
 
-                  <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div className="h-1.5 rounded-full bg-[#f3f3f3] dark:bg-slate-800">
                     <div
-                      className="h-2 rounded-full bg-[#38588f]"
+                      className="h-1.5 rounded-full bg-[#293b60] dark:bg-[#6f8fc4]"
                       style={{
                         width: `${Math.max(4, product.percentage)}%`,
                       }}
@@ -2272,7 +2376,7 @@ export default function Dashboard() {
 <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
   {/* HEADER */}
   <div className="flex items-center justify-between">
-    <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
+    <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
       Sales Pipeline
     </h3>
 
@@ -2397,7 +2501,7 @@ export default function Dashboard() {
 
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
+            <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
               Regional Performance
             </h3>
 
@@ -2410,28 +2514,28 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="mt-7 space-y-4">
+          <div className="mt-5 space-y-3.5">
             {regionalPerformance.length > 0 ? (
               regionalPerformance.map((region) => (
                 <div key={region.name} className="flex items-center gap-3">
-                  <span className="w-10 shrink-0 text-xs font-semibold text-slate-500">
+                  <span className="w-10 shrink-0 text-sm font-medium text-[#777777] dark:text-slate-400">
                     {region.name}
                   </span>
 
-                  <div className="relative flex-1">
-                    <div className="h-8 rounded bg-slate-100 dark:bg-slate-800">
-                      <div
-                        className="flex h-8 items-center justify-end rounded bg-[#38588f] pr-2 text-[10px] font-bold text-white"
-                        style={{
-                          width: `${Math.max(
-                            8,
-                            (region.revenue / maxRegionRevenue) * 100,
-                          )}%`,
-                        }}
-                      >
-                        {formatCompactCurrency(region.revenue)}
-                      </div>
-                    </div>
+                  <div className="relative h-[26px] flex-1 rounded-sm bg-[#f3f3f3] dark:bg-slate-800">
+                    <div
+                      className="h-full rounded-sm bg-[#395388]"
+                      style={{
+                        width: `${Math.max(
+                          8,
+                          (region.revenue / maxRegionRevenue) * 100,
+                        )}%`,
+                      }}
+                    />
+
+                    <span className="absolute inset-y-0 right-2 flex items-center text-[10px] text-[#919191]">
+                      {formatCompactCurrency(region.revenue)}
+                    </span>
                   </div>
                 </div>
               ))
@@ -2448,13 +2552,13 @@ export default function Dashboard() {
           SALES TEAM + ACTIVITY
       ====================================================== */}
 
-      <section className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* SALES TEAM */}
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:col-span-2 dark:border-[#0d2336] dark:bg-[#051422]">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 dark:border-[#0d2336]">
             <div>
-              <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
+              <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
                 Sales Team Hierarchy
               </h3>
 
@@ -2559,7 +2663,7 @@ export default function Dashboard() {
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
+              <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
                 Sales Activity
               </h3>
             </div>
@@ -2614,15 +2718,15 @@ export default function Dashboard() {
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
         {/* HEADER */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 dark:border-[#0d2336]">
+        <div className="flex items-center justify-between px-5 py-5">
           <div>
-            <h3 className="text-lg font-bold text-[#18294a] dark:text-white">
+            <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
               {showAllOrders ? "All Orders" : "Recent Orders"}
             </h3>
 
             {showAllOrders && (
               <p className="mt-1 text-xs text-slate-400">
-                Showing all {allOrders.length} orders
+                Showing all {salesOrders.length} orders
               </p>
             )}
           </div>
@@ -2634,7 +2738,7 @@ export default function Dashboard() {
               onClick={() => {
                 setShowAllOrders((current) => !current);
               }}
-              className="text-xs font-semibold text-[#38588f] transition-colors hover:text-[#233353] dark:text-[#6f8fc4] dark:hover:text-white"
+              className="text-sm text-[#aaaaaa] transition-colors hover:text-[#233353] dark:text-slate-400 dark:hover:text-white"
             >
               {showAllOrders ? "Show Recent Orders" : "View All Orders"}
             </button>
@@ -2651,103 +2755,138 @@ export default function Dashboard() {
         </div>
 
         {/* TABLE */}
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[950px] text-left">
+        <div className="mx-5 mb-5 overflow-x-auto rounded-xl border border-[#e2e2e2] dark:border-[#0d2336]">
+          <table className="w-full min-w-[820px] border-collapse text-left">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-500 dark:border-[#0d2336] dark:bg-[#071929] dark:text-slate-400">
-                <th className="px-5 py-4 font-semibold">Order ID</th>
-
-                <th className="px-5 py-4 font-semibold">Customer</th>
-
-                <th className="px-5 py-4 font-semibold">Product Category</th>
-
-                <th className="px-5 py-4 font-semibold">Region</th>
-
-                <th className="px-5 py-4 font-semibold">Contract Value</th>
-
-                <th className="px-5 py-4 font-semibold">Status</th>
-
-                <th className="px-5 py-4 text-right font-semibold">Action</th>
+              <tr className="border-b border-[#e2e2e2] dark:border-[#0d2336]">
+                <th className="w-10 border-r border-slate-100 px-3 py-3 dark:border-[#0d2336]">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all orders"
+                    className="rounded border-slate-300"
+                  />
+                </th>
+                <OrderSortTh sort={orderSort} onSort={toggleOrderSort} label="Order ID" sortKey="order" className="whitespace-nowrap" />
+                <OrderSortTh sort={orderSort} onSort={toggleOrderSort} label="Customer Name" sortKey="customer" className="min-w-[150px]" />
+                <OrderSortTh sort={orderSort} onSort={toggleOrderSort} label="Company" sortKey="company" />
+                <OrderSortTh sort={orderSort} onSort={toggleOrderSort} label="Order Value" sortKey="value" />
+                <OrderSortTh sort={orderSort} onSort={toggleOrderSort} label="Assigned To" sortKey="assigned" />
+                <OrderSortTh sort={orderSort} onSort={toggleOrderSort} label="Order Date" sortKey="date" />
+                <OrderSortTh sort={orderSort} onSort={toggleOrderSort} label="Status" sortKey="status" />
+                <th className="px-3 py-3 text-center text-xs font-normal text-[#777777] dark:text-slate-400">
+                  Actions
+                </th>
               </tr>
             </thead>
 
             <tbody>
               {displayedOrders.length > 0 ? (
-                displayedOrders.map((lead) => {
-                  const date = getLeadDate(lead);
-
-                  const year = date?.getFullYear() || new Date().getFullYear();
-
-                  const shortId = String(lead.id).slice(-3);
-
-                  const value = getLeadValue(lead);
-
-                  const status = isWonLead(lead)
-                    ? "Delivered"
-                    : isQuotationLead(lead)
-                      ? "In Transit"
-                      : "Processing";
+                displayedOrders.map((order) => {
+                  const email = orderContactEmail(order);
 
                   return (
                     <tr
-                      key={lead.id}
-                      className="border-b border-slate-100 last:border-0 dark:border-[#0d2336]"
+                      key={order.id}
+                      onClick={() => router.push(`/sales/orders/${order.id}`)}
+                      className="cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50 dark:border-[#0d2336] dark:hover:bg-[#071929]"
                     >
-                      {/* ORDER ID */}
-                      <td className="px-5 py-5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                        #ORD-{year}-{shortId}
+                      <td
+                        className="px-3 py-3"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${orderNumber(order)}`}
+                          className="rounded border-slate-300"
+                        />
                       </td>
 
-                      {/* CUSTOMER */}
-                      <td className="px-5 py-5 text-xs font-medium text-[#38588f]">
-                        {getCustomerName(lead)}
+                      <td className="whitespace-nowrap px-3 py-3 text-[11px] text-slate-800 dark:text-white">
+                        {orderNumber(order)}
                       </td>
 
-                      {/* PRODUCT */}
-                      <td className="px-5 py-5 text-xs text-slate-500">
-                        {getProductName(lead)}
+                      <td className="px-3 py-3">
+                        <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
+                          {order.customer_name}
+                        </p>
+
+                        {email && (
+                          <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
+                            {email}
+                          </p>
+                        )}
+
+                        {order.state && (
+                          <p className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                            <LuMapPin size={9} />
+                            {order.state}
+                          </p>
+                        )}
                       </td>
 
-                      {/* REGION */}
-                      <td className="px-5 py-5 text-xs text-slate-500">
-                        {getRegionLabel(lead.state || lead.region)}
+                      <td className="px-3 py-3 text-[12px] text-slate-700 dark:text-slate-300">
+                        {order.company_name || "-"}
                       </td>
 
-                      {/* CONTRACT VALUE */}
-                      <td className="px-5 py-5 text-xs font-bold text-slate-700 dark:text-slate-300">
-                        {formatCurrency(value)}
+                      <td className="whitespace-nowrap px-3 py-3 text-center text-[10px] font-medium text-slate-800 dark:text-slate-200">
+                        {compactMoney(order.grand_total)}
                       </td>
 
-                      {/* STATUS */}
-                      <td className="px-5 py-5">
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-[10px] font-bold ${
-                            status === "Delivered"
-                              ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10"
-                              : status === "In Transit"
-                                ? "bg-amber-50 text-amber-600 dark:bg-amber-500/10"
-                                : "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10"
-                          }`}
-                        >
-                          {status}
+                      <td className="px-3 py-3 text-center">
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-slate-100 px-2 py-1 text-[10px] text-slate-700 dark:bg-[#071929] dark:text-slate-200">
+                          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] dark:bg-[#17304a]">
+                            {orderAssignee(order).charAt(0).toUpperCase()}
+                          </span>
+                          {orderAssignee(order)}
                         </span>
                       </td>
 
-                      {/* ACTION */}
-                      <td className="px-5 py-5 text-right">
+                      <td className="whitespace-nowrap px-3 py-3 text-center text-[10px] text-slate-700 dark:text-slate-300">
+                        {formatDate(orderDate(order))}
+                      </td>
+
+                      <td className="px-3 py-3 text-center">
+                        <StatusPill
+                          status={order.status}
+                          label={salesOrderStatusLabel(order.status)}
+                        />
+                      </td>
+
+                      <td
+                        className="relative px-3 py-3 text-center"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         <button
                           type="button"
-                          title="View order"
+                          aria-label={`Actions for ${orderNumber(order)}`}
                           onClick={() =>
-                            addToast(
-                              "Order details can be connected to the order detail view.",
-                              "info",
+                            setOrderRowMenu(
+                              orderRowMenu === order.id ? null : order.id,
                             )
                           }
-                          className="text-slate-400 transition hover:text-[#38588f]"
+                          className="rounded p-1 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#071929]"
                         >
-                          <FiEye size={17} />
+                          <LuEllipsisVertical size={15} />
                         </button>
+
+                        {orderRowMenu === order.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-20"
+                              onClick={() => setOrderRowMenu(null)}
+                            />
+
+                            <div className="absolute right-4 top-9 z-30 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-left shadow-xl dark:border-[#0d2336] dark:bg-[#051422]">
+                              <Link
+                                href={`/sales/orders/${order.id}`}
+                                onClick={() => setOrderRowMenu(null)}
+                                className="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#071929]"
+                              >
+                                View Order
+                              </Link>
+                            </div>
+                          </>
+                        )}
                       </td>
                     </tr>
                   );
@@ -2755,10 +2894,10 @@ export default function Dashboard() {
               ) : (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={9}
                     className="px-5 py-12 text-center text-xs text-slate-400"
                   >
-                    No recent orders or quotations available.
+                    No sales orders yet.
                   </td>
                 </tr>
               )}
