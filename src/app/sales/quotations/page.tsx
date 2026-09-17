@@ -2078,6 +2078,7 @@ export default function QuotationPage() {
 
       <StatGrid cols={6}>
         <StatCard
+          compact
           label="Total Quotes"
           value={String(stats.total)}
           change={stats.totalChange.text}
@@ -2085,6 +2086,7 @@ export default function QuotationPage() {
         />
 
         <StatCard
+          compact
           label="Gross Value"
           value={compactMoney(stats.grossValue)}
           change={stats.grossValueChange.text}
@@ -2092,20 +2094,22 @@ export default function QuotationPage() {
         />
 
         <StatCard
+          compact
           label="Drafts"
           value={String(stats.drafts)}
           caption={`${compactMoney(stats.draftValue)} value`}
         />
 
         <StatCard
+          compact
           label="Sent"
           value={String(stats.sent)}
           caption={`${compactMoney(stats.sentValue)} awaiting`}
         />
 
-        <StatCard label="Accepted" value={String(stats.accepted)} caption="" />
+        <StatCard compact label="Accepted" value={String(stats.accepted)} caption="" />
 
-        <StatCard label="Expired" value={String(stats.expired)} caption="" />
+        <StatCard compact label="Expired" value={String(stats.expired)} caption="" />
       </StatGrid>
 
       <div className="relative" ref={filterRef}>

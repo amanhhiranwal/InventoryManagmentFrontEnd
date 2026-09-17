@@ -15,6 +15,7 @@ export default function StatCard({
   change,
   positive = true,
   caption = "vs last month",
+  compact = false,
 }: {
   label: string;
   /** Pre-formatted string (e.g. "₹4.82 Cr") or a raw number. */
@@ -23,17 +24,38 @@ export default function StatCard({
   change?: string;
   positive?: boolean;
   caption?: string;
+  /** Narrow card for a six-across row (Quotation): smaller type, and the
+      pill sits flush against the card's right edge as in the design. */
+  compact?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-[#17304a] dark:bg-[#071929]">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
+    <div
+      className={`rounded-xl border border-slate-200 bg-white dark:border-[#17304a] dark:bg-[#071929] ${
+        compact ? "py-4 pl-4" : "p-5"
+      }`}
+    >
+      <div
+        className={`flex items-start justify-between ${
+          compact ? "gap-1" : "gap-2"
+        }`}
+      >
+        <p
+          className={`whitespace-nowrap text-slate-500 dark:text-slate-400 ${
+            compact ? "text-[11px]" : "text-xs"
+          }`}
+        >
+          {label}
+        </p>
 
         {change && (
           <span
             className={`
-              inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1
-              text-[10px] font-bold
+              inline-flex shrink-0 items-center gap-0.5 font-bold
+              ${
+                compact
+                  ? "rounded-l-md px-1 py-0.5 text-[9px]"
+                  : "gap-1 rounded-md px-1.5 py-1 text-[10px]"
+              }
               ${
                 positive
                   ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400"
@@ -46,7 +68,11 @@ export default function StatCard({
         )}
       </div>
 
-      <p className="mt-2 text-[28px] font-semibold leading-tight tracking-tight text-[#233353] dark:text-white">
+      <p
+        className={`font-semibold leading-tight tracking-tight text-[#233353] dark:text-white ${
+          compact ? "mt-2 pr-4 text-[22px]" : "mt-2 text-[28px]"
+        }`}
+      >
         {typeof value === "number" ? value.toLocaleString("en-IN") : value}
       </p>
 

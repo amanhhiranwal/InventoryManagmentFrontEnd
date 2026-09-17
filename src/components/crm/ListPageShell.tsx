@@ -60,14 +60,14 @@ export function StatGrid({
   cols = 4,
 }: {
   children: ReactNode;
-  /** Cards per row on wide screens: four from 1100px, or six (Quotation) from xl. */
+  /** Cards per row on wide screens: four, or six (Quotation), from 1100px. */
   cols?: 4 | 6;
 }) {
   return (
     <div
       className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${
         cols === 6
-          ? "lg:grid-cols-3 xl:grid-cols-6"
+          ? "lg:grid-cols-3 min-[68.75rem]:grid-cols-6"
           : "min-[68.75rem]:grid-cols-4"
       }`}
     >
