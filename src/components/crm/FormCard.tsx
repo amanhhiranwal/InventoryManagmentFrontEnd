@@ -3,6 +3,43 @@
 import { ReactNode } from "react";
 
 /**
+ * Field look from the design, applied to every input, select, textarea and
+ * field label inside a form card: 39px white fields with a light grey border,
+ * 13px text and regular grey labels. Inputs inside tables (product lines) and
+ * anything marked .field-compact keep their own sizing.
+ */
+export const FORM_FIELDS = [
+  "[&_input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not(td_*):not(.field-compact)]:h-[39px]",
+  "[&_input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not(td_*):not(.field-compact)]:rounded-lg",
+  "[&_input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not(td_*):not(.field-compact)]:border-[#d1d1d1]",
+  "[&_input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not(td_*):not(.field-compact)]:text-[13px]",
+  "[&_input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not(td_*):not(.field-compact)]:text-[#141414]",
+  "dark:[&_input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not(td_*):not(.field-compact)]:border-[#17304a]",
+  "dark:[&_input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not(td_*):not(.field-compact)]:text-white",
+  "[&_select:not(td_*):not(.field-compact)]:h-[39px]",
+  "[&_select:not(td_*):not(.field-compact)]:rounded-lg",
+  "[&_select:not(td_*):not(.field-compact)]:border-[#d1d1d1]",
+  "[&_select:not(td_*):not(.field-compact)]:text-[13px]",
+  "[&_select:not(td_*):not(.field-compact)]:text-[#141414]",
+  "dark:[&_select:not(td_*):not(.field-compact)]:border-[#17304a]",
+  "dark:[&_select:not(td_*):not(.field-compact)]:text-white",
+  "[&_input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not(td_*):not(.field-compact)]:placeholder:text-[#a9a9a9]",
+  "[&_textarea:not(td_*):not(.field-compact)]:rounded-lg",
+  "[&_textarea:not(td_*):not(.field-compact)]:border-[#d1d1d1]",
+  "[&_textarea:not(td_*):not(.field-compact)]:bg-[#f3f3f3]",
+  "[&_textarea:not(td_*):not(.field-compact)]:text-[13px]",
+  "[&_textarea:not(td_*):not(.field-compact)]:text-[#141414]",
+  "[&_textarea:not(td_*):not(.field-compact)]:placeholder:text-[#a9a9a9]",
+  "dark:[&_textarea:not(td_*):not(.field-compact)]:border-[#17304a]",
+  "dark:[&_textarea:not(td_*):not(.field-compact)]:bg-[#071929]",
+  "dark:[&_textarea:not(td_*):not(.field-compact)]:text-white",
+  "[&_label:not(:has(input)):not(:has(select)):not(:has(textarea)):not(td_*)]:text-[12px]",
+  "[&_label:not(:has(input)):not(:has(select)):not(:has(textarea)):not(td_*)]:font-normal",
+  "[&_label:not(:has(input)):not(:has(select)):not(:has(textarea)):not(td_*)]:text-[#777777]",
+  "dark:[&_label:not(:has(input)):not(:has(select)):not(:has(textarea)):not(td_*)]:text-slate-400",
+].join(" ");
+
+/**
  * One white panel per column on the New Lead / New Opportunity /
  * New Sales Order pages. Sections live inside a single card and are separated
  * by the rule under each section heading, rather than each section being its
@@ -17,7 +54,7 @@ export function FormCard({
 }) {
   return (
     <div
-      className={`rounded-xl border border-slate-200 bg-white px-6 py-5 dark:border-[#17304a] dark:bg-[#071929] ${className}`}
+      className={`rounded-xl bg-white px-5 py-5 dark:border dark:border-[#17304a] dark:bg-[#071929] ${FORM_FIELDS} ${className}`}
     >
       {children}
     </div>
@@ -46,11 +83,11 @@ export function FormSectionBlock({
 }) {
   return (
     <section className={first ? "" : "mt-8"}>
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">{icon}</span>
+      <div className="flex items-center justify-between gap-3 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
+        <div className="flex items-center gap-2.5">
+          <span className="text-[18px] text-[#474747] dark:text-slate-400">{icon}</span>
 
-          <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+          <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
             {title}
           </h3>
         </div>

@@ -16,6 +16,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
 
 import {
+  LIST_TABLE,
   ListPage,
   ListPageHeader,
   ListToolbar,
@@ -25,6 +26,7 @@ import {
   Th,
 } from "@/components/crm/ListPageShell";
 import StatCard from "@/components/crm/StatCard";
+import { monthOverMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
 import { FormCard, FormSectionBlock, BillingShippingHeader } from "@/components/crm/FormCard";
@@ -575,9 +577,17 @@ export default function QuotationPage() {
         .filter((q) => q.status === status)
         .reduce((sum, q) => sum + (q.total_payable || 0), 0);
 
+    const grossValueOf = (items: typeof quotations) =>
+      items.reduce((sum, q) => sum + (q.total_payable || 0), 0);
+
+    const createdAt = (q: (typeof quotations)[number]) =>
+      q.created_at || q.quotation_date;
+
     return {
       total: quotations.length,
-      grossValue: quotations.reduce((sum, q) => sum + (q.total_payable || 0), 0),
+      totalChange: monthOverMonth(quotations, createdAt, (items) => items.length),
+      grossValue: grossValueOf(quotations),
+      grossValueChange: monthOverMonth(quotations, createdAt, grossValueOf),
       drafts: count(QUOTATION_STATUS.DRAFT),
       draftValue: valueOf(QUOTATION_STATUS.DRAFT),
       sent: count(QUOTATION_STATUS.SENT),
@@ -1359,7 +1369,7 @@ export default function QuotationPage() {
         <form
           id="quotation-form"
           onSubmit={saveQuotation}
-          className="grid grid-cols-1 gap-5 px-5 lg:grid-cols-[minmax(0,1fr)_360px]"
+          className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_372px]"
         >
           {/* ---------------- LEFT ---------------- */}
 
@@ -1376,7 +1386,7 @@ export default function QuotationPage() {
                   <select
                     value={opportunityId ? String(opportunityId) : ""}
                     onChange={(event) => applyOpportunity(event.target.value)}
-                    className="cursor-pointer rounded-md border border-transparent bg-transparent py-0.5 text-[12px] font-bold text-slate-800 outline-none transition hover:border-slate-200 focus:border-[#233353] dark:text-white"
+                    className="field-compact cursor-pointer rounded-md border border-transparent bg-transparent py-0.5 text-[12px] font-bold text-slate-800 outline-none transition hover:border-slate-200 focus:border-[#233353] dark:text-white"
                   >
                     <option value="">Select opportunity</option>
 
@@ -1395,7 +1405,7 @@ export default function QuotationPage() {
                     value={opportunityName}
                     onChange={(event) => setOpportunityName(event.target.value)}
                     placeholder="—"
-                    className="w-full rounded-md border border-transparent bg-transparent py-0.5 text-[12px] font-bold text-slate-800 outline-none transition hover:border-slate-200 focus:border-[#233353] dark:text-white"
+                    className="field-compact w-full rounded-md border border-transparent bg-transparent py-0.5 text-[12px] font-bold text-slate-800 outline-none transition hover:border-slate-200 focus:border-[#233353] dark:text-white"
                   />
                 </InlineFact>
               </div>
@@ -2069,32 +2079,38 @@ export default function QuotationPage() {
 
       <StatGrid cols={6}>
         <StatCard
+          compact
           label="Total Quotes"
           value={String(stats.total)}
-          change="12.4%"
+          change={stats.totalChange.text}
+          positive={stats.totalChange.up}
         />
 
         <StatCard
+          compact
           label="Gross Value"
           value={compactMoney(stats.grossValue)}
-          change="8.7%"
+          change={stats.grossValueChange.text}
+          positive={stats.grossValueChange.up}
         />
 
         <StatCard
+          compact
           label="Drafts"
           value={String(stats.drafts)}
           caption={`${compactMoney(stats.draftValue)} value`}
         />
 
         <StatCard
+          compact
           label="Sent"
           value={String(stats.sent)}
           caption={`${compactMoney(stats.sentValue)} awaiting`}
         />
 
-        <StatCard label="Accepted" value={String(stats.accepted)} caption="" />
+        <StatCard compact label="Accepted" value={String(stats.accepted)} caption="" />
 
-        <StatCard label="Expired" value={String(stats.expired)} caption="" />
+        <StatCard compact label="Expired" value={String(stats.expired)} caption="" />
       </StatGrid>
 
       <div className="relative" ref={filterRef}>
@@ -2157,34 +2173,34 @@ export default function QuotationPage() {
 
       <TableCard>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px]">
+          <table className={`w-full min-w-[900px] ${LIST_TABLE}`}>
             <thead className="border-b border-slate-200 dark:border-[#17304a]">
               <tr>
-                <Th className="w-10">
+                <Th className="w-10 px-3!">
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300" />
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Quote ID</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Customer Name</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Opportunity</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Order Value</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Assigned To</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Dates</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Status</SortLabel>
                 </Th>
-                <Th className="text-center">Actions</Th>
+                <Th className="px-3! text-center">Actions</Th>
               </tr>
             </thead>
 
@@ -2222,7 +2238,7 @@ export default function QuotationPage() {
                     className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-[#071929]/50"
                   >
                     <td
-                      className="px-4 py-4"
+                      className="px-3 py-4"
                       onClick={(event) => event.stopPropagation()}
                     >
                       <input
@@ -2231,13 +2247,13 @@ export default function QuotationPage() {
                       />
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">
                         #{quotation.quote_number}
                       </span>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <p className="text-xs font-bold text-slate-900 dark:text-white">
                         {quotation.contact_name || "—"}
                       </p>
@@ -2254,7 +2270,7 @@ export default function QuotationPage() {
                       </p>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                         {quotation.opportunity_name ||
                           quotation.organization_name ||
@@ -2268,13 +2284,13 @@ export default function QuotationPage() {
                       )}
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                         {compactMoney(quotation.total_payable)}
                       </span>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-[#0d2336] dark:bg-[#071929]">
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#233353] text-[9px] font-bold text-white">
                           {getInitials(userName(quotation.assigned_to_id))}
@@ -2286,18 +2302,18 @@ export default function QuotationPage() {
                       </div>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <span className="text-[10px] font-medium text-slate-400">
                         {formatDate(quotation.quotation_date || quotation.created_at)}
                       </span>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <StatusPill status={quotation.status} />
                     </td>
 
                     <td
-                      className="px-4 py-4"
+                      className="px-3 py-4"
                       onClick={(event) => event.stopPropagation()}
                     >
                       <div className="flex items-center justify-center gap-1">
@@ -2659,7 +2675,7 @@ function SummaryRow({
                     setEditing(false);
                   }
                 }}
-                className="h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                className="field-compact h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
               />
 
               <span className="text-[11px] text-slate-500">%</span>

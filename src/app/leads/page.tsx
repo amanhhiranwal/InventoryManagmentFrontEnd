@@ -33,6 +33,8 @@ import {
 import { useRouter } from "next/navigation";
 import { getUsersApi, User } from "@/features/users/api/users.api";
 import StatCard from "@/components/crm/StatCard";
+import { LIST_TABLE } from "@/components/crm/ListPageShell";
+import { monthOverMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
 import { FormCard, FormSectionBlock } from "@/components/crm/FormCard";
@@ -736,6 +738,16 @@ export default function LeadsPage() {
   const qualifiedLeads = leads.filter(isLeadQualified).length;
 
   const deadLeads = leads.filter(isLeadDead).length;
+
+  /* Each card compares leads created this month with those created last
+     month, counted the same way as its figure. */
+  const leadChange = (matches: (lead: Lead) => boolean = () => true) =>
+    monthOverMonth(leads, (lead) => lead.created_at, (items) => items.filter(matches).length);
+
+  const totalLeadsChange = leadChange();
+  const newLeadsChange = leadChange(isLeadNew);
+  const qualifiedLeadsChange = leadChange(isLeadQualified);
+  const deadLeadsChange = leadChange(isLeadDead);
 
   /* --------------------------------------------------------------------------
      FILTERING
@@ -1906,23 +1918,34 @@ export default function LeadsPage() {
 
       {/* KPI */}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total Leads" value={totalLeads} change="12%" positive />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 min-[68.75rem]:grid-cols-4">
+        <StatCard
+          label="Total Leads"
+          value={totalLeads}
+          change={totalLeadsChange.text}
+          positive={totalLeadsChange.up}
+        />
 
-        <StatCard label="New" value={newLeads} change="8" positive />
+        <StatCard
+          label="New"
+          value={newLeads}
+          change={newLeadsChange.text}
+          positive={newLeadsChange.up}
+        />
 
         <StatCard
           label="Qualified"
           value={qualifiedLeads}
-          change="5%"
-          positive={false}
+          change={qualifiedLeadsChange.text}
+          positive={qualifiedLeadsChange.up}
         />
 
+        {/* More dead leads is bad news, so a rise shows red. */}
         <StatCard
           label="Dead"
           value={deadLeads}
-          change="5%"
-          positive={false}
+          change={deadLeadsChange.text}
+          positive={!deadLeadsChange.up || deadLeadsChange.text === "0.0%"}
         />
       </div>
 
@@ -1930,40 +1953,16 @@ export default function LeadsPage() {
 
       <div className="flex flex-col gap-3 lg:flex-row">
         <div className="relative flex-1">
-          <FiSearch
-            className="
-              absolute
-              left-4
-              top-1/2
-              -translate-y-1/2
-              text-slate-400
-            "
-          />
-
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search Leads"
-            className="
-              h-11
-              w-full
-              rounded-lg
-              border
-              border-slate-200
-              bg-white
-              pl-11
-              pr-4
-              text-xs
-              text-slate-800
-              outline-none
-              transition
-              focus:border-primary
-              focus:ring-2
-              focus:ring-primary/10
-              dark:border-[#0d2336]
-              dark:bg-[#051422]
-              dark:text-white
-            "
+            className="h-[39px] w-full rounded-lg border border-[#cccccc] bg-[#f3f3f3] pl-3.5 pr-10 text-[13px] text-[#141414] outline-none transition placeholder:text-[#aaaaaa] focus:border-[#233353] dark:border-[#0d2336] dark:bg-[#051422] dark:text-white"
+          />
+
+          <FiSearch
+            size={15}
+            className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[#131313] dark:text-slate-400"
           />
         </div>
 
@@ -1980,16 +1979,14 @@ export default function LeadsPage() {
             className="
               relative
               flex
-              h-11
-              w-11
+              h-[39px]
+              w-[39px]
               shrink-0
               items-center
               justify-center
               rounded-lg
-              border
-              border-slate-200
               bg-white
-              text-slate-600
+              text-[#131313]
               transition
               hover:bg-slate-50
               dark:border-[#17304a]
@@ -2062,16 +2059,16 @@ export default function LeadsPage() {
             onClick={() => setShowAddMenu((previous) => !previous)}
             className="
               flex
-              h-11
+              h-[39px]
               w-full
               items-center
               justify-center
               gap-2
               rounded-lg
-              bg-[#233353]
-              px-5
-              text-xs
-              font-bold
+              bg-[#273756]
+              px-4
+              text-[13px]
+              font-medium
               text-white
               shadow-sm
               hover:bg-[#18243a]
@@ -2221,7 +2218,7 @@ export default function LeadsPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1150px] border-collapse text-left">
+              <table className={`w-full min-w-[900px] border-collapse text-left ${LIST_TABLE}`}>
                 <thead>
                   <tr
                     className="
@@ -2306,7 +2303,7 @@ export default function LeadsPage() {
                         </td>
 
                         <td className="px-4 py-4">
-                          <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                          <span className="whitespace-nowrap text-[11px] font-medium text-slate-800 dark:text-slate-300">
                             {formatLeadId(lead.id)}
                           </span>
                         </td>
@@ -2315,39 +2312,39 @@ export default function LeadsPage() {
                           {/* Plain markup now the row itself is clickable -
                               a nested button would fire the same handler a
                               second time. */}
-                          <p className="text-xs font-bold text-slate-900 dark:text-white">
+                          <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
                             {getLeadDisplayName(lead)}
                           </p>
 
-                          <p className="mt-1 text-[10px] text-slate-400">
+                          <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
                             {details.email || "No email"}
                           </p>
 
-                          <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-400">
-                            <FiMapPin />
+                          <p className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                            <FiMapPin size={9} />
                             {formatLeadLocation(details)}
                           </p>
                         </td>
 
                         <td className="px-4 py-4">
-                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          <p className="text-[12px] text-slate-700 dark:text-slate-300">
                             {getLeadCompany(lead)}
                           </p>
 
-                          <p className="mt-1 text-[10px] text-slate-400">
+                          <p className="text-[10px] text-slate-500">
                             {getLeadCustomerType(lead)}
                           </p>
                         </td>
 
                         <td className="px-4 py-4">
-                          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-[#0d2336] dark:bg-[#071929]">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#233353] text-[9px] font-bold text-white">
+                          <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-slate-100 px-2 py-1 dark:bg-[#0b2034]">
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] text-slate-700 dark:bg-[#17304a] dark:text-slate-200">
                               {getInitials(
                                 lead.assigned_to_name || lead.creator_name,
-                              )}
+                              ).charAt(0)}
                             </span>
 
-                            <span className="max-w-[130px] truncate text-[10px] font-semibold text-slate-700 dark:text-slate-200">
+                            <span className="max-w-[130px] truncate text-[10px] text-slate-700 dark:text-slate-200">
                               {lead.assigned_to_name ||
                                 lead.creator_name ||
                                 "Unassigned"}
@@ -2363,7 +2360,7 @@ export default function LeadsPage() {
                         </td>
 
                         <td className="px-4 py-4">
-                          <span className="text-[10px] font-medium text-slate-400">
+                          <span className="whitespace-nowrap text-[10px] text-slate-700 dark:text-slate-300">
                             {formatDate(lead.created_at)}
                           </span>
                         </td>
@@ -2769,12 +2766,7 @@ function LeadFormPage({
       <form
         id="lead-form"
         onSubmit={onSubmit}
-        className="
-    grid
-    grid-cols-1
-    gap-4
-    xl:grid-cols-[minmax(0,1fr)_360px]
-  "
+        className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_372px]"
       >
         {/* LEFT */}
 
@@ -2945,7 +2937,7 @@ function LeadFormPage({
             <div className="space-y-5">
               {/* Remarks */}
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+                <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
                   Remarks
                 </label>
 
@@ -2957,13 +2949,14 @@ function LeadFormPage({
                   className="
                     w-full
                     resize-none
-                    rounded-xl
+                    rounded-lg
                     border
-                    border-slate-200
-                    bg-slate-50/70
+                    border-[#d1d1d1]
+                    bg-[#f3f3f3]
                     p-3
-                    text-xs
-                    text-slate-800
+                    text-[13px]
+                    text-[#141414]
+                    placeholder:text-[#a9a9a9]
                     outline-none
                     transition
                     focus:border-primary
@@ -2978,7 +2971,7 @@ function LeadFormPage({
 
               {/* Attachments Heading */}
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+                <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
                   Attachments
                 </label>
 
@@ -4225,23 +4218,29 @@ function SelectInput({
   );
 }
 
+/* Form field look from the design: white, 39px, light grey border. */
 const filterInput = `
+  h-[39px]
   w-full
-  rounded-xl
+  rounded-lg
   border
-  border-slate-200
-  bg-slate-50/70
-  px-3.5
-  py-2.5
-  text-xs
-  text-slate-800
+  border-[#d1d1d1]
+  bg-white
+  px-3
+  text-[13px]
+  text-[#141414]
   outline-none
-  focus:ring-2
-  focus:ring-primary/30
+  focus:border-[#243454]
+  focus:ring-1
+  focus:ring-[#243454]/20
   dark:border-[#0d2336]
   dark:bg-[#071929]
   dark:text-white
 `;
+
+/* The shared Input keeps its own classes elsewhere; these win on this form. */
+const formInputOverride =
+  "h-[39px]! rounded-lg! border-[#d1d1d1]! px-3! text-[13px]! text-[#141414]! placeholder:text-[#a9a9a9]! dark:border-[#0d2336]! dark:text-white!";
 
 function FormInput({
   label,
@@ -4260,13 +4259,14 @@ function FormInput({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
         {label}
 
-        {required && <span className="ml-1 text-rose-500">*</span>}
+        {required && <span className="ml-0.5">*</span>}
       </label>
 
       <Input
+        className={formInputOverride}
         type={type}
         value={value}
         placeholder={placeholder || `Enter ${label.toLowerCase()}`}
@@ -4295,10 +4295,10 @@ function FormSelect({
 
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
         {label}
 
-        {required && <span className="ml-1 text-rose-500">*</span>}
+        {required && <span className="ml-0.5">*</span>}
       </label>
 
       <div className="relative">
@@ -4320,7 +4320,7 @@ function FormSelect({
           ))}
         </select>
 
-        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#141414] dark:text-slate-400" />
       </div>
 
       {/* {allowCustom && (
@@ -4353,34 +4353,17 @@ function UserSelect({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
         {label}
 
-        {required && <span className="ml-1 text-rose-500">*</span>}
+        {required && <span className="ml-0.5">*</span>}
       </label>
 
       <div className="relative">
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="
-            w-full
-            appearance-none
-            rounded-xl
-            border
-            border-slate-200
-            bg-slate-50/70
-            px-3
-            py-2.5
-            pr-9
-            text-xs
-            outline-none
-            focus:ring-2
-            focus:ring-primary/30
-            dark:border-[#0d2336]
-            dark:bg-[#071929]
-            dark:text-white
-          "
+          className={`${filterInput} appearance-none pr-9`}
         >
           <option value="">Select Assigned To</option>
 
@@ -4391,7 +4374,7 @@ function UserSelect({
           ))}
         </select>
 
-        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#141414] dark:text-slate-400" />
       </div>
     </div>
   );
@@ -4410,12 +4393,13 @@ function DocumentField({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
         {label}
       </label>
 
       <div className="grid grid-cols-[minmax(0,1fr)_150px] gap-3">
         <Input
+          className={formInputOverride}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={`Enter ${label}`}
@@ -4428,14 +4412,15 @@ function DocumentField({
             items-center
             justify-center
             gap-1.5
-            rounded-xl
-            border-2
+            h-[39px]
+            rounded-lg
+            border
             border-dashed
-            border-slate-200
+            border-[#c4c4c4]
             px-3
-            text-[10px]
-            font-bold
-            text-slate-500
+            text-[13px]
+            font-medium
+            text-[#a9a9a9]
             hover:bg-slate-50
             dark:border-[#0d2336]
             dark:hover:bg-[#071929]

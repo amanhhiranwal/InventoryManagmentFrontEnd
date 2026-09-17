@@ -26,6 +26,11 @@ import {
   SALES_ORDER_STATUS_LABEL,
 } from "@/features/salesOrders/api/salesOrders.api";
 import {
+  getProformaInvoicesApi,
+  proformaInvoiceStatusLabel,
+  type ProformaInvoiceModel,
+} from "@/features/proformaInvoices/api/proformaInvoices.api";
+import {
   FiArrowLeft,
   FiCalendar,
   FiCheckCircle,
@@ -141,6 +146,10 @@ export default function SalesOrderDetailPage() {
   const [sending, setSending] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
 
+  /* The most recent live proforma invoice raised against this order, which
+     drives the Proforma Invoice step and document below. */
+  const [invoice, setInvoice] = useState<ProformaInvoiceModel | null>(null);
+
   /* Editable copies of the addresses, held apart from the saved order so a
      failed save leaves what the user typed on screen rather than reverting
      it, and Cancel can put the originals back. */
@@ -194,6 +203,16 @@ export default function SalesOrderDetailPage() {
     loadOrder();
     loadActivities();
   }, [loadOrder, loadActivities]);
+
+  useEffect(() => {
+    if (!orderId) return;
+
+    getProformaInvoicesApi(orderId)
+      .then((list) =>
+        setInvoice(list.find((entry) => entry.status !== "CANCELLED") || null),
+      )
+      .catch(() => setInvoice(null));
+  }, [orderId]);
 
   const customerInfo = asRecord(order?.customer_information);
 
@@ -368,10 +387,13 @@ export default function SalesOrderDetailPage() {
   }
 
   /* The order stops being the step in progress once it is released, which
-     is when the goods actually move. */
+     is when the goods actually move - or once a proforma invoice has been
+     generated against it, so a later step is never ticked while this one
+     still reads as in progress. */
   const orderStepDone =
     order.status === SALES_ORDER_STATUS.RELEASED ||
-    order.status === SALES_ORDER_STATUS.COMPLETED;
+    order.status === SALES_ORDER_STATUS.COMPLETED ||
+    (!!invoice && invoice.status !== "DRAFT");
 
   const gstPercent =
     order.gst_percent === null || order.gst_percent === undefined
@@ -890,16 +912,16 @@ export default function SalesOrderDetailPage() {
                   happening rather than one. */}
               <ProcessStep
                 state={
-                  (order.advance_received || 0) > 0
+                  invoice && invoice.status !== "DRAFT"
                     ? "done"
-                    : orderStepDone
+                    : invoice || orderStepDone
                       ? "current"
                       : "todo"
                 }
                 title="Proforma Invoice"
                 caption={
-                  (order.advance_received || 0) > 0
-                    ? `${money(order.advance_received)} received against it`
+                  invoice
+                    ? `${invoice.pi_number} · ${proformaInvoiceStatusLabel(invoice.status)}`
                     : order.status === SALES_ORDER_STATUS.DRAFT
                       ? "Not Generated"
                       : `Awaiting ${Number(
@@ -970,12 +992,28 @@ export default function SalesOrderDetailPage() {
                 subtitle={salesOrderStatusLabel(order.status)}
               />
 
+              {/* Opens the order's invoice, or - once the order is confirmed
+                  and none exists - starts one prefilled from this order. */}
               <LinkedDocument
-                title="Proforma Invoice"
+                title={
+                  invoice
+                    ? `Proforma Invoice #${invoice.pi_number}`
+                    : "Proforma Invoice"
+                }
                 subtitle={
-                  order.status === SALES_ORDER_STATUS.DRAFT
-                    ? "Not Generated"
-                    : "Pending generation"
+                  invoice
+                    ? proformaInvoiceStatusLabel(invoice.status)
+                    : order.status === SALES_ORDER_STATUS.DRAFT
+                      ? "Not Generated"
+                      : "Pending generation"
+                }
+                href={
+                  invoice
+                    ? `/sales/proforma-invoices/${invoice.id}`
+                    : order.status !== SALES_ORDER_STATUS.DRAFT &&
+                        order.status !== SALES_ORDER_STATUS.CANCELLED
+                      ? `/sales/proforma-invoices/new?order=${order.id}`
+                      : undefined
                 }
               />
 
