@@ -45,6 +45,9 @@ const STATUS_TONE: Record<string, string> = {
   COMPLETED: GREEN,
   CANCELLED: NEUTRAL,
 
+  // Proforma invoice. DRAFT, SENT and CANCELLED are shared.
+  GENERATED: INDIGO,
+
   // Quotation
   SENT: AMBER,
   ACCEPTED: GREEN,
@@ -73,6 +76,8 @@ const STATUS_LABEL: Record<string, string> = {
   RELEASED: "Released",
   COMPLETED: "Completed",
   CANCELLED: "Cancelled",
+
+  GENERATED: "Generated",
 
   SENT: "Sent",
   ACCEPTED: "Accepted",
