@@ -112,12 +112,12 @@ export default function Sidebar() {
         className={`
           fixed top-0 bottom-0 left-0 z-50 flex flex-col bg-white dark:bg-[#061423] border-r border-slate-200/80 dark:border-[#0d2336]
           transition-all duration-300 ease-in-out lg:static lg:z-30 h-screen select-none
-          ${isSidebarCollapsed ? "lg:w-[72px]" : "lg:w-[240px]"}
-          ${isSidebarOpen ? "w-[240px] translate-x-0" : "w-[240px] -translate-x-full lg:translate-x-0"}
+          ${isSidebarCollapsed ? "lg:w-[72px]" : "lg:w-[197px]"}
+          ${isSidebarOpen ? "w-[197px] translate-x-0" : "w-[197px] -translate-x-full lg:translate-x-0"}
         `}
       >
         {/* Brand Header */}
-        <div className="flex h-20 items-center justify-between px-6 shrink-0 border-b border-transparent">
+        <div className="flex h-20 items-center justify-between px-5 shrink-0 border-b border-transparent">
           {(!isSidebarCollapsed || isSidebarOpen) ? (
             <Link href="/dashboard" className="flex flex-col group transition-opacity">
               <div className="flex items-baseline">
@@ -166,7 +166,7 @@ export default function Sidebar() {
 
         {/* Navigation Section (100% Database-Driven) */}
         <div className="flex-grow overflow-y-auto pt-2 pb-4 scrollbar-none">
-          <nav className="space-y-1">
+          <nav className="space-y-0.5">
             {dbMenus.map((menu) => {
               const Icon = resolveIconComponent(menu.icon);
               const hasSubmenus = Array.isArray(menu.children) && menu.children.length > 0;
@@ -176,24 +176,24 @@ export default function Sidebar() {
                 const isChildActive = menu.children!.some((child) => child.path && pathname === child.path);
 
                 return (
-                  <div key={menu.id} className="space-y-1">
+                  <div key={menu.id} className="space-y-0.5">
                     {/* Parent Row */}
-                    <div className="relative pl-3">
+                    <div className="relative pl-2">
                       <button
                         onClick={() => toggleMenu(menu.title)}
                         className={`
-                          flex w-full items-center justify-between rounded-l-2xl py-2.5 px-4 text-left transition-all duration-150 cursor-pointer
+                          flex w-full items-center justify-between rounded-l-2xl py-2 px-3 text-left transition-all duration-150 cursor-pointer
                           ${
                             isChildActive && !isOpen
-                              ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-semibold border-l-[3.5px] border-[#16294a] dark:border-sky-400 pl-[12.5px]"
+                              ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-semibold border-l-[3.5px] border-[#16294a] dark:border-sky-400 pl-[8.5px]"
                               : "text-slate-800 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/40"
                           }
                         `}
                       >
-                        <div className="flex items-center gap-3.5 min-w-0">
-                          <Icon className="text-[20px] shrink-0 text-slate-800 dark:text-slate-200" />
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Icon className="text-[17px] shrink-0 text-slate-800 dark:text-slate-200" />
                           {(!isSidebarCollapsed || isSidebarOpen) && (
-                            <span className="text-[14.5px] font-medium text-slate-800 dark:text-slate-200 truncate">
+                            <span className="text-[13.5px] font-medium text-slate-800 dark:text-slate-200 truncate">
                               {menu.title}
                             </span>
                           )}
@@ -211,7 +211,7 @@ export default function Sidebar() {
 
                     {/* Submenu Branch */}
                     {isOpen && (!isSidebarCollapsed || isSidebarOpen) && (
-                      <div className="ml-[31px] pl-3.5 border-l border-slate-300 dark:border-slate-700/80 my-1 space-y-1">
+                      <div className="ml-[25px] pl-2 border-l border-slate-300 dark:border-slate-700/80 my-1 space-y-0.5">
                         {menu.children!.map((child) => {
                           const ChildIcon = resolveIconComponent(child.icon);
                           const isActive = child.path ? pathname === child.path : false;
@@ -221,15 +221,15 @@ export default function Sidebar() {
                               <Link
                                 href={child.path || "#"}
                                 className={`
-                                  flex items-center gap-3 rounded-l-xl py-2 px-3 text-[13.5px] transition-colors
+                                  flex items-center gap-2 rounded-l-xl py-1.5 px-2 text-[13px] transition-colors
                                   ${
                                     isActive
-                                      ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-bold border-l-[3px] border-[#16294a] dark:border-sky-400 pl-[9px]"
+                                      ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-bold border-l-[3px] border-[#16294a] dark:border-sky-400 pl-[5px]"
                                       : "text-slate-700 dark:text-slate-300 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 font-medium"
                                   }
                                 `}
                               >
-                                <ChildIcon className={`text-[17px] shrink-0 ${isActive ? "text-[#16294a] dark:text-sky-300" : "text-slate-600 dark:text-slate-400"}`} />
+                                <ChildIcon className={`text-[15px] shrink-0 ${isActive ? "text-[#16294a] dark:text-sky-300" : "text-slate-600 dark:text-slate-400"}`} />
                                 <span className="truncate">{child.title}</span>
                               </Link>
                             </div>
@@ -244,25 +244,25 @@ export default function Sidebar() {
               const isActive = menu.path ? pathname === menu.path : false;
 
               return (
-                <div key={menu.id} className="relative pl-3">
+                <div key={menu.id} className="relative pl-2">
                   <Link
                     href={menu.path || "#"}
                     className={`
-                      flex items-center gap-3.5 rounded-l-2xl py-2.5 px-4 transition-all duration-150
+                      flex items-center gap-2 rounded-l-2xl py-2 px-3 transition-all duration-150
                       ${
                         isActive
-                          ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-semibold border-l-[3.5px] border-[#16294a] dark:border-sky-400 pl-[12.5px]"
+                          ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-semibold border-l-[3.5px] border-[#16294a] dark:border-sky-400 pl-[8.5px]"
                           : "text-slate-800 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/40 font-medium"
                       }
                     `}
                   >
                     <Icon
-                      className={`text-[20px] shrink-0 ${
+                      className={`text-[17px] shrink-0 ${
                         isActive ? "text-[#16294a] dark:text-sky-300" : "text-slate-800 dark:text-slate-200"
                       }`}
                     />
                     {(!isSidebarCollapsed || isSidebarOpen) && (
-                      <span className="text-[14.5px] truncate">
+                      <span className="text-[13.5px] truncate">
                         {menu.title}
                       </span>
                     )}
