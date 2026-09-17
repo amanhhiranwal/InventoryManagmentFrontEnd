@@ -272,11 +272,14 @@ export function AddressFields({
   disabled,
   header,
   compact = false,
+  readOnly = false,
 }: {
   title: string;
   address: ProformaAddress;
   onChange: (next: ProformaAddress) => void;
   disabled?: boolean;
+  /** Show the saved values in the same fields, without allowing edits. */
+  readOnly?: boolean;
   header?: ReactNode;
   /** Street and state on one row, as the Generate form lays them out. */
   compact?: boolean;
@@ -284,8 +287,11 @@ export function AddressFields({
   const set = (field: keyof ProformaAddress, value: string) =>
     onChange({ ...address, [field]: value });
 
-  const input =
-    "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[11px] text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#233353] disabled:bg-slate-50 disabled:text-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white";
+  const input = `h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[11px] text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#233353] disabled:bg-slate-50 disabled:text-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white ${
+    readOnly
+      ? "cursor-default focus:border-slate-200 disabled:bg-white disabled:text-slate-700 dark:disabled:bg-[#051422] dark:disabled:text-white"
+      : ""
+  }`;
 
   const label = "mb-1.5 block text-[11px] text-slate-500";
 
@@ -297,6 +303,7 @@ export function AddressFields({
       <input
         value={address.street || ""}
         disabled={disabled}
+        readOnly={readOnly}
         onChange={(event) => set("street", event.target.value)}
         placeholder="Street Address, Building, Suite"
         className={input}
@@ -312,6 +319,7 @@ export function AddressFields({
       <input
         value={address.state || ""}
         disabled={disabled}
+        readOnly={readOnly}
         onChange={(event) => set("state", event.target.value)}
         placeholder="State"
         className={input}
@@ -327,6 +335,7 @@ export function AddressFields({
       <input
         value={address.city || ""}
         disabled={disabled}
+        readOnly={readOnly}
         onChange={(event) => set("city", event.target.value)}
         placeholder="Type or select"
         className={input}
@@ -341,7 +350,7 @@ export function AddressFields({
       </label>
       <select
         value={address.country || ""}
-        disabled={disabled}
+        disabled={disabled || readOnly}
         onChange={(event) => set("country", event.target.value)}
         className={input}
       >
@@ -365,6 +374,7 @@ export function AddressFields({
       <input
         value={address.pin || ""}
         disabled={disabled}
+        readOnly={readOnly}
         onChange={(event) => set("pin", event.target.value)}
         placeholder="Pin Code"
         className={input}
@@ -457,7 +467,7 @@ export function ProductsTable({
 }) {
   const documentStyle = variant === "document";
 
-  const th = `px-3 py-3 text-left text-[11px] font-normal ${
+  const th = `px-3 py-3 text-[11px] font-normal ${
     documentStyle ? "text-white" : "text-slate-500"
   }`;
 
@@ -478,20 +488,20 @@ export function ProductsTable({
                 : "border-b border-slate-200 dark:border-[#17304a]"
             }
           >
-            <th className={`${th} w-[28%]`}>Product</th>
-            <th className={`${th} w-[20%]`}>Model / Variant</th>
-            <th className={th}>Qty</th>
-            <th className={th}>Discount</th>
-            <th className={th}>Tax</th>
-            <th className={th}>Unit Price</th>
-            <th className={`${th} w-12`} />
+            <th className={`${th} w-[28%] text-left`}>Product</th>
+            <th className={`${th} w-[20%] text-left`}>Model / Variant</th>
+            <th className={`${th} text-left`}>Qty</th>
+            <th className={`${th} text-left`}>Discount</th>
+            <th className={`${th} text-left`}>Tax</th>
+            <th className={`${th} text-right`}>Unit Price</th>
+            {onRemove && <th className={`${th} w-12`} />}
           </tr>
         </thead>
 
         <tbody>
           {lines.length === 0 ? (
             <tr>
-              <td colSpan={7} className="py-10 text-center text-xs text-slate-400">
+              <td colSpan={onRemove ? 7 : 6} className="py-10 text-center text-xs text-slate-400">
                 No products on this invoice.
               </td>
             </tr>
@@ -523,11 +533,11 @@ export function ProductsTable({
                 <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-200">
                   {line.tax} %
                 </td>
-                <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-200">
+                <td className="px-3 py-3 text-right text-[11px] text-slate-700 dark:text-slate-200">
                   {plainAmount(line.price)}
                 </td>
-                <td className="px-3 py-3 text-right">
-                  {onRemove && (
+                {onRemove && (
+                  <td className="px-3 py-3 text-right">
                     <button
                       type="button"
                       aria-label={`Remove ${line.name}`}
@@ -536,8 +546,8 @@ export function ProductsTable({
                     >
                       <LuTrash2 size={13} />
                     </button>
-                  )}
-                </td>
+                  </td>
+                )}
               </tr>
             ))
           )}
@@ -580,8 +590,8 @@ export function TotalsBlock({
   saving?: boolean;
 }) {
   return (
-    <div className="mt-5 flex justify-end">
-      <div className="w-full max-w-[420px]">
+    <div className="pi-keep mt-5 flex justify-end">
+      <div className="w-full max-w-[420px] px-3">
         <TotalsRow label="Subtotal" value={money(figures.subtotal)} />
 
         {/* Only shown when there is something to show. The design has no
@@ -781,10 +791,13 @@ export function BankingDetails({
   const notSet = <span className="font-normal text-slate-400">Not configured</span>;
 
   return (
-    <div>
+    <div className="pi-keep @container">
       <SectionTitle icon={<LuLandmark size={17} />} title="Banking Details" />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {/* Sized by the space it has, not the window: the PDF page is narrower
+          than the md breakpoint, which used to stack these on paper while
+          the Preview showed them side by side. */}
+      <div className="grid grid-cols-1 gap-4 @min-[520px]:grid-cols-2">
         <div className="rounded-xl bg-slate-100 p-4 dark:bg-[#0b2034]">
           <p className="mb-3 border-b border-slate-200 pb-2 text-[12px] font-semibold text-slate-600 dark:border-[#17304a] dark:text-slate-300">
             Settlement &amp; Remittance Banking Details
@@ -891,7 +904,7 @@ export function TermsBlock({
   const editable = Boolean(onTermsChange);
 
   return (
-    <div>
+    <div className="pi-keep">
       <SectionTitle
         icon={<LuShield size={17} />}
         title="Terms, Conditions & Technical Notes"
