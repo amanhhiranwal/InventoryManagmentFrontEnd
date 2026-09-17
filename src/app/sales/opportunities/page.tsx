@@ -21,6 +21,7 @@ import {
 } from "@/features/catalog/productCatalog";
 import { Lead, getLeadsApi } from "@/features/workflows/api/workflows.api";
 import StatCard from "@/components/crm/StatCard";
+import { monthOverMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { PriorityPill, StatusPill } from "@/components/crm/Pill";
 import {
@@ -873,18 +874,29 @@ function OpportunitiesPageInner() {
 
   /* Pipeline value is what is still in play, so closed deals - won or
      dead - are excluded rather than inflating the figure. */
-  const pipelineValue = opps
-    .filter((opp) => opp.stage !== "Closed Won" && opp.stage !== "Dead")
-    .reduce((sum, opp) => sum + (opp.dealValue || 0), 0);
-
-  const wonCount = opps.filter((opp) => opp.stage === "Closed Won").length;
-  const lostCount = opps.filter((opp) => opp.stage === "Dead").length;
+  const pipelineValueOf = (items: Opportunity[]) =>
+    items
+      .filter((opp) => opp.stage !== "Closed Won" && opp.stage !== "Dead")
+      .reduce((sum, opp) => sum + (opp.dealValue || 0), 0);
 
   /* Win rate is measured against decided deals only; counting the open
      pipeline in the denominator would drag it towards zero. */
-  const decidedCount = wonCount + lostCount;
+  const winRateOf = (items: Opportunity[]) => {
+    const won = items.filter((opp) => opp.stage === "Closed Won").length;
+    const lost = items.filter((opp) => opp.stage === "Dead").length;
 
-  const winRate = decidedCount ? (wonCount / decidedCount) * 100 : 0;
+    return won + lost ? (won / (won + lost)) * 100 : 0;
+  };
+
+  const pipelineValue = pipelineValueOf(opps);
+  const winRate = winRateOf(opps);
+
+  /* The % pills compare opportunities created this month with those
+     created last month. */
+  const oppCreatedAt = (opp: Opportunity) => opp.createdAt;
+  const totalOpportunitiesChange = monthOverMonth(opps, oppCreatedAt, (items) => items.length);
+  const pipelineValueChange = monthOverMonth(opps, oppCreatedAt, pipelineValueOf);
+  const winRateChange = monthOverMonth(opps, oppCreatedAt, winRateOf);
 
   const closingThisMonth = opps.filter((opp) => {
     if (!opp.expectedClosingDate) return false;
@@ -1565,22 +1577,22 @@ function OpportunitiesPageInner() {
           <StatCard
             label="Total Opportunities"
             value={totalOpportunities}
-            change="18.0%"
-            positive
+            change={totalOpportunitiesChange.text}
+            positive={totalOpportunitiesChange.up}
           />
 
           <StatCard
             label="Pipeline Value"
             value={formatShortCurrency(pipelineValue)}
-            change="12%"
-            positive={false}
+            change={pipelineValueChange.text}
+            positive={pipelineValueChange.up}
           />
 
           <StatCard
             label="Win Rate"
             value={`${winRate.toFixed(1)}%`}
-            change="15.0%"
-            positive
+            change={winRateChange.text}
+            positive={winRateChange.up}
           />
 
           <StatCard

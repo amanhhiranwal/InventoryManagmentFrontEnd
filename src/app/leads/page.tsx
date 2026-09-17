@@ -33,6 +33,7 @@ import {
 import { useRouter } from "next/navigation";
 import { getUsersApi, User } from "@/features/users/api/users.api";
 import StatCard from "@/components/crm/StatCard";
+import { monthOverMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
 import { FormCard, FormSectionBlock } from "@/components/crm/FormCard";
@@ -736,6 +737,16 @@ export default function LeadsPage() {
   const qualifiedLeads = leads.filter(isLeadQualified).length;
 
   const deadLeads = leads.filter(isLeadDead).length;
+
+  /* Each card compares leads created this month with those created last
+     month, counted the same way as its figure. */
+  const leadChange = (matches: (lead: Lead) => boolean = () => true) =>
+    monthOverMonth(leads, (lead) => lead.created_at, (items) => items.filter(matches).length);
+
+  const totalLeadsChange = leadChange();
+  const newLeadsChange = leadChange(isLeadNew);
+  const qualifiedLeadsChange = leadChange(isLeadQualified);
+  const deadLeadsChange = leadChange(isLeadDead);
 
   /* --------------------------------------------------------------------------
      FILTERING
@@ -1907,22 +1918,33 @@ export default function LeadsPage() {
       {/* KPI */}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total Leads" value={totalLeads} change="12%" positive />
+        <StatCard
+          label="Total Leads"
+          value={totalLeads}
+          change={totalLeadsChange.text}
+          positive={totalLeadsChange.up}
+        />
 
-        <StatCard label="New" value={newLeads} change="8" positive />
+        <StatCard
+          label="New"
+          value={newLeads}
+          change={newLeadsChange.text}
+          positive={newLeadsChange.up}
+        />
 
         <StatCard
           label="Qualified"
           value={qualifiedLeads}
-          change="5%"
-          positive={false}
+          change={qualifiedLeadsChange.text}
+          positive={qualifiedLeadsChange.up}
         />
 
+        {/* More dead leads is bad news, so a rise shows red. */}
         <StatCard
           label="Dead"
           value={deadLeads}
-          change="5%"
-          positive={false}
+          change={deadLeadsChange.text}
+          positive={!deadLeadsChange.up || deadLeadsChange.text === "0.0%"}
         />
       </div>
 

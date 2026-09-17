@@ -25,6 +25,7 @@ import {
   Th,
 } from "@/components/crm/ListPageShell";
 import StatCard from "@/components/crm/StatCard";
+import { monthOverMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
 import { FormCard, FormSectionBlock, BillingShippingHeader } from "@/components/crm/FormCard";
@@ -575,9 +576,17 @@ export default function QuotationPage() {
         .filter((q) => q.status === status)
         .reduce((sum, q) => sum + (q.total_payable || 0), 0);
 
+    const grossValueOf = (items: typeof quotations) =>
+      items.reduce((sum, q) => sum + (q.total_payable || 0), 0);
+
+    const createdAt = (q: (typeof quotations)[number]) =>
+      q.created_at || q.quotation_date;
+
     return {
       total: quotations.length,
-      grossValue: quotations.reduce((sum, q) => sum + (q.total_payable || 0), 0),
+      totalChange: monthOverMonth(quotations, createdAt, (items) => items.length),
+      grossValue: grossValueOf(quotations),
+      grossValueChange: monthOverMonth(quotations, createdAt, grossValueOf),
       drafts: count(QUOTATION_STATUS.DRAFT),
       draftValue: valueOf(QUOTATION_STATUS.DRAFT),
       sent: count(QUOTATION_STATUS.SENT),
@@ -2071,13 +2080,15 @@ export default function QuotationPage() {
         <StatCard
           label="Total Quotes"
           value={String(stats.total)}
-          change="12.4%"
+          change={stats.totalChange.text}
+          positive={stats.totalChange.up}
         />
 
         <StatCard
           label="Gross Value"
           value={compactMoney(stats.grossValue)}
-          change="8.7%"
+          change={stats.grossValueChange.text}
+          positive={stats.grossValueChange.up}
         />
 
         <StatCard
