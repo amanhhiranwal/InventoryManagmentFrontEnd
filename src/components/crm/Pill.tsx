@@ -85,18 +85,33 @@ const STATUS_LABEL: Record<string, string> = {
   EXPIRED: "Expired",
 };
 
+const TONES = {
+  neutral: NEUTRAL,
+  blue: BLUE,
+  amber: AMBER,
+  green: GREEN,
+  rose: ROSE,
+  indigo: INDIGO,
+};
+
+export type PillTone = keyof typeof TONES;
+
 export function StatusPill({
   status,
   label,
+  tone,
 }: {
   status?: string | null;
   /** Overrides the derived label when a page already has its own wording. */
   label?: string;
+  /** Overrides the colour, for a record whose design colours a shared
+      status differently (a sent invoice is green, a sent quotation amber). */
+  tone?: PillTone;
 }) {
   const key = String(status || "").toUpperCase();
 
   return (
-    <span className={`${BASE} ${STATUS_TONE[key] || NEUTRAL}`}>
+    <span className={`${BASE} ${tone ? TONES[tone] : STATUS_TONE[key] || NEUTRAL}`}>
       {label || STATUS_LABEL[key] || status || "—"}
     </span>
   );

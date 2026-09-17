@@ -39,6 +39,18 @@ export const PROFORMA_INVOICE_TRANSITIONS: Record<
   CANCELLED: [],
 };
 
+/** Pill colours from the design: Draft blue, Generated grey, Sent green,
+    Cancelled red. */
+export const PROFORMA_INVOICE_STATUS_TONE: Record<
+  ProformaInvoiceStatus,
+  "blue" | "neutral" | "green" | "rose"
+> = {
+  DRAFT: "blue",
+  GENERATED: "neutral",
+  SENT: "green",
+  CANCELLED: "rose",
+};
+
 export function proformaInvoiceStatusLabel(status?: string | null) {
   return (
     PROFORMA_INVOICE_STATUS_LABEL[status as ProformaInvoiceStatus] ||
