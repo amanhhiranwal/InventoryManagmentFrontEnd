@@ -1984,7 +1984,7 @@ export default function Dashboard() {
   ========================================================== */
 
   return (
-    <div className="-m-6 min-h-[calc(100%+3rem)] space-y-5 bg-[#f3f3f3] p-5 pb-8 dark:bg-[#020b12]">
+    <div className="min-h-full space-y-5 pb-8">
       {/* ======================================================
           HEADER
       ====================================================== */}
