@@ -9,6 +9,30 @@ import { FiRefreshCw, FiSearch, FiSliders } from "react-icons/fi";
  * toolbar and table container.
  */
 
+/**
+ * List-table look from the design, applied on the <table>: regular 12px
+ * #777 column headers over a light rule, and rows without dividers.
+ */
+export const LIST_TABLE = [
+  "[&_thead_tr]:border-b",
+  "[&_thead_tr]:border-[#e2e2e2]",
+  "[&_thead_tr]:bg-white",
+  "dark:[&_thead_tr]:border-[#17304a]",
+  "dark:[&_thead_tr]:bg-transparent",
+  "[&_th]:text-[12px]",
+  "[&_th]:font-normal",
+  "[&_th]:normal-case",
+  "[&_th]:tracking-normal",
+  "[&_th]:text-[#777777]",
+  "dark:[&_th]:text-slate-400",
+  "[&_th>button]:text-[12px]",
+  "[&_th>button]:font-normal",
+  "[&_th>button]:text-[#777777]",
+  "dark:[&_th>button]:text-slate-400",
+  "[&_th>span]:font-normal",
+  "[&_tbody>tr]:border-b-0",
+].join(" ");
+
 export function ListPage({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-full space-y-5 pb-8">{children}</div>
@@ -98,16 +122,16 @@ export function ListToolbar({
   return (
     <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center">
       <div className="relative flex-1">
-        <FiSearch
-          size={15}
-          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-        />
-
         <input
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={placeholder}
-          className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-11 pr-4 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+          className="h-[39px] w-full rounded-lg border border-[#cccccc] bg-[#f3f3f3] pl-3.5 pr-10 text-[13px] text-[#141414] outline-none transition placeholder:text-[#aaaaaa] focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+        />
+
+        <FiSearch
+          size={15}
+          className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[#131313] dark:text-slate-400"
         />
       </div>
 
@@ -118,7 +142,7 @@ export function ListToolbar({
           type="button"
           onClick={onToggleFilters}
           aria-label="Filters"
-          className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
+          className="relative flex h-[39px] w-[39px] shrink-0 items-center justify-center rounded-lg bg-white text-[#131313] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
         >
           <FiSliders size={16} />
 
@@ -149,7 +173,7 @@ export function PrimaryAction({
     <button
       type="button"
       onClick={onClick}
-      className="flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#233353] px-5 text-xs font-bold text-white shadow-sm transition hover:bg-[#18243a]"
+      className="flex h-[39px] shrink-0 items-center justify-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white shadow-sm transition hover:bg-[#18243a]"
     >
       {icon}
       {children}
@@ -160,7 +184,7 @@ export function PrimaryAction({
 /** White rounded container that wraps the table + its pagination footer. */
 export function TableCard({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-[#17304a] dark:bg-[#071929]">
+    <div className="overflow-hidden rounded-xl bg-white dark:border dark:border-[#17304a] dark:bg-[#071929]">
       {children}
     </div>
   );

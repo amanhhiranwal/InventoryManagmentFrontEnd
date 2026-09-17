@@ -230,6 +230,25 @@ export function ProformaInvoiceSheet({
 }
 
 /**
+ * The invoice on the Preview page: the document in a full-width white card,
+ * as in the design, with the controls the PDF hides hidden here too.
+ */
+export function ProformaInvoicePreviewCard({
+  invoice,
+  profile,
+}: {
+  invoice: ProformaInvoiceModel;
+  profile: CompanyProfile | null;
+}) {
+  return (
+    <div className="pi-paper overflow-hidden rounded-xl bg-white">
+      <style>{`.pi-paper .pi-no-print { display: none !important; }`}</style>
+      <ProformaInvoiceDocument invoice={invoice} profile={profile} />
+    </div>
+  );
+}
+
+/**
  * The PDF is always the light document, so the preview is shown light too:
  * the app's dark mode is lifted while the sheet is open and restored when it
  * closes, exactly as Download PDF does for the print.

@@ -69,7 +69,7 @@ import {
 } from "@/features/proformaInvoices/components/ProformaParts";
 import {
   PrintableProformaInvoice,
-  ProformaInvoiceSheet,
+  ProformaInvoicePreviewCard,
   usePrintProformaInvoice,
 } from "@/features/proformaInvoices/components/ProformaInvoiceDocument";
 import SendProformaInvoiceModal from "@/features/proformaInvoices/components/SendProformaInvoiceModal";
@@ -106,7 +106,6 @@ function ProformaInvoiceDetail() {
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
 
-  const [showPreview, setShowPreview] = useState(false);
   const [showSend, setShowSend] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
 
@@ -159,6 +158,9 @@ function ProformaInvoiceDetail() {
       .then(setProfile)
       .catch(() => setProfile(null));
   }, [load, loadActivities]);
+
+  /* Preview is its own full page, as in the design: ?view=preview. */
+  const previewing = search.get("view") === "preview";
 
   /* "Send PI To Customer" in the list's row menu lands here with ?send=1. */
   const sendParam = search.get("send");
@@ -240,6 +242,12 @@ function ProformaInvoiceDetail() {
     printInvoice(invoice.pi_number || `PI-${invoice.id}`);
   };
 
+  const openPreview = () => {
+    if (!invoice) return;
+
+    router.push(`/sales/proforma-invoices/${invoice.id}?view=preview`);
+  };
+
   /* ---------------------------------------------------------------
      RENDER
   --------------------------------------------------------------- */
@@ -276,6 +284,107 @@ function ProformaInvoiceDetail() {
 
   const headerButton =
     "flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-xs font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:bg-[#071929] dark:text-slate-200";
+
+  /* Dialogs and the hidden print copy, shared by the detail and preview views. */
+  const overlays = (
+    <>
+      {showPayment && (
+          <PaymentModal
+            invoice={invoice}
+            activities={activities.filter(
+              (activity) =>
+                activity.source === "proforma_invoice" && activity.action === "Payment Recorded",
+            )}
+            saving={busy}
+            onClose={() => setShowPayment(false)}
+            onRecord={recordPayment}
+          />
+        )}
+
+        {showSend && (
+          <SendProformaInvoiceModal
+            invoice={invoice}
+            onClose={() => setShowSend(false)}
+            onSent={(updated, message) => {
+              setInvoice(updated);
+              setShowSend(false);
+              addToast(message, "success");
+              loadActivities();
+            }}
+            onError={(message) => addToast(message, "error")}
+            onNotice={(message) => addToast(message, "success")}
+          />
+        )}
+
+        <PrintableProformaInvoice invoice={invoice} profile={profile} />
+    </>
+  );
+
+  const primaryButton =
+    "flex h-9 items-center gap-2 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#18243a] disabled:opacity-50";
+
+  /* The status's next step, shown in both headers. */
+  const nextStepButton =
+    isDraft ? (
+      <button type="button" disabled={busy} onClick={generate} className={primaryButton}>
+        {busy ? <CgSpinner className="animate-spin" size={14} /> : <LuFileText size={14} />}
+        Generate PI
+      </button>
+    ) : invoice.status === "GENERATED" ? (
+      <button type="button" onClick={() => setShowSend(true)} className={primaryButton}>
+        <LuSend size={14} />
+        Send PI To Customer
+      </button>
+    ) : invoice.status === "SENT" ? (
+      <button type="button" onClick={() => setShowPayment(true)} className={primaryButton}>
+        <LuIndianRupee size={14} />
+        View Payment
+      </button>
+    ) : null;
+
+  /* Preview: the invoice itself on a full page, as in the design. */
+  if (previewing) {
+    return (
+      <div className="min-h-full space-y-4 pb-8">
+        <div>
+          <button
+            type="button"
+            onClick={() => router.push("/sales/proforma-invoices")}
+            className="mb-2 flex items-center gap-1 text-[11px] font-medium text-slate-700 hover:text-[#233353] dark:text-slate-300 dark:hover:text-white"
+          >
+            <LuChevronLeft size={13} />
+            Back to all Proforma Invoice
+          </button>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-[26px] font-medium tracking-tight text-slate-900 dark:text-white">
+              {piReference(invoice)}
+              {invoice.company_name ? ` - ${invoice.company_name}` : ""}
+            </h1>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={download} className={headerButton}>
+                <LuDownload size={14} />
+                Download PDF
+              </button>
+
+              {nextStepButton}
+            </div>
+          </div>
+        </div>
+
+        {invoice.status === "CANCELLED" && (
+          <div className="rounded-xl border border-rose-100 bg-rose-50 px-5 py-3 text-[12px] font-medium text-rose-600 dark:border-rose-900/40 dark:bg-rose-950/20">
+            This proforma invoice has been cancelled and is kept for the record only.
+          </div>
+        )}
+
+        <ProformaInvoicePreviewCard invoice={invoice} profile={profile} />
+
+        {overlays}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-full space-y-4 pb-8">
@@ -320,46 +429,12 @@ function ProformaInvoiceDetail() {
               Download PDF
             </button>
 
-            <button type="button" onClick={() => setShowPreview(true)} className={headerButton}>
+            <button type="button" onClick={openPreview} className={headerButton}>
               <LuEye size={14} />
               Preview
             </button>
 
-            {isDraft && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={generate}
-                className="flex h-9 items-center gap-2 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#18243a] disabled:opacity-50"
-              >
-                {busy ? <CgSpinner className="animate-spin" size={14} /> : <LuFileText size={14} />}
-                Generate PI
-              </button>
-            )}
-
-            {invoice.status === "GENERATED" && (
-              <button
-                type="button"
-                onClick={() => setShowSend(true)}
-                className="flex h-9 items-center gap-2 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#18243a]"
-              >
-                <LuSend size={14} />
-                Send PI To Customer
-              </button>
-            )}
-
-            {/* Once the invoice is with the customer, what matters next is
-                what they have paid against it. */}
-            {invoice.status === "SENT" && (
-              <button
-                type="button"
-                onClick={() => setShowPayment(true)}
-                className="flex h-9 items-center gap-2 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white shadow-sm transition hover:bg-[#18243a]"
-              >
-                <LuIndianRupee size={14} />
-                View Payment
-              </button>
-            )}
+            {nextStepButton}
           </div>
         </div>
       </div>
@@ -548,7 +623,7 @@ function ProformaInvoiceDetail() {
               <LinkedDocument
                 title={isDraft ? "Proforma Invoice" : `Proforma Invoice ${piReference(invoice)}`}
                 subtitle={isDraft ? "Not Generated" : proformaInvoiceStatusLabel(invoice.status)}
-                onView={() => setShowPreview(true)}
+                onView={openPreview}
               />
 
               {invoice.attachments.map((file) => (
@@ -615,69 +690,7 @@ function ProformaInvoiceDetail() {
         </div>
       </div>
 
-      {showPreview && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
-          <div className="flex max-h-[94vh] w-full max-w-[900px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
-              <h2 className="text-sm font-semibold text-slate-800">
-                Preview · {piReference(invoice)}
-              </h2>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={download}
-                  className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  <LuDownload size={13} />
-                  Download PDF
-                </button>
-                <button
-                  type="button"
-                  aria-label="Close preview"
-                  onClick={() => setShowPreview(false)}
-                  className="text-slate-400 hover:text-slate-700"
-                >
-                  <LuX size={17} />
-                </button>
-              </div>
-            </div>
-            {/* The same A4 sheet Download PDF prints, on a grey desk. */}
-            <div className="overflow-auto bg-slate-200 p-6">
-              <ProformaInvoiceSheet invoice={invoice} profile={profile} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showPayment && (
-        <PaymentModal
-          invoice={invoice}
-          activities={activities.filter(
-            (activity) =>
-              activity.source === "proforma_invoice" && activity.action === "Payment Recorded",
-          )}
-          saving={busy}
-          onClose={() => setShowPayment(false)}
-          onRecord={recordPayment}
-        />
-      )}
-
-      {showSend && (
-        <SendProformaInvoiceModal
-          invoice={invoice}
-          onClose={() => setShowSend(false)}
-          onSent={(updated, message) => {
-            setInvoice(updated);
-            setShowSend(false);
-            addToast(message, "success");
-            loadActivities();
-          }}
-          onError={(message) => addToast(message, "error")}
-          onNotice={(message) => addToast(message, "success")}
-        />
-      )}
-
-      <PrintableProformaInvoice invoice={invoice} profile={profile} />
+      {overlays}
     </div>
   );
 }

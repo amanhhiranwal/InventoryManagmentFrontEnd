@@ -35,6 +35,7 @@ import FormPageHeader, {
   SubmitButton,
 } from "@/components/crm/FormPageHeader";
 import {
+  LIST_TABLE,
   Th,
   ListToolbar,
   PrimaryAction,
@@ -2234,9 +2235,9 @@ function ListView({
   onAdvance: (opportunity: Opportunity) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#17304a] dark:bg-[#071929]">
+    <div className="overflow-hidden rounded-xl bg-white dark:border dark:border-[#17304a] dark:bg-[#071929]">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse">
+        <table className={`w-full min-w-[900px] border-collapse ${LIST_TABLE}`}>
           <thead>
             <tr className="border-b border-slate-200 bg-white dark:border-[#17304a] dark:bg-[#071929]">
               <th className="w-10 px-3 py-3">

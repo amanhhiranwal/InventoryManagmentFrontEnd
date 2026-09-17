@@ -33,6 +33,7 @@ import {
 import { useRouter } from "next/navigation";
 import { getUsersApi, User } from "@/features/users/api/users.api";
 import StatCard from "@/components/crm/StatCard";
+import { LIST_TABLE } from "@/components/crm/ListPageShell";
 import { monthOverMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
@@ -1952,40 +1953,16 @@ export default function LeadsPage() {
 
       <div className="flex flex-col gap-3 lg:flex-row">
         <div className="relative flex-1">
-          <FiSearch
-            className="
-              absolute
-              left-4
-              top-1/2
-              -translate-y-1/2
-              text-slate-400
-            "
-          />
-
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search Leads"
-            className="
-              h-11
-              w-full
-              rounded-lg
-              border
-              border-slate-200
-              bg-white
-              pl-11
-              pr-4
-              text-xs
-              text-slate-800
-              outline-none
-              transition
-              focus:border-primary
-              focus:ring-2
-              focus:ring-primary/10
-              dark:border-[#0d2336]
-              dark:bg-[#051422]
-              dark:text-white
-            "
+            className="h-[39px] w-full rounded-lg border border-[#cccccc] bg-[#f3f3f3] pl-3.5 pr-10 text-[13px] text-[#141414] outline-none transition placeholder:text-[#aaaaaa] focus:border-[#233353] dark:border-[#0d2336] dark:bg-[#051422] dark:text-white"
+          />
+
+          <FiSearch
+            size={15}
+            className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[#131313] dark:text-slate-400"
           />
         </div>
 
@@ -2002,16 +1979,14 @@ export default function LeadsPage() {
             className="
               relative
               flex
-              h-11
-              w-11
+              h-[39px]
+              w-[39px]
               shrink-0
               items-center
               justify-center
               rounded-lg
-              border
-              border-slate-200
               bg-white
-              text-slate-600
+              text-[#131313]
               transition
               hover:bg-slate-50
               dark:border-[#17304a]
@@ -2084,16 +2059,16 @@ export default function LeadsPage() {
             onClick={() => setShowAddMenu((previous) => !previous)}
             className="
               flex
-              h-11
+              h-[39px]
               w-full
               items-center
               justify-center
               gap-2
               rounded-lg
-              bg-[#233353]
-              px-5
-              text-xs
-              font-bold
+              bg-[#273756]
+              px-4
+              text-[13px]
+              font-medium
               text-white
               shadow-sm
               hover:bg-[#18243a]
@@ -2243,7 +2218,7 @@ export default function LeadsPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] border-collapse text-left">
+              <table className={`w-full min-w-[900px] border-collapse text-left ${LIST_TABLE}`}>
                 <thead>
                   <tr
                     className="
@@ -2328,7 +2303,7 @@ export default function LeadsPage() {
                         </td>
 
                         <td className="px-4 py-4">
-                          <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                          <span className="whitespace-nowrap text-[11px] font-medium text-slate-800 dark:text-slate-300">
                             {formatLeadId(lead.id)}
                           </span>
                         </td>
@@ -2337,39 +2312,39 @@ export default function LeadsPage() {
                           {/* Plain markup now the row itself is clickable -
                               a nested button would fire the same handler a
                               second time. */}
-                          <p className="text-xs font-bold text-slate-900 dark:text-white">
+                          <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
                             {getLeadDisplayName(lead)}
                           </p>
 
-                          <p className="mt-1 text-[10px] text-slate-400">
+                          <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
                             {details.email || "No email"}
                           </p>
 
-                          <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-400">
-                            <FiMapPin />
+                          <p className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                            <FiMapPin size={9} />
                             {formatLeadLocation(details)}
                           </p>
                         </td>
 
                         <td className="px-4 py-4">
-                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          <p className="text-[12px] text-slate-700 dark:text-slate-300">
                             {getLeadCompany(lead)}
                           </p>
 
-                          <p className="mt-1 text-[10px] text-slate-400">
+                          <p className="text-[10px] text-slate-500">
                             {getLeadCustomerType(lead)}
                           </p>
                         </td>
 
                         <td className="px-4 py-4">
-                          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-[#0d2336] dark:bg-[#071929]">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#233353] text-[9px] font-bold text-white">
+                          <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-slate-100 px-2 py-1 dark:bg-[#0b2034]">
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] text-slate-700 dark:bg-[#17304a] dark:text-slate-200">
                               {getInitials(
                                 lead.assigned_to_name || lead.creator_name,
-                              )}
+                              ).charAt(0)}
                             </span>
 
-                            <span className="max-w-[130px] truncate text-[10px] font-semibold text-slate-700 dark:text-slate-200">
+                            <span className="max-w-[130px] truncate text-[10px] text-slate-700 dark:text-slate-200">
                               {lead.assigned_to_name ||
                                 lead.creator_name ||
                                 "Unassigned"}
@@ -2385,7 +2360,7 @@ export default function LeadsPage() {
                         </td>
 
                         <td className="px-4 py-4">
-                          <span className="text-[10px] font-medium text-slate-400">
+                          <span className="whitespace-nowrap text-[10px] text-slate-700 dark:text-slate-300">
                             {formatDate(lead.created_at)}
                           </span>
                         </td>

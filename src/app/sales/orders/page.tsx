@@ -28,6 +28,7 @@ import {
 } from "@/features/salesOrders/api/salesOrders.api";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
 import StatCard from "@/components/crm/StatCard";
+import { FORM_FIELDS } from "@/components/crm/FormCard";
 import { monthOverMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
@@ -37,6 +38,7 @@ import FormPageHeader, {
   SubmitButton,
 } from "@/components/crm/FormPageHeader";
 import {
+  LIST_TABLE,
   ListToolbar,
   PrimaryAction,
   StatGrid,
@@ -52,11 +54,13 @@ import {
   FiBarChart2,
   FiX,
   FiCalendar,
+  FiClipboard,
+  FiFolder,
+  FiInfo,
   FiTrash2,
   FiMinus,
   FiBox,
   FiMapPin,
-  FiCamera,
   FiUpload,
   FiShield,
   FiFileText,
@@ -1535,62 +1539,40 @@ export default function OrdersListPage() {
               LEFT CONTENT
           ================================================= */}
 
-            <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 dark:border-[#17304a] dark:bg-[#071929]">
+            <div className={`rounded-xl bg-white px-5 py-5 dark:border dark:border-[#17304a] dark:bg-[#071929] ${FORM_FIELDS}`}>
               {/* =================================================
                       ORDER INFORMATION
                   ================================================= */}
 
               <div>
-                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-                  <div className="w-5 h-5 rounded-full border border-slate-500 flex items-center justify-center">
-                    <span className="text-[10px] font-semibold text-slate-600">
-                      i
-                    </span>
-                  </div>
+                <div className="mb-5 flex items-center gap-2.5 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
+                  <FiInfo size={18} className="text-[#474747] dark:text-slate-300" />
 
-                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+                  <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                     Order Information
                   </h3>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-4">
+                <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
                   {/* Sales Order ID - assigned by the backend on save. */}
                   <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
+                    <span className="w-[110px] text-[11px] text-[#777777]">
                       Sales Order ID:
                     </span>
 
-                    <span className="text-[11px] font-semibold text-slate-800 dark:text-white">
+                    <span className="text-[11px] font-medium text-[#141414] dark:text-white">
                       {newOrder.salesOrderId || "Assigned on save"}
                     </span>
                   </div>
 
-                  {/* Quotation this order was raised against. Replaces the
-                      Opportunity ID field, which asked for a numeric id the
-                      user had no way of knowing. */}
+                  {/* Assigned To, shown as the design's name chip. */}
                   <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
-                      Quotation ID:
-                    </span>
-
-                    <input
-                      value={newOrder.quotationId}
-                      onChange={(e) =>
-                        updateNewOrder("quotationId", e.target.value)
-                      }
-                      placeholder="#QT-4822"
-                      className="h-7 w-[150px] rounded-md border border-slate-200 px-2 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
-                    />
-                  </div>
-
-                  {/* Assigned To */}
-                  <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
+                    <span className="w-[110px] text-[11px] text-[#777777]">
                       Assigned To:
                     </span>
 
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[8px] text-slate-600">
+                    <div className="flex items-center gap-1.5 rounded bg-slate-100 py-0.5 pl-1 pr-1 dark:bg-[#0b2034]">
+                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] text-slate-600">
                         {assignedUserDisplay.charAt(0).toUpperCase()}
                       </span>
 
@@ -1600,23 +1582,39 @@ export default function OrdersListPage() {
                           updateNewOrder("assignedTo", e.target.value)
                         }
                         placeholder="Rohit S."
-                        className="h-7 w-[120px] rounded-md border border-slate-200 px-2 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                        className="field-compact h-6 w-[110px] rounded border-0 bg-transparent px-1 text-[11px] text-[#141414] outline-none focus:bg-white dark:text-white dark:focus:bg-[#051422]"
                       />
                     </div>
                   </div>
 
-                  <div />
+                  {/* Quotation this order was raised against. Replaces the
+                      Opportunity ID field, which asked for a numeric id the
+                      user had no way of knowing. */}
+                  <div>
+                    <label className="mb-1.5 block">Quotation ID:</label>
+
+                    <input
+                      value={newOrder.quotationId}
+                      onChange={(e) =>
+                        updateNewOrder("quotationId", e.target.value)
+                      }
+                      placeholder="#QT-4822"
+                      className="w-full border px-3 outline-none focus:border-slate-400 dark:bg-[#051422]"
+                    />
+                  </div>
+
+                  <div className="hidden md:block" />
 
                   {/* Order Date. Was display-only text with no way to set it,
                       so every order was dated the moment it was saved. */}
                   <div className="md:col-span-2">
-                    <label className="mb-1.5 block text-[11px] text-slate-500">
-                      Order Date: <span className="text-rose-500">*</span>
+                    <label className="mb-1.5 block">
+                      Order Date: <span>*</span>
                     </label>
 
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:border-[#17304a]">
-                        <FiCalendar size={14} />
+                    <div className="flex items-center gap-1">
+                      <span className="flex h-[39px] w-[39px] shrink-0 items-center justify-center rounded-lg border border-[#d1d1d1] text-[#141414] dark:border-[#17304a] dark:text-slate-300">
+                        <FiCalendar size={16} />
                       </span>
 
                       <input
@@ -1625,16 +1623,14 @@ export default function OrdersListPage() {
                         onChange={(e) =>
                           updateNewOrder("orderDate", e.target.value)
                         }
-                        className="h-9 flex-1 rounded-lg border border-slate-200 px-3 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                        className="flex-1 border px-3 outline-none focus:border-slate-400 dark:bg-[#051422]"
                       />
                     </div>
                   </div>
 
                   {/* The customer's own purchase order. */}
                   <div>
-                    <label className="mb-1.5 block text-[11px] text-slate-500">
-                      PO Number
-                    </label>
+                    <label className="mb-1.5 block">PO Number</label>
 
                     <input
                       value={newOrder.poNumber}
@@ -1642,18 +1638,16 @@ export default function OrdersListPage() {
                         updateNewOrder("poNumber", e.target.value)
                       }
                       placeholder="PO-7842"
-                      className="h-9 w-full rounded-lg border border-slate-200 px-3 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                      className="w-full border px-3 outline-none focus:border-slate-400 dark:bg-[#051422]"
                     />
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-[11px] text-slate-500">
-                      PO Date
-                    </label>
+                    <label className="mb-1.5 block">PO Date</label>
 
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:border-[#17304a]">
-                        <FiCalendar size={14} />
+                    <div className="flex items-center gap-1">
+                      <span className="flex h-[39px] w-[39px] shrink-0 items-center justify-center rounded-lg border border-[#d1d1d1] text-[#141414] dark:border-[#17304a] dark:text-slate-300">
+                        <FiCalendar size={16} />
                       </span>
 
                       <input
@@ -1662,7 +1656,7 @@ export default function OrdersListPage() {
                         onChange={(e) =>
                           updateNewOrder("poDate", e.target.value)
                         }
-                        className="h-9 flex-1 rounded-lg border border-slate-200 px-3 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                        className="flex-1 border px-3 outline-none focus:border-slate-400 dark:bg-[#051422]"
                       />
                     </div>
                   </div>
@@ -1673,15 +1667,11 @@ export default function OrdersListPage() {
                 ORGANIZATION DETAILS
             ================================================= */}
 
-              <div className="border-t border-slate-100 mt-6 pt-5">
-                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-                  <div className="w-5 h-5 rounded-full border border-slate-500 flex items-center justify-center">
-                    <span className="text-[10px] font-semibold text-slate-600">
-                      i
-                    </span>
-                  </div>
+              <div className="mt-8">
+                <div className="mb-5 flex items-center gap-2.5 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
+                  <FiFolder size={18} className="text-[#474747] dark:text-slate-300" />
 
-                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+                  <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                     Organization Details
                   </h3>
                 </div>
@@ -1692,7 +1682,7 @@ export default function OrdersListPage() {
                   {/* Customer Type */}
 
                   <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
+                    <span className="w-[110px] text-[11px] text-[#777777]">
                       Customer Type:
                     </span>
 
@@ -1701,7 +1691,7 @@ export default function OrdersListPage() {
                       onChange={(e) =>
                         updateNewOrder("customerType", e.target.value)
                       }
-                      className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none"
+                      className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none"
                     >
                       <option value="">Select type</option>
 
@@ -1716,7 +1706,7 @@ export default function OrdersListPage() {
                   {/* Organization */}
 
                   <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
+                    <span className="w-[110px] text-[11px] text-[#777777]">
                       Organization Name:
                     </span>
 
@@ -1726,14 +1716,14 @@ export default function OrdersListPage() {
                         updateNewOrder("companyName", e.target.value)
                       }
                       placeholder="Organization name"
-                      className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
+                      className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
                   </div>
 
                   {/* GST */}
 
                   <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
+                    <span className="w-[110px] text-[11px] text-[#777777]">
                       GST:
                     </span>
 
@@ -1741,14 +1731,14 @@ export default function OrdersListPage() {
                       value={newOrder.gst}
                       onChange={(e) => updateNewOrder("gst", e.target.value)}
                       placeholder="GST number"
-                      className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
+                      className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
                   </div>
 
                   {/* PAN */}
 
                   <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
+                    <span className="w-[110px] text-[11px] text-[#777777]">
                       PAN:
                     </span>
 
@@ -1756,14 +1746,14 @@ export default function OrdersListPage() {
                       value={newOrder.pan}
                       onChange={(e) => updateNewOrder("pan", e.target.value)}
                       placeholder="PAN number"
-                      className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
+                      className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
                   </div>
 
                   {/* CIN */}
 
                   <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
+                    <span className="w-[110px] text-[11px] text-[#777777]">
                       COI Number:
                     </span>
 
@@ -1771,14 +1761,14 @@ export default function OrdersListPage() {
                       value={newOrder.cin}
                       onChange={(e) => updateNewOrder("cin", e.target.value)}
                       placeholder="COI number"
-                      className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
+                      className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
                   </div>
 
                   {/* Registration */}
 
                   <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-slate-500">
+                    <span className="w-[110px] text-[11px] text-[#777777]">
                       Registration:
                     </span>
 
@@ -1787,7 +1777,7 @@ export default function OrdersListPage() {
                       onChange={(e) =>
                         updateNewOrder("registration", e.target.value)
                       }
-                      className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none"
+                      className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none"
                     >
                       <option value="">Select</option>
                       <option value="Registered">Registered</option>
@@ -1809,7 +1799,7 @@ export default function OrdersListPage() {
                     {/* Customer */}
 
                     <div className="flex items-center">
-                      <span className="w-[110px] text-[11px] text-slate-500">
+                      <span className="w-[110px] text-[11px] text-[#777777]">
                         Customer:
                       </span>
 
@@ -1819,14 +1809,14 @@ export default function OrdersListPage() {
                           updateNewOrder("customerName", e.target.value)
                         }
                         placeholder="Customer name"
-                        className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
+                        className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                       />
                     </div>
 
                     {/* Designation */}
 
                     <div className="flex items-center">
-                      <span className="w-[110px] text-[11px] text-slate-500">
+                      <span className="w-[110px] text-[11px] text-[#777777]">
                         Designation:
                       </span>
 
@@ -1836,14 +1826,14 @@ export default function OrdersListPage() {
                           updateNewOrder("designation", e.target.value)
                         }
                         placeholder="Designation"
-                        className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
+                        className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                       />
                     </div>
 
                     {/* Phone */}
 
                     <div className="flex items-center">
-                      <span className="w-[110px] text-[11px] text-slate-500">
+                      <span className="w-[110px] text-[11px] text-[#777777]">
                         Phone:
                       </span>
 
@@ -1853,14 +1843,14 @@ export default function OrdersListPage() {
                           updateNewOrder("phone", e.target.value)
                         }
                         placeholder="+91"
-                        className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
+                        className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                       />
                     </div>
 
                     {/* Email */}
 
                     <div className="flex items-center">
-                      <span className="w-[110px] text-[11px] text-slate-500">
+                      <span className="w-[110px] text-[11px] text-[#777777]">
                         Email:
                       </span>
 
@@ -1871,7 +1861,7 @@ export default function OrdersListPage() {
                           updateNewOrder("email", e.target.value)
                         }
                         placeholder="customer@email.com"
-                        className="h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
+                        className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                       />
                     </div>
                   </div>
@@ -1882,11 +1872,11 @@ export default function OrdersListPage() {
                 LOCATION INFORMATION
             ================================================= */}
 
-              <div className="border-t border-slate-100 mt-6 pt-5">
-                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-                  <FiMapPin size={16} className="text-slate-600" />
+              <div className="mt-8">
+                <div className="mb-5 flex items-center gap-2.5 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
+                  <FiMapPin size={18} className="text-[#474747] dark:text-slate-300" />
 
-                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+                  <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                     Location Information
                   </h3>
                 </div>
@@ -2124,12 +2114,12 @@ export default function OrdersListPage() {
                 PRODUCTS & ORDER ITEMS
             ================================================= */}
 
-              <div className="border-t border-slate-100 mt-6 pt-5">
+              <div className="mt-8">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <FiMapPin size={16} className="text-slate-600" />
+                    <FiBox size={18} className="text-[#474747] dark:text-slate-300" />
 
-                    <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+                    <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                       Products & Order Items
                     </h3>
                   </div>
@@ -2427,11 +2417,11 @@ export default function OrdersListPage() {
                 TERMS, CONDITIONS & TECHNICAL NOTES
             ================================================= */}
 
-              <div className="border-t border-slate-100 mt-6 pt-5 dark:border-[#17304a]">
-                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-                  <FiShield size={16} className="text-slate-600" />
+              <div className="mt-8">
+                <div className="mb-5 flex items-center gap-2.5 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
+                  <FiShield size={18} className="text-[#474747] dark:text-slate-300" />
 
-                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+                  <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                     Terms, Conditions & Technical Notes
                   </h3>
                 </div>
@@ -2472,7 +2462,7 @@ export default function OrdersListPage() {
                               node.style.height = `${node.scrollHeight}px`;
                             }
                           }}
-                          className="w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-[11px] leading-5 text-slate-600 outline-none hover:border-slate-200 focus:border-slate-300 focus:bg-white dark:text-slate-300 dark:hover:border-[#17304a] dark:focus:bg-[#051422]"
+                          className="field-compact w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-[11px] leading-5 text-slate-600 outline-none hover:border-slate-200 focus:border-slate-300 focus:bg-white dark:text-slate-300 dark:hover:border-[#17304a] dark:focus:bg-[#051422]"
                         />
                       </div>
                     ))}
@@ -2491,7 +2481,7 @@ export default function OrdersListPage() {
                       updateNewOrder("technicalNotes", e.target.value)
                     }
                     placeholder="Agreed scope includes unboxing, wall-mounting bracket rigging, firmware calibration and operations training."
-                    className="w-full resize-none rounded-xl bg-slate-50 p-3 text-[11px] leading-5 text-slate-600 outline-none focus:ring-1 focus:ring-slate-300 dark:bg-[#0b2034] dark:text-slate-300"
+                    className="field-compact w-full resize-none rounded-xl bg-slate-50 p-3 text-[11px] leading-5 text-slate-600 outline-none focus:ring-1 focus:ring-slate-300 dark:bg-[#0b2034] dark:text-slate-300"
                   />
                 </div>
               </div>
@@ -2510,11 +2500,11 @@ export default function OrdersListPage() {
                 ORDER SUMMARY
             ================================================= */}
 
-              <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 dark:border-[#17304a] dark:bg-[#071929]">
-                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-                  <FiCamera size={16} className="text-slate-600" />
+              <div className={`rounded-xl bg-white px-5 py-5 dark:border dark:border-[#17304a] dark:bg-[#071929] ${FORM_FIELDS}`}>
+                <div className="mb-5 flex items-center gap-2.5 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
+                  <FiClipboard size={18} className="text-[#474747] dark:text-slate-300" />
 
-                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+                  <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                     Order Summary
                   </h3>
                 </div>
@@ -2540,11 +2530,11 @@ export default function OrdersListPage() {
                 ATTACHED DOCUMENTS
             ================================================= */}
 
-              <div className="rounded-xl border border-slate-200 bg-white px-6 py-5 dark:border-[#17304a] dark:bg-[#071929]">
-                <div className="mb-5 flex items-center gap-2 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-                  <FiUpload size={16} className="text-slate-600" />
+              <div className={`rounded-xl bg-white px-5 py-5 dark:border dark:border-[#17304a] dark:bg-[#071929] ${FORM_FIELDS}`}>
+                <div className="mb-5 flex items-center gap-2.5 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
+                  <FiFileText size={18} className="text-[#474747] dark:text-slate-300" />
 
-                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+                  <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                     Attached Documents
                   </h3>
                 </div>
@@ -2823,7 +2813,7 @@ export default function OrdersListPage() {
                   <div className="flex items-center gap-2 pb-3 border-b border-slate-200">
                     <FiBox size={17} className="text-slate-600" />
 
-                    <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
+                    <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                       Selected Products
                     </h3>
                   </div>
@@ -3349,7 +3339,7 @@ export default function OrdersListPage() {
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className={`w-full text-left ${LIST_TABLE}`}>
             <thead>
               <tr className="border-b border-slate-200">
                 <th className="w-10 px-4 py-3">
@@ -3621,7 +3611,7 @@ function PercentCell({
             ),
           )
         }
-        className="w-full min-w-0 border-0 bg-transparent p-0 text-xs text-slate-700 outline-none dark:text-white"
+        className="field-compact w-full min-w-0 border-0 bg-transparent p-0 text-xs text-slate-700 outline-none dark:text-white"
       />
 
       <span className="ml-1 shrink-0 text-[10px] text-slate-400">%</span>
@@ -3716,7 +3706,7 @@ function OrderSummaryRow({
                     setEditing(false);
                   }
                 }}
-                className="h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-xs text-slate-800 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                className="field-compact h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-xs text-slate-800 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
               />
 
               <span className="text-xs text-slate-500">%</span>

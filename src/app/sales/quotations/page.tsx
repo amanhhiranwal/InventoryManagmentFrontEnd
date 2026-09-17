@@ -16,6 +16,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
 
 import {
+  LIST_TABLE,
   ListPage,
   ListPageHeader,
   ListToolbar,
@@ -1385,7 +1386,7 @@ export default function QuotationPage() {
                   <select
                     value={opportunityId ? String(opportunityId) : ""}
                     onChange={(event) => applyOpportunity(event.target.value)}
-                    className="cursor-pointer rounded-md border border-transparent bg-transparent py-0.5 text-[12px] font-bold text-slate-800 outline-none transition hover:border-slate-200 focus:border-[#233353] dark:text-white"
+                    className="field-compact cursor-pointer rounded-md border border-transparent bg-transparent py-0.5 text-[12px] font-bold text-slate-800 outline-none transition hover:border-slate-200 focus:border-[#233353] dark:text-white"
                   >
                     <option value="">Select opportunity</option>
 
@@ -1404,7 +1405,7 @@ export default function QuotationPage() {
                     value={opportunityName}
                     onChange={(event) => setOpportunityName(event.target.value)}
                     placeholder="—"
-                    className="w-full rounded-md border border-transparent bg-transparent py-0.5 text-[12px] font-bold text-slate-800 outline-none transition hover:border-slate-200 focus:border-[#233353] dark:text-white"
+                    className="field-compact w-full rounded-md border border-transparent bg-transparent py-0.5 text-[12px] font-bold text-slate-800 outline-none transition hover:border-slate-200 focus:border-[#233353] dark:text-white"
                   />
                 </InlineFact>
               </div>
@@ -2172,7 +2173,7 @@ export default function QuotationPage() {
 
       <TableCard>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px]">
+          <table className={`w-full min-w-[900px] ${LIST_TABLE}`}>
             <thead className="border-b border-slate-200 dark:border-[#17304a]">
               <tr>
                 <Th className="w-10 px-3!">
@@ -2674,7 +2675,7 @@ function SummaryRow({
                     setEditing(false);
                   }
                 }}
-                className="h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                className="field-compact h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
               />
 
               <span className="text-[11px] text-slate-500">%</span>

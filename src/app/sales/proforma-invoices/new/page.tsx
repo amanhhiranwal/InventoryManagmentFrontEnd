@@ -27,6 +27,7 @@ import { CgSpinner } from "react-icons/cg";
 
 import { useUIStore } from "@/lib/store/ui.store";
 import FormPageHeader from "@/components/crm/FormPageHeader";
+import { FORM_FIELDS } from "@/components/crm/FormCard";
 import {
   getSalesOrderApi,
   type SalesOrderModel,
@@ -418,7 +419,7 @@ function GenerateProformaInvoice() {
 
       <div>
         <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_372px]">
-          <div className="space-y-8 rounded-2xl bg-white px-5 py-5 dark:bg-[#071929]">
+          <div className={`space-y-8 rounded-xl bg-white px-5 py-5 dark:bg-[#071929] ${FORM_FIELDS}`}>
             {/* PI INFORMATION */}
             <section>
               <SectionTitle icon={<LuInfo size={17} />} title="PI Information" />

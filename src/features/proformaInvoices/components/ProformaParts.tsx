@@ -741,7 +741,7 @@ function TotalsRow({
                   setEditing(false);
                 }
               }}
-              className="h-7 w-24 rounded-md border border-slate-300 px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353]"
+              className="field-compact h-7 w-24 rounded-md border border-slate-300 px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353]"
             />
             {unit === "%" && <span className="text-[11px] text-slate-400">%</span>}
           </span>
@@ -953,7 +953,7 @@ export function TermsBlock({
           value={notes || ""}
           onChange={(event) => onNotesChange(event.target.value)}
           placeholder="Agreed scope, installation and training notes."
-          className="w-full resize-none rounded-xl bg-slate-100 p-3 text-[12px] leading-5 text-slate-700 outline-none focus:ring-1 focus:ring-slate-300 dark:bg-[#0b2034] dark:text-slate-300"
+          className="field-compact w-full resize-none rounded-xl bg-slate-100 p-3 text-[12px] leading-5 text-slate-700 outline-none focus:ring-1 focus:ring-slate-300 dark:bg-[#0b2034] dark:text-slate-300"
         />
       ) : (
         <p className="rounded-xl bg-slate-100 p-3 text-[12px] leading-5 text-slate-700 dark:bg-[#0b2034] dark:text-slate-300">
@@ -988,7 +988,7 @@ function AutoTextarea({
       rows={1}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-0 text-[12px] leading-5 text-slate-700 outline-none hover:border-slate-300 focus:border-slate-300 focus:bg-white dark:text-slate-300 dark:focus:bg-[#051422]"
+      className="field-compact w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-0 text-[12px] leading-5 text-slate-700 outline-none hover:border-slate-300 focus:border-slate-300 focus:bg-white dark:text-slate-300 dark:focus:bg-[#051422]"
     />
   );
 }

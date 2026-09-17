@@ -114,7 +114,7 @@ export default function AmountInput({
           setEditing(false);
           setDraft(String(parseAmount(draft)));
         }}
-        className="h-full min-w-0 flex-1 bg-transparent px-2 text-right text-[11px] text-slate-800 outline-none dark:text-white"
+        className="field-compact h-full min-w-0 flex-1 bg-transparent px-2 text-right text-[11px] text-slate-800 outline-none dark:text-white"
       />
 
       {showToggle && (
@@ -133,7 +133,7 @@ export default function AmountInput({
               ? `Percentage of ₹${Number(base).toLocaleString("en-IN")}`
               : undefined
           }
-          className="h-full cursor-pointer border-l border-slate-200 bg-slate-50 px-1.5 text-[11px] font-semibold text-slate-600 outline-none dark:border-[#17304a] dark:bg-[#0b2034] dark:text-slate-300"
+          className="field-compact h-full cursor-pointer border-l border-slate-200 bg-slate-50 px-1.5 text-[11px] font-semibold text-slate-600 outline-none dark:border-[#17304a] dark:bg-[#0b2034] dark:text-slate-300"
         >
           <option value="AMOUNT">₹</option>
           <option value="PERCENT">%</option>

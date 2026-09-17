@@ -36,6 +36,7 @@ import { monthOverMonth, percentChange, startOfMonth } from "@/components/crm/kp
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
 import {
+  LIST_TABLE,
   ListPageHeader,
   ListToolbar,
   PrimaryAction,
@@ -689,9 +690,9 @@ export default function ProformaInvoiceListPage() {
         )}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-[#17304a] dark:bg-[#071929]">
+      <div className="overflow-hidden rounded-xl bg-white dark:border dark:border-[#17304a] dark:bg-[#071929]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px]">
+          <table className={`w-full min-w-[900px] ${LIST_TABLE}`}>
             <thead>
               <tr className="border-b border-slate-200 dark:border-[#17304a]">
                 <th className="w-12 border-r border-slate-100 px-4 py-3 dark:border-[#17304a]">
