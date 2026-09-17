@@ -2168,34 +2168,34 @@ export default function QuotationPage() {
 
       <TableCard>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px]">
+          <table className="w-full min-w-[900px]">
             <thead className="border-b border-slate-200 dark:border-[#17304a]">
               <tr>
-                <Th className="w-10">
+                <Th className="w-10 px-3!">
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300" />
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Quote ID</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Customer Name</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Opportunity</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Order Value</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Assigned To</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Dates</SortLabel>
                 </Th>
-                <Th>
+                <Th className="px-3!">
                   <SortLabel>Status</SortLabel>
                 </Th>
-                <Th className="text-center">Actions</Th>
+                <Th className="px-3! text-center">Actions</Th>
               </tr>
             </thead>
 
@@ -2233,7 +2233,7 @@ export default function QuotationPage() {
                     className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-[#071929]/50"
                   >
                     <td
-                      className="px-4 py-4"
+                      className="px-3 py-4"
                       onClick={(event) => event.stopPropagation()}
                     >
                       <input
@@ -2242,13 +2242,13 @@ export default function QuotationPage() {
                       />
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">
                         #{quotation.quote_number}
                       </span>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <p className="text-xs font-bold text-slate-900 dark:text-white">
                         {quotation.contact_name || "—"}
                       </p>
@@ -2265,7 +2265,7 @@ export default function QuotationPage() {
                       </p>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                         {quotation.opportunity_name ||
                           quotation.organization_name ||
@@ -2279,13 +2279,13 @@ export default function QuotationPage() {
                       )}
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                         {compactMoney(quotation.total_payable)}
                       </span>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-[#0d2336] dark:bg-[#071929]">
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#233353] text-[9px] font-bold text-white">
                           {getInitials(userName(quotation.assigned_to_id))}
@@ -2297,18 +2297,18 @@ export default function QuotationPage() {
                       </div>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <span className="text-[10px] font-medium text-slate-400">
                         {formatDate(quotation.quotation_date || quotation.created_at)}
                       </span>
                     </td>
 
-                    <td className="px-4 py-4">
+                    <td className="px-3 py-4">
                       <StatusPill status={quotation.status} />
                     </td>
 
                     <td
-                      className="px-4 py-4"
+                      className="px-3 py-4"
                       onClick={(event) => event.stopPropagation()}
                     >
                       <div className="flex items-center justify-center gap-1">

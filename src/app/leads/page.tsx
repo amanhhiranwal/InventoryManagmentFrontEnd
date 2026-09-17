@@ -1917,7 +1917,7 @@ export default function LeadsPage() {
 
       {/* KPI */}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 min-[68.75rem]:grid-cols-4">
         <StatCard
           label="Total Leads"
           value={totalLeads}
@@ -2243,7 +2243,7 @@ export default function LeadsPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1150px] border-collapse text-left">
+              <table className="w-full min-w-[900px] border-collapse text-left">
                 <thead>
                   <tr
                     className="

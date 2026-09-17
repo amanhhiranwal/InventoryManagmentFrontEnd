@@ -691,15 +691,15 @@ export default function ProformaInvoiceListPage() {
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-[#17304a] dark:bg-[#071929]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px]">
+          <table className="w-full min-w-[900px]">
             <thead>
               <tr className="border-b border-slate-200 dark:border-[#17304a]">
                 <th className="w-12 border-r border-slate-100 px-4 py-3 dark:border-[#17304a]">
                   <input type="checkbox" aria-label="Select all" className="rounded border-slate-300" />
                 </th>
                 <SortTh sort={sort} onSort={toggleSort} label="PI ID" sortKey="pi" />
-                <SortTh sort={sort} onSort={toggleSort} label="Customer Name" sortKey="customer" className="min-w-[160px]" />
-                <SortTh sort={sort} onSort={toggleSort} label="Company" sortKey="company" className="min-w-[150px]" />
+                <SortTh sort={sort} onSort={toggleSort} label="Customer Name" sortKey="customer" className="min-w-[140px]" />
+                <SortTh sort={sort} onSort={toggleSort} label="Company" sortKey="company" />
                 <SortTh sort={sort} onSort={toggleSort} label="Sales Order" sortKey="order" />
                 <SortTh sort={sort} onSort={toggleSort} label="PI Value" sortKey="value" />
                 <SortTh sort={sort} onSort={toggleSort} label="Assigned To" sortKey="assigned" />

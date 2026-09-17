@@ -1573,7 +1573,7 @@ function OpportunitiesPageInner() {
         {/* =========================================================
             KPI CARDS
         ========================================================= */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 min-[68.75rem]:grid-cols-4">
           <StatCard
             label="Total Opportunities"
             value={totalOpportunities}
@@ -2236,7 +2236,7 @@ function ListView({
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#17304a] dark:bg-[#071929]">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1000px] border-collapse">
+        <table className="w-full min-w-[900px] border-collapse">
           <thead>
             <tr className="border-b border-slate-200 bg-white dark:border-[#17304a] dark:bg-[#071929]">
               <th className="w-10 px-3 py-3">
