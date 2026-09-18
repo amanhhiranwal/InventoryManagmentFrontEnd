@@ -6,19 +6,14 @@ import { useUIStore } from "@/lib/store/ui.store";
 
 import { IoMdLogOut } from "react-icons/io";
 import { CgProfile } from "react-icons/cg";
-
-import {
-  FiSun,
-  FiMoon,
-  FiMenu,
-  FiBell,
-  FiChevronDown,
-  FiBriefcase,
-} from "react-icons/fi";
+import { FaCaretDown } from "react-icons/fa";
+import { FiSun, FiMoon, FiMenu } from "react-icons/fi";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import api from "@/lib/axios";
+import NotificationBell from "@/components/layout/NotificationBell";
+import { getCompanyProfileApi } from "@/features/proformaInvoices/api/proformaInvoices.api";
 
 export default function Navbar() {
   const user = useAuthStore((state) => state.user);
@@ -30,6 +25,30 @@ export default function Navbar() {
     toggleTheme,
     toggleSidebarOpen,
   } = useUIStore();
+
+  /* The seller's legal name (COMPANY_LEGAL_NAME in the backend .env) and the
+     user's role, shown beside the bell as in the design. */
+  const [companyName, setCompanyName] = useState("Enterprise Workspace");
+  const [roleName, setRoleName] = useState<string | null>(null);
+
+  useEffect(() => {
+    getCompanyProfileApi()
+      .then((profile) => {
+        if (profile?.legal_name) setCompanyName(profile.legal_name);
+      })
+      .catch(() => {});
+
+    api
+      .get("/api/v1/profile/")
+      .then((res) => {
+        const roles = res.data?.data?.roles;
+        if (Array.isArray(roles) && roles.length) setRoleName(String(roles[0]));
+      })
+      .catch(() => {});
+  }, []);
+
+  const fullName =
+    `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || "User";
 
   // --------------------------------------------------
   // Load profile avatar
@@ -59,10 +78,9 @@ export default function Navbar() {
     <header
       className="
         sticky top-0 z-40
-        flex h-16 w-full
+        flex h-[60px] w-full shrink-0
         items-center justify-between
-        border-b border-slate-200/80
-        dark:border-[#0d2336]
+        dark:border-b dark:border-[#0d2336]
         bg-white dark:bg-[#051422]
         px-6
         transition-colors duration-200
@@ -100,185 +118,56 @@ export default function Navbar() {
           RIGHT
       ============================================================ */}
 
-      <div className="flex items-center gap-3 sm:gap-4">
-        {/* ----------------------------------------------------------
-            Company / Workspace
-        ---------------------------------------------------------- */}
-
+      <div className="flex items-center gap-3 sm:gap-5">
+        {/* Company - the seller this workspace invoices as. */}
         <div
-          className="
-            hidden md:flex
-            items-center gap-2
-            px-3 py-1.5
-            rounded-xl
-            border border-slate-200
-            dark:border-[#0d2336]
-            bg-slate-50/60
-            dark:bg-[#071929]/50
-            text-xs font-semibold
-            text-slate-700
-            dark:text-slate-200
-          "
+          className="hidden h-[31px] items-center gap-2 rounded-md border border-[#c4c4c4] bg-white px-2.5 text-[13px] font-medium text-[#141414] md:flex dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+          title="Workspace"
         >
-          <FiBriefcase className="text-primary dark:text-sky-400 text-xs" />
-
-          <span>Enterprise Workspace</span>
-
-          <FiChevronDown className="text-slate-400 text-xs" />
+          <span className="max-w-[220px] truncate">{companyName}</span>
+          <FaCaretDown size={12} />
         </div>
 
-        {/* ----------------------------------------------------------
-            Notifications
-        ---------------------------------------------------------- */}
+        <NotificationBell />
 
-        <button
-          type="button"
-          className="
-            relative
-            p-2
-            rounded-xl
-            border border-slate-200
-            dark:border-[#0d2336]
-            text-slate-600
-            dark:text-slate-300
-            hover:bg-slate-50
-            dark:hover:bg-[#071929]
-            transition-all
-            cursor-pointer
-          "
-          title="Notifications"
-        >
-          <FiBell className="text-base" />
-
-          <span
-            className="
-              absolute
-              top-1.5 right-1.5
-              w-2 h-2
-              rounded-full
-              bg-[#fb3748]
-              ring-2
-              ring-white
-              dark:ring-[#051422]
-            "
-          />
-        </button>
-
-        {/* ----------------------------------------------------------
-            Theme
-        ---------------------------------------------------------- */}
-
+        {/* Day / night */}
         <button
           type="button"
           onClick={toggleTheme}
-          className="
-            flex h-9 w-9
-            items-center justify-center
-            rounded-xl
-            border border-slate-200
-            dark:border-[#0d2336]
-            text-slate-600
-            dark:text-slate-300
-            hover:bg-slate-50
-            dark:hover:bg-[#071929]
-            transition-all
-            cursor-pointer
-          "
-          aria-label="Toggle Theme"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-[#141414] transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#0b2034]"
+          aria-label={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+          title={theme === "light" ? "Dark mode" : "Light mode"}
         >
           {theme === "light" ? (
-            <FiMoon className="text-sm text-slate-600" />
+            <FiMoon size={18} />
           ) : (
-            <FiSun className="text-sm text-amber-400" />
+            <FiSun size={18} className="text-amber-400" />
           )}
         </button>
 
-        {/* ----------------------------------------------------------
-            User Profile
-        ---------------------------------------------------------- */}
-
+        {/* User */}
         <div className="relative group">
-          <div
-            className="
-              flex
-              cursor-pointer
-              items-center
-              gap-2.5
-              rounded-xl
-              border border-slate-200
-              dark:border-[#0d2336]
-              p-1.5
-              hover:bg-slate-50
-              dark:hover:bg-[#071929]
-              transition-all
-            "
-          >
-            {/* Avatar */}
-
+          <div className="flex cursor-pointer items-center gap-2 rounded-lg py-1 pl-1 pr-2 transition hover:bg-slate-50 dark:hover:bg-[#0b2034]">
             {user?.avatar_url ? (
               <img
                 src={user.avatar_url}
                 alt="Profile Avatar"
-                className="
-                  w-7 h-7
-                  rounded-lg
-                  object-cover
-                  border border-slate-200
-                  dark:border-slate-700
-                  shadow-xs
-                "
+                className="h-[27px] w-[27px] rounded-md object-cover"
               />
             ) : (
-              <div
-                className="
-                  w-7 h-7
-                  rounded-lg
-                  bg-[#233353]
-                  text-white
-                  flex
-                  items-center
-                  justify-center
-                  text-xs
-                  font-bold
-                  font-mono
-                  shadow-sm
-                "
-              >
-                {user?.first_name
-                  ? user.first_name[0].toUpperCase()
-                  : "U"}
+              <div className="flex h-[27px] w-[27px] items-center justify-center rounded-md bg-[#233353] text-xs font-bold text-white">
+                {user?.first_name ? user.first_name[0].toUpperCase() : "U"}
               </div>
             )}
 
-            {/* User name */}
-
-            <div className="hidden text-left sm:block pr-1">
-              <p
-                className="
-                  text-xs
-                  font-bold
-                  text-slate-800
-                  dark:text-white
-                  leading-tight
-                "
-              >
-                {user?.first_name || "User"}
+            <div className="hidden text-left leading-tight sm:block">
+              <p className="text-[12px] font-semibold text-[#141414] dark:text-white">
+                {fullName}
               </p>
-
-              <p
-                className="
-                  text-[10px]
-                  text-slate-400
-                  leading-tight
-                "
-              >
-                {user?.is_super_admin
-                  ? "Super Admin"
-                  : "Sales Team"}
+              <p className="text-[10px] text-[#141414] dark:text-slate-400">
+                {roleName || (user?.is_super_admin ? "Super Admin" : "Sales Team")}
               </p>
             </div>
-
-            <FiChevronDown className="text-slate-400 text-xs hidden sm:block" />
           </div>
 
           {/* --------------------------------------------------------

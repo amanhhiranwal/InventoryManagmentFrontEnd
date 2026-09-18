@@ -445,7 +445,7 @@ function ProformaInvoiceDetail() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* LEFT */}
         <div className="space-y-8 rounded-2xl bg-white px-5 py-5 dark:bg-[#071929]">
           <section>

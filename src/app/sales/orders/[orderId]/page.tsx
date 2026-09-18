@@ -31,7 +31,7 @@ import {
   type ProformaInvoiceModel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
 import {
-  FiArrowLeft,
+  FiChevronLeft,
   FiCalendar,
   FiCheckCircle,
   FiChevronRight,
@@ -410,15 +410,15 @@ export default function SalesOrderDetailPage() {
         <button
           type="button"
           onClick={() => router.push("/sales/orders")}
-          className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-[#233353] dark:hover:text-white"
+          className="mb-2 flex items-center gap-1 text-[11px] font-medium text-[#233353] hover:underline dark:text-slate-300"
         >
-          <FiArrowLeft size={12} />
+          <FiChevronLeft size={13} />
           Back to all Sales Order
         </button>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+            <h1 className="text-[26px] font-medium tracking-tight text-[#141414] dark:text-white">
               {orderReference(order)}
               {order.company_name ? ` - ${order.company_name}` : ""}
             </h1>
@@ -437,7 +437,7 @@ export default function SalesOrderDetailPage() {
               onClick={() =>
                 router.push(`/sales/orders?edit=${order.id}`)
               }
-              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+              className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
             >
               <FiEdit2 size={13} />
               Edit Order
@@ -450,7 +450,7 @@ export default function SalesOrderDetailPage() {
                 type="button"
                 onClick={sendForApproval}
                 disabled={sending}
-                className="flex items-center gap-2 rounded-lg bg-[#233353] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <FiSend size={13} />
                 {sending ? "Sending..." : "Send For Approval"}
@@ -460,28 +460,23 @@ export default function SalesOrderDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_306px]">
         {/* =====================================================
             LEFT COLUMN
         ===================================================== */}
 
-        <div className="space-y-4">
+        <div className="h-fit space-y-8 rounded-xl bg-white p-5 dark:border dark:border-[#17304a] dark:bg-[#071929]">
           {/* ORDER & ACCOUNT OVERVIEW */}
-          <Card icon={<FiInfo size={15} />} title="Order & Account Overview">
+          <Card icon={<FiInfo size={15} />} title="Order & Organization Overview">
             <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
-              <Field label="Customer Type" value={order.customer_type} />
-              <Field label="Organization Name" value={order.company_name} />
-              <Field label="GST" value={customerInfo.gst} />
-              <Field label="PAN" value={customerInfo.pan} />
-              <Field label="COI Number" value={customerInfo.cin} />
-              <Field label="Registration" value={customerInfo.registration} />
+              <Field label="Sales Order ID" value={orderReference(order)} />
 
               <div className="flex items-center">
-                <span className="w-[130px] shrink-0 text-[11px] text-slate-500">
+                <span className="w-[110px] shrink-0 text-[11px] text-[#777777]">
                   Assigned To:
                 </span>
 
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 dark:bg-[#0b2034] dark:text-slate-200">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-700 dark:bg-[#0b2034] dark:text-slate-200">
                   <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] dark:bg-[#17304a]">
                     {(order.assigned_to || "U").charAt(0).toUpperCase()}
                   </span>
@@ -489,6 +484,30 @@ export default function SalesOrderDetailPage() {
                 </span>
               </div>
 
+              <Field
+                label="Quotation ID"
+                value={order.quotation_id ? `#${order.quotation_id}` : ""}
+              />
+              <Field label="Order Date" value={formatDate(order.order_date)} />
+              <Field label="PO Number" value={order.po_number} />
+              <Field label="PO Date" value={order.po_date ? formatDate(order.po_date) : ""} />
+            </div>
+
+            <p className="mb-4 mt-7 border-b border-[#f3f3f3] pb-2 text-[13px] font-medium text-[#777777] dark:border-[#17304a] dark:text-slate-400">
+              Organization Details
+            </p>
+
+            <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
+              <Field label="Customer Type" value={order.customer_type} />
+              <Field label="Organization Name" value={order.company_name} />
+              <Field label="GST" value={customerInfo.gst} />
+              <Field label="PAN" value={customerInfo.pan} />
+              <Field label="COI Number" value={customerInfo.cin} />
+              <Field label="Registration" value={customerInfo.registration} />
+              <Field label="Contact Name" value={asRecord(customerInfo.primary_contact).name} />
+              <Field label="Designation" value={asRecord(customerInfo.primary_contact).designation} />
+              <Field label="Phone" value={asRecord(customerInfo.primary_contact).phone} />
+              <Field label="Email" value={asRecord(customerInfo.primary_contact).email} />
             </div>
           </Card>
 
@@ -825,7 +844,7 @@ export default function SalesOrderDetailPage() {
             RIGHT COLUMN
         ===================================================== */}
 
-        <div className="space-y-4">
+        <div className="h-fit space-y-8 rounded-xl bg-white p-5 dark:border dark:border-[#17304a] dark:bg-[#071929]">
           {/* ORDER SUMMARY
 
               The figure and how it splits. The order's own totals sit under
@@ -961,7 +980,7 @@ export default function SalesOrderDetailPage() {
             action={
               <span
                 title="Documents are attached while creating or editing the order"
-                className="text-[10px] font-semibold text-slate-400"
+                className="whitespace-nowrap text-[10px] font-medium text-slate-500"
               >
                 + Upload Documents
               </span>
@@ -1233,12 +1252,12 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 dark:border-[#17304a] dark:bg-[#071929]">
-      <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-600 dark:text-slate-300">{icon}</span>
+    <section>
+      <div className="mb-4 flex items-center justify-between gap-3 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
+        <div className="flex items-center gap-2.5">
+          <span className="text-[18px] text-[#474747] dark:text-slate-300">{icon}</span>
 
-          <h3 className="text-[13px] font-semibold text-slate-800 dark:text-white">
+          <h3 className="whitespace-nowrap text-[15px] font-medium text-[#474747] dark:text-white">
             {title}
           </h3>
         </div>
@@ -1247,7 +1266,7 @@ function Card({
       </div>
 
       {children}
-    </div>
+    </section>
   );
 }
 
@@ -1257,11 +1276,11 @@ function Field({ label, value }: { label: string; value?: unknown }) {
 
   return (
     <div className="flex items-start">
-      <span className="w-[130px] shrink-0 text-[11px] text-slate-500">
+      <span className="w-[110px] shrink-0 text-[11px] text-[#777777] dark:text-slate-400">
         {label}:
       </span>
 
-      <span className="text-[11px] font-semibold text-slate-800 dark:text-white">
+      <span className="text-[11px] font-medium text-[#141414] [overflow-wrap:anywhere] dark:text-white">
         {text}
       </span>
     </div>

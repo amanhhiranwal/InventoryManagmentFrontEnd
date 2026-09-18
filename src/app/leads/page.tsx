@@ -1278,6 +1278,28 @@ export default function LeadsPage() {
     loadActivities(lead.id);
   };
 
+  /* A notification links here as /leads?open=<id>: open that lead's drawer
+     once the list has loaded, then drop the parameter. Read from the URL
+     directly so the page needs no Suspense boundary for useSearchParams. */
+  const handledOpenParam = useRef(false);
+
+  useEffect(() => {
+    if (handledOpenParam.current || leads.length === 0) return;
+
+    const openId = new URLSearchParams(window.location.search).get("open");
+
+    if (!openId) return;
+
+    handledOpenParam.current = true;
+
+    const match = leads.find((lead) => String(lead.id) === openId);
+
+    if (match) openLeadDetails(match);
+
+    window.history.replaceState(null, "", "/leads");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads]);
+
   /* The drawer must render the lead as it exists in the freshly fetched
      list, not the snapshot captured when it was opened. Without this the
      status strip kept showing the status the lead had on open, even though
@@ -3344,7 +3366,7 @@ function LeadDetailsModal({
           flex
           h-full
           w-full
-          max-w-[700px]
+          max-w-[560px]
           flex-col
           bg-white
           shadow-2xl
@@ -3383,7 +3405,7 @@ function LeadDetailsModal({
               <FiX className="text-xl" />
             </button>
 
-            <h2 className="text-lg font-semibold text-slate-800 dark:text-white">
+            <h2 className="text-[17px] font-normal text-[#141414] dark:text-white">
               Lead Details
             </h2>
           </div>

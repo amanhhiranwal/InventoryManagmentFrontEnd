@@ -3042,7 +3042,7 @@ export default function OrdersListPage() {
             type="button"
             title="More options"
             onClick={() => setHeaderMenuOpen((value) => !value)}
-            className="w-8 h-8 rounded-md flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+            className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-slate-700 transition-colors hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
           >
             <FiMoreVertical size={17} />
           </button>
@@ -3054,7 +3054,7 @@ export default function OrdersListPage() {
                 onClick={() => setHeaderMenuOpen(false)}
               />
 
-              <div className="absolute right-0 top-10 z-50 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+              <div className="absolute right-0 top-10 z-50 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-[#17304a] dark:bg-[#071929] dark:[&_button]:text-slate-200 dark:[&_button:hover]:bg-[#0b2034]">
                 <button
                   type="button"
                   onClick={exportData}
@@ -3323,7 +3323,9 @@ export default function OrdersListPage() {
           STATUS TABS
       ================================================= */}
 
-      <div className="flex items-center overflow-x-auto gap-1">
+      {/* Tabs sit on the table's top edge, as folder tabs, in the design. */}
+      <div>
+      <div className="flex items-end gap-1 overflow-x-auto px-5">
         {STATUS_TABS.map((tab) => (
           <button
             key={tab}
@@ -3331,15 +3333,16 @@ export default function OrdersListPage() {
             onClick={() => setActiveTab(tab)}
             className={`
                 whitespace-nowrap
-                px-4
-                py-2
-                rounded-t-md
+                rounded-t-lg
+                px-3.5
+                py-1.5
                 text-[11px]
                 font-medium
+                transition-colors
                 ${
                   activeTab === tab
-                    ? "bg-[#24395f] text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-50"
+                    ? "bg-[#233353] text-white dark:bg-[#2b4470]"
+                    : "bg-white text-[#474747] hover:bg-slate-50 dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
                 }
               `}
           >
@@ -3352,11 +3355,11 @@ export default function OrdersListPage() {
           TABLE
       ================================================= */}
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="overflow-hidden rounded-xl bg-white dark:border dark:border-[#17304a] dark:bg-[#071929]">
         <div className="overflow-x-auto">
           <table className={`w-full text-left ${LIST_TABLE}`}>
             <thead>
-              <tr className="border-b border-slate-200">
+              <tr className="border-b border-slate-200 dark:border-[#17304a]">
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" className="rounded" />
                 </th>
@@ -3426,7 +3429,7 @@ export default function OrdersListPage() {
                          is. The checkbox and the menu cell stop the event so
                          both still work on their own. */
                       onClick={() => router.push(`/sales/orders/${order._id}`)}
-                      className="cursor-pointer border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                      className="cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50 dark:border-[#17304a]/70 dark:hover:bg-[#0b2034]"
                     >
                       <td
                         className="px-4 py-3"
@@ -3458,17 +3461,17 @@ export default function OrdersListPage() {
                         </div>
                       </td>
 
-                      <td className="px-3 py-3 text-xs text-slate-700 max-w-[150px]">
+                      <td className="max-w-[150px] px-3 py-3 text-xs text-slate-700 dark:text-slate-300">
                         {order.company_name || `${order.customer_name} Corp`}
                       </td>
 
-                      <td className="px-3 py-3 text-xs font-medium text-slate-700">
+                      <td className="px-3 py-3 text-xs font-medium text-slate-700 dark:text-slate-200">
                         {money(order.grand_total)}
                       </td>
 
                       <td className="px-3 py-3">
-                        <span className="inline-flex items-center gap-1.5 bg-slate-100 rounded px-2 py-1 text-[10px] text-slate-700">
-                          <span className="w-4 h-4 rounded-full bg-slate-300 flex items-center justify-center text-[8px]">
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-slate-100 px-2 py-1 text-[10px] text-slate-700 dark:bg-[#0b2034] dark:text-slate-200">
+                          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] dark:bg-[#17304a]">
                             {getAssignedTo(order).charAt(0)}
                           </span>
 
@@ -3476,7 +3479,7 @@ export default function OrdersListPage() {
                         </span>
                       </td>
 
-                      <td className="px-3 py-3 text-[10px] text-slate-600">
+                      <td className="whitespace-nowrap px-3 py-3 text-[10px] text-slate-600 dark:text-slate-300">
                         {formatDate(getOrderDate(order))}
                       </td>
 
@@ -3495,7 +3498,7 @@ export default function OrdersListPage() {
                               openMenu === order._id ? null : order._id,
                             )
                           }
-                          className="p-1 rounded hover:bg-slate-100"
+                          className="rounded p-1 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#0b2034]"
                         >
                           <FiMoreVertical size={15} />
                         </button>
@@ -3507,7 +3510,7 @@ export default function OrdersListPage() {
                               onClick={() => setOpenMenu(null)}
                             />
 
-                            <div className="absolute right-4 top-9 z-30 w-40 bg-white border border-slate-200 rounded-lg shadow-xl py-1">
+                            <div className="absolute right-4 top-9 z-30 w-40 rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -3515,14 +3518,14 @@ export default function OrdersListPage() {
 
                                   setOpenMenu(null);
                                 }}
-                                className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50"
+                                className="w-full px-3 py-2 text-left text-xs hover:bg-slate-50 dark:hover:bg-[#0b2034]"
                               >
                                 View / Print
                               </button>
 
                               <Link
                                 href={`/sales/orders/${order._id}`}
-                                className="block px-3 py-2 text-xs hover:bg-slate-50"
+                                className="block px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-[#0b2034]"
                                 onClick={() => setOpenMenu(null)}
                               >
                                 View Order
@@ -3530,7 +3533,7 @@ export default function OrdersListPage() {
 
                               {nextSalesOrderStatuses(order.status).length >
                                 0 && (
-                                <div className="my-1 border-t border-slate-100" />
+                                <div className="my-1 border-t border-slate-100 dark:border-[#17304a]" />
                               )}
 
                               {nextSalesOrderStatuses(order.status).map(
@@ -3541,7 +3544,7 @@ export default function OrdersListPage() {
                                     onClick={() =>
                                       changeOrderStatus(order, next)
                                     }
-                                    className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50"
+                                    className="w-full px-3 py-2 text-left text-xs hover:bg-slate-50 dark:hover:bg-[#0b2034]"
                                   >
                                     Mark {SALES_ORDER_STATUS_LABEL[next]}
                                   </button>
@@ -3571,6 +3574,7 @@ export default function OrdersListPage() {
           onPageChange={setPage}
           noun="orders"
         />
+      </div>
       </div>
 
       {/* =================================================

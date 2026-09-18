@@ -1231,6 +1231,26 @@ function OpportunitiesPageInner() {
     }
   };
 
+  /* A notification links here as ?open=<id>: open that opportunity's
+     drawer once the list has loaded, then drop the parameter. */
+  const handledOpenParam = useRef(false);
+
+  useEffect(() => {
+    const openId = searchParams.get("open");
+
+    if (!openId || handledOpenParam.current || opps.length === 0) return;
+
+    handledOpenParam.current = true;
+
+    const match = opps.find((opp) => String(opp.id) === openId);
+
+    if (match) openDetails(match);
+
+    window.history.replaceState(null, "", "/sales/opportunities");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opps, searchParams]);
+
+
   /* The Log Activity form posts the note and the stage move together, so a
      stage change always carries the reason it happened. Returns whether it
      succeeded, so the form knows whether to clear itself. */
