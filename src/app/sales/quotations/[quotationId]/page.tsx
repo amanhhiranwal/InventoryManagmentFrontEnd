@@ -38,7 +38,7 @@ import {
 } from "@/features/quotations/api/quotations.api";
 
 import {
-  FiArrowLeft,
+  FiChevronLeft,
   FiCalendar,
   FiCheckCircle,
   FiClock,
@@ -438,15 +438,15 @@ export default function QuotationDetailPage() {
         <button
           type="button"
           onClick={() => router.push("/sales/quotations")}
-          className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-slate-500 hover:text-[#233353] dark:hover:text-white"
+          className="mb-2 flex items-center gap-1 text-[11px] font-medium text-[#233353] hover:underline dark:text-slate-300"
         >
-          <FiArrowLeft size={12} />
+          <FiChevronLeft size={13} />
           Back to all Quotation
         </button>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+            <h1 className="text-[26px] font-medium tracking-tight text-[#141414] dark:text-white">
               {quoteReference(quotation)}
               {quotation.organization_name
                 ? ` - ${quotation.organization_name}`
@@ -463,7 +463,7 @@ export default function QuotationDetailPage() {
             <button
               type="button"
               onClick={() => window.print()}
-              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+              className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
             >
               <FiDownload size={13} />
               Download
@@ -481,7 +481,7 @@ export default function QuotationDetailPage() {
                   )}`,
                 )
               }
-              className="flex items-center gap-2 rounded-lg bg-[#233353] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#18243a]"
+              className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a]"
             >
               <FiRepeat size={13} />
               Convert To Sales Order
@@ -493,44 +493,44 @@ export default function QuotationDetailPage() {
       {/* HEADLINE FIGURES */}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-[#17304a] dark:bg-[#071929]">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+        <div className="rounded-xl bg-white px-4 py-4 dark:border dark:border-[#17304a] dark:bg-[#071929]">
+          <p className="text-[13px] text-[#777777] dark:text-slate-400">
             Quotation Value
           </p>
 
-          <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
+          <p className="mt-2 text-[26px] font-medium text-[#233353] dark:text-white">
             {money(quotation.total_payable)}
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-[#17304a] dark:bg-[#071929]">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+        <div className="rounded-xl bg-white px-4 py-4 dark:border dark:border-[#17304a] dark:bg-[#071929]">
+          <p className="text-[13px] text-[#777777] dark:text-slate-400">
             Validity Period
           </p>
 
           {/* Counted from the validity date rather than printed, so an
               expired quote says so instead of showing a stale countdown. */}
           <p
-            className={`mt-2 text-2xl font-bold ${
+            className={`mt-1 text-[26px] font-medium ${
               validity.expired
                 ? "text-rose-500"
-                : "text-slate-900 dark:text-white"
+                : "text-[#233353] dark:text-white"
             }`}
           >
             {validity.label}
           </p>
 
-          <p className="mt-1 text-[10px] text-slate-400">
+          <p className="text-[11px] text-[#777777]">
             Issued: {formatDate(quotation.quotation_date)} · Due:{" "}
             {formatDate(quotation.validation_date)}
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_306px]">
         {/* LEFT */}
 
-        <div className="space-y-4">
+        <div className="h-fit space-y-8 rounded-xl bg-white p-5 dark:border dark:border-[#17304a] dark:bg-[#071929]">
           <Card icon={<FiInfo size={15} />} title="Order & Account Overview">
             <div className="grid grid-cols-1 gap-x-10 gap-y-3 md:grid-cols-2">
               <Field label="Customer Type" value={quotation.customer_type} />
@@ -843,7 +843,7 @@ export default function QuotationDetailPage() {
 
         {/* RIGHT */}
 
-        <div className="space-y-4">
+        <div className="h-fit space-y-8 rounded-xl bg-white p-5 dark:border dark:border-[#17304a] dark:bg-[#071929]">
           <Card icon={<FiFileText size={15} />} title="Order Summary">
             <div className="rounded-xl bg-emerald-50 px-4 py-3 dark:bg-emerald-950/20">
               <div className="flex items-center justify-between">
@@ -1209,12 +1209,12 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 dark:border-[#17304a] dark:bg-[#071929]">
-      <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-[#17304a]">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-600 dark:text-slate-300">{icon}</span>
+    <section>
+      <div className="mb-4 flex items-center justify-between gap-3 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
+        <div className="flex items-center gap-2.5">
+          <span className="text-[18px] text-[#474747] dark:text-slate-300">{icon}</span>
 
-          <h3 className="text-[13px] font-semibold text-slate-800 dark:text-white">
+          <h3 className="whitespace-nowrap text-[15px] font-medium text-[#474747] dark:text-white">
             {title}
           </h3>
         </div>
@@ -1223,7 +1223,7 @@ function Card({
       </div>
 
       {children}
-    </div>
+    </section>
   );
 }
 
