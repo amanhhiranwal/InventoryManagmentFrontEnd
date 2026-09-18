@@ -26,6 +26,11 @@ import {
   salesOrderStatusLabel,
   updateSalesOrderStatusApi,
 } from "@/features/salesOrders/api/salesOrders.api";
+import {
+  getQuotationApi,
+  getQuotationsApi,
+} from "@/features/quotations/api/quotations.api";
+import { getOpportunityApi } from "@/features/opportunities/api/opportunities.api";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
 import StatCard from "@/components/crm/StatCard";
 import { FORM_FIELDS } from "@/components/crm/FormCard";
@@ -1137,6 +1142,157 @@ export default function OrdersListPage() {
      Opening the form with that reference already filled is what ties the new
      order back to the quotation - and through it to the opportunity. */
   const quotationParam = searchParams.get("quotation");
+  const quotationIdParam = searchParams.get("quotationId");
+
+  /* Everything the quotation already agreed with the customer - who they
+     are, where it ships, the products and the charges - is copied onto the
+     form, so converting it is a review rather than retyping. The account
+     details a quotation does not hold (GST, PAN, owner) come from the
+     opportunity it was raised against. */
+  const prefillFromQuotation = useCallback(
+    async (reference: string, id: string | null) => {
+      try {
+        const quotation = id
+          ? await getQuotationApi(id)
+          : (await getQuotationsApi()).find(
+              (item) => item.quote_number === reference,
+            );
+
+        if (!quotation) return;
+
+        const opportunity = quotation.opportunity_id
+          ? await getOpportunityApi(quotation.opportunity_id).catch(() => null)
+          : null;
+
+        const billing = (quotation.billing_address || {}) as Record<
+          string,
+          any
+        >;
+        const shipping = (
+          quotation.shipping_same_as_billing
+            ? quotation.billing_address
+            : quotation.shipping_address || quotation.billing_address
+        ) as Record<string, any> | null;
+
+        /* The selects only show values from their option lists, so a
+           differently-cased value is matched back to the listed one. */
+        const fromList = (list: string[], value?: string | null) =>
+          list.find(
+            (option) =>
+              option.toLowerCase() === (value || "").trim().toLowerCase(),
+          ) ||
+          value ||
+          "";
+
+        const customerType = fromList(
+          CUSTOMER_TYPES,
+          quotation.customer_type || opportunity?.customer_type_name,
+        );
+
+        const state =
+          billing.state ||
+          quotation.state_name ||
+          opportunity?.state_name ||
+          "";
+
+        setNewOrder((current) => ({
+          ...current,
+          quotationId: quotation.quote_number || reference,
+          assignedTo: opportunity?.assigned_to_name || current.assignedTo,
+
+          customerName:
+            quotation.contact_name || quotation.organization_name || "",
+          companyName: quotation.organization_name || "",
+          customerType,
+          gst: opportunity?.gst_number || "",
+          pan: opportunity?.pan_number || "",
+          cin: opportunity?.coi_number || "",
+          registration: opportunity?.gst_number ? "Registered" : "",
+          primaryContact: quotation.contact_name || "",
+          phone: quotation.mobile_number || "",
+          email: quotation.email || "",
+          designation: quotation.designation || "",
+          state,
+
+          billingStreet: billing.street || "",
+          billingCountry: fromList(COUNTRIES, billing.country),
+          billingState: state,
+          billingCity: billing.city || "",
+          billingPin: billing.zip_code || billing.pin || "",
+
+          shippingStreet: shipping?.street || "",
+          shippingCountry: fromList(COUNTRIES, shipping?.country),
+          shippingState: shipping?.state || state,
+          shippingCity: shipping?.city || "",
+          shippingPin: shipping?.zip_code || shipping?.pin || "",
+
+          sameAsBilling: Boolean(quotation.shipping_same_as_billing),
+
+          remarks: quotation.remarks || current.remarks,
+        }));
+
+        setSelectedProducts(
+          (quotation.items || []).map((item, index) => {
+            /* Quotation lines carry the SKU and model, not the catalogue
+               id; either finds the product so the line keeps its id. */
+            const catalogued = PRODUCT_CATALOG.find(
+              (product) =>
+                productSku(product.id) === item.sku ||
+                product.name === item.model,
+            );
+
+            return {
+              id: catalogued?.id || `line-${index}`,
+              name: item.model || catalogued?.name || "Product",
+              category: item.product || catalogued?.category || "",
+              price: Number(item.unit_price) || 0,
+              quantity: Number(item.quantity) || 1,
+              discount: Number(item.discount) || 0,
+              tax: Number(item.tax ?? quotation.gst_percent) || 0,
+            };
+          }),
+        );
+
+        setDiscountMode((quotation.discount_mode as AmountMode) || "AMOUNT");
+        setDiscountInput(
+          quotation.discount_input === undefined
+            ? null
+            : quotation.discount_input,
+        );
+        setOrcMode((quotation.orc_mode as AmountMode) || "AMOUNT");
+        setOrcInput(quotation.orc_input ?? quotation.orc_amount ?? 0);
+        setFreightCharges(quotation.freight_charges || 0);
+        setInstallationLumpsum(quotation.installation_lumpsum || 0);
+        setGstPercent(
+          quotation.gst_percent === null ||
+            quotation.gst_percent === undefined
+            ? ORDER_GST_PERCENT
+            : quotation.gst_percent,
+        );
+        setAdvancePercent(
+          quotation.advance_percent === null ||
+            quotation.advance_percent === undefined
+            ? 30
+            : quotation.advance_percent,
+        );
+
+        const agreedTerms = (quotation.terms || [])
+          .filter((term) => term.checked && term.label?.trim())
+          .map((term) => term.label.trim());
+
+        if (agreedTerms.length) setCommercialTerms(agreedTerms);
+      } catch (error: any) {
+        console.error(error);
+
+        addToast(
+          error?.response?.data?.detail ||
+            "Unable to load the quotation details.",
+          "error",
+        );
+      }
+    },
+    [addToast],
+  );
 
   useEffect(() => {
     if (!quotationParam) return;
@@ -1148,8 +1304,10 @@ export default function OrdersListPage() {
       quotationId: quotationParam,
     }));
 
+    prefillFromQuotation(quotationParam, quotationIdParam);
+
     router.replace("/sales/orders");
-  }, [quotationParam, router]);
+  }, [quotationParam, quotationIdParam, prefillFromQuotation, router]);
 
   /* =======================================================
      PRODUCT MODAL

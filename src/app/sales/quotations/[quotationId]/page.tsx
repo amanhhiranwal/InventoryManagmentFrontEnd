@@ -478,7 +478,7 @@ export default function QuotationDetailPage() {
                 router.push(
                   `/sales/orders?quotation=${encodeURIComponent(
                     quotation.quote_number || "",
-                  )}`,
+                  )}&quotationId=${quotation.id}`,
                 )
               }
               className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a]"
