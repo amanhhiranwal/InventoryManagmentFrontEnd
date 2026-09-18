@@ -29,10 +29,14 @@ import {
 import { getLeadsApi, Lead } from "@/features/workflows/api/workflows.api";
 
 import {
-  getInventoryItemsApi,
-  getProductTypesApi,
-  InventoryItem,
-} from "@/features/inventory/api/inventory.api";
+  getOpportunitiesApi,
+  type OpportunityModel,
+} from "@/features/opportunities/api/opportunities.api";
+import {
+  getQuotationsApi,
+  quotationStatusLabel,
+  type QuotationModel,
+} from "@/features/quotations/api/quotations.api";
 
 import { useUIStore } from "@/lib/store/ui.store";
 
@@ -76,8 +80,20 @@ type PipelineStage = {
 };
 
 type RegionalData = {
+  /** Short code shown on the bar, e.g. "MH". */
   name: string;
+  /** Full state name, e.g. "Maharashtra". */
+  state: string;
   revenue: number;
+};
+
+type ActivityItem = {
+  id: string;
+  title: string;
+  person: string;
+  detail: string;
+  value: number;
+  date: Date | null;
 };
 
 type ProductData = {
@@ -204,36 +220,12 @@ function getLeadValue(lead: DashboardLead) {
   }, 0);
 }
 
-function getLeadUnits(lead: DashboardLead) {
-  if (typeof lead.units === "number") {
-    return lead.units;
-  }
 
-  if (!lead.quotation_items?.length) {
-    return 0;
-  }
 
-  return lead.quotation_items.reduce(
-    (total, item) => total + Number(item.qty || 0),
-    0,
-  );
-}
 
-function isWonLead(lead: DashboardLead) {
-  const status = lead.status?.toLowerCase();
-  const stage = lead.stage?.toLowerCase();
 
-  return status === "won" || stage === "won";
-}
-
-function isQuotationLead(lead: DashboardLead) {
-  return lead.stage?.toLowerCase() === "quotation";
-}
-
-function getLeadDate(lead: DashboardLead) {
-  const date = new Date(lead.created_at);
-
-  return Number.isNaN(date.getTime()) ? null : date;
+function getLeadCompanyName(lead: DashboardLead) {
+  return lead.customer_name || lead.customer || "Lead";
 }
 
 function getPercentageChange(current: number, previous: number) {
@@ -244,27 +236,6 @@ function getPercentageChange(current: number, previous: number) {
   return ((current - previous) / previous) * 100;
 }
 
-function getStageKey(lead: DashboardLead) {
-  if (isWonLead(lead)) {
-    return "won";
-  }
-
-  const stage = (lead.stage || "").toLowerCase();
-
-  if (stage.includes("negotiat")) {
-    return "negotiation";
-  }
-
-  if (stage.includes("quotation") || stage.includes("proposal")) {
-    return "proposal";
-  }
-
-  if (stage.includes("qualif")) {
-    return "qualified";
-  }
-
-  return "new";
-}
 
 function getRegionLabel(value?: string) {
   if (!value) {
@@ -353,6 +324,40 @@ const ORDER_SORT_VALUE: Record<
   date: (order) => new Date(orderDate(order) || 0).getTime(),
   status: (order) => salesOrderStatusLabel(order.status),
 };
+
+/* Orders that count as business done: confirmed onwards, not drafts or
+   cancelled ones. Revenue, units, regions and the team are measured on these. */
+const BOOKED_ORDER_STATUSES = ["CONFIRMED", "ON_HOLD", "RELEASED", "COMPLETED"];
+
+const isBookedOrder = (order: SalesOrderModel) =>
+  BOOKED_ORDER_STATUSES.includes(order.status);
+
+const orderDateValue = (order: SalesOrderModel) => {
+  const date = new Date(orderDate(order) || 0);
+
+  return Number.isNaN(date.getTime()) || !orderDate(order) ? null : date;
+};
+
+type OrderLine = {
+  qty?: number | null;
+  quantity_case?: number | null;
+  product?: string | null;
+  item?: string | null;
+  description?: string | null;
+};
+
+/* Lines store their quantity in qty or, from the order form, quantity_case. */
+const lineUnits = (line: OrderLine) =>
+  Number(line.qty || 0) || Number(line.quantity_case || 0);
+
+const orderUnits = (order: SalesOrderModel) =>
+  (order.items || []).reduce(
+    (total, line) => total + lineUnits(line as OrderLine),
+    0,
+  );
+
+const lineProduct = (line: OrderLine) =>
+  line.product || line.item || line.description || "Other";
 
 const escapeSvgText = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -505,7 +510,8 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [dbLeads, setDbLeads] = useState<DashboardLead[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [opportunities, setOpportunities] = useState<OpportunityModel[]>([]);
+  const [quotations, setQuotations] = useState<QuotationModel[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrderModel[]>([]);
 
   const [chartMode, setChartMode] = useState<ChartMode>("yearly");
@@ -541,12 +547,23 @@ export default function Dashboard() {
     try {
       setRefreshing(true);
 
-      const [leadsResult, inventoryResult, ordersResult] =
+      const [leadsResult, opportunitiesResult, ordersResult, quotationsResult] =
         await Promise.allSettled([
           getLeadsApi(),
-          getInventoryItemsApi(),
+          getOpportunitiesApi(),
           getSalesOrdersApi(),
+          getQuotationsApi(),
         ]);
+
+      setOpportunities(
+        opportunitiesResult.status === "fulfilled"
+          ? opportunitiesResult.value || []
+          : [],
+      );
+
+      setQuotations(
+        quotationsResult.status === "fulfilled" ? quotationsResult.value || [] : [],
+      );
 
       if (ordersResult.status === "fulfilled") {
         setSalesOrders(ordersResult.value || []);
@@ -564,19 +581,6 @@ export default function Dashboard() {
         setDbLeads([]);
       }
 
-      if (inventoryResult.status === "fulfilled") {
-        setInventoryItems(inventoryResult.value || []);
-      } else {
-        console.error("Failed to load inventory:", inventoryResult.reason);
-
-        setInventoryItems([]);
-      }
-
-      try {
-        await getProductTypesApi();
-      } catch {
-        // Optional dashboard dependency.
-      }
     } catch (error) {
       console.error(error);
 
@@ -618,16 +622,23 @@ export default function Dashboard() {
      BASIC DATA
   ========================================================== */
 
-  const wonLeads = useMemo(() => dbLeads.filter(isWonLead), [dbLeads]);
+  const bookedOrders = useMemo(
+    () => salesOrders.filter(isBookedOrder),
+    [salesOrders],
+  );
 
   const wonRevenue = useMemo(
-    () => wonLeads.reduce((total, lead) => total + getLeadValue(lead), 0),
-    [wonLeads],
+    () =>
+      bookedOrders.reduce(
+        (total, order) => total + Number(order.grand_total || 0),
+        0,
+      ),
+    [bookedOrders],
   );
 
   const unitsSold = useMemo(
-    () => wonLeads.reduce((total, lead) => total + getLeadUnits(lead), 0),
-    [wonLeads],
+    () => bookedOrders.reduce((total, order) => total + orderUnits(order), 0),
+    [bookedOrders],
   );
 
   /* ==========================================================
@@ -644,26 +655,22 @@ export default function Dashboard() {
       units: 0,
     }));
 
-    dbLeads.forEach((lead) => {
-      const date = getLeadDate(lead);
+    bookedOrders.forEach((order) => {
+      const date = orderDateValue(order);
 
-      if (!date) {
-        return;
-      }
-
-      if (date.getFullYear() !== currentYear) {
+      if (!date || date.getFullYear() !== currentYear) {
         return;
       }
 
       const month = date.getMonth();
 
-      months[month].revenue += getLeadValue(lead);
+      months[month].revenue += Number(order.grand_total || 0);
 
-      months[month].units += getLeadUnits(lead);
+      months[month].units += orderUnits(order);
     });
 
     return months;
-  }, [dbLeads]);
+  }, [bookedOrders]);
 
   /* ==========================================================
      YEARLY DATA
@@ -676,25 +683,25 @@ export default function Dashboard() {
 
     return Array.from({ length: 6 }, (_, index) => startYear + index).map(
       (year) => {
-        const yearLeads = dbLeads.filter(
-          (lead) => getLeadDate(lead)?.getFullYear() === year,
+        const yearOrders = bookedOrders.filter(
+          (order) => orderDateValue(order)?.getFullYear() === year,
         );
 
         return {
           label: String(year),
           year,
-          revenue: yearLeads.reduce(
-            (total, lead) => total + getLeadValue(lead),
+          revenue: yearOrders.reduce(
+            (total, order) => total + Number(order.grand_total || 0),
             0,
           ),
-          units: yearLeads.reduce(
-            (total, lead) => total + getLeadUnits(lead),
+          units: yearOrders.reduce(
+            (total, order) => total + orderUnits(order),
             0,
           ),
         };
       },
     );
-  }, [dbLeads]);
+  }, [bookedOrders]);
 
   /* ==========================================================
      ACTIVE CHART
@@ -750,16 +757,16 @@ export default function Dashboard() {
     let currentUnits = 0;
     let previousUnits = 0;
 
-    wonLeads.forEach((lead) => {
-      const date = getLeadDate(lead);
+    bookedOrders.forEach((order) => {
+      const date = orderDateValue(order);
 
       if (!date) {
         return;
       }
 
-      const revenue = getLeadValue(lead);
+      const revenue = Number(order.grand_total || 0);
 
-      const units = getLeadUnits(lead);
+      const units = orderUnits(order);
 
       if (
         date.getMonth() === currentMonth &&
@@ -783,30 +790,32 @@ export default function Dashboard() {
 
       unitsChange: getPercentageChange(currentUnits, previousUnits),
     };
-  }, [wonLeads]);
+  }, [bookedOrders]);
 
   /* ==========================================================
      REGIONAL PERFORMANCE
+     Booked order revenue by the order's state.
   ========================================================== */
 
   const regionalPerformance = useMemo<RegionalData[]>(() => {
     const map = new Map<string, RegionalData>();
 
-    dbLeads.forEach((lead) => {
-      const rawRegion = lead.state || lead.region;
+    bookedOrders.forEach((order) => {
+      const state = (order.state || "").trim();
 
-      if (!rawRegion) {
+      if (!state) {
         return;
       }
 
-      const region = getRegionLabel(rawRegion);
+      const region = getRegionLabel(state);
 
       const current = map.get(region) || {
         name: region,
+        state,
         revenue: 0,
       };
 
-      current.revenue += getLeadValue(lead);
+      current.revenue += Number(order.grand_total || 0);
 
       map.set(region, current);
     });
@@ -814,7 +823,7 @@ export default function Dashboard() {
     return Array.from(map.values())
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
-  }, [dbLeads]);
+  }, [bookedOrders]);
 
   const maxRegionRevenue = Math.max(
     ...regionalPerformance.map((region) => region.revenue),
@@ -825,32 +834,31 @@ export default function Dashboard() {
 
   /* ==========================================================
      STATE PERFORMANCE
+     States with any booked order.
   ========================================================== */
 
   const activeStates = useMemo(() => {
     const states = new Set<string>();
 
-    dbLeads.forEach((lead) => {
-      const value = lead.state || lead.region;
-
-      if (value) {
-        states.add(getRegionLabel(value));
+    bookedOrders.forEach((order) => {
+      if (order.state) {
+        states.add(getRegionLabel(order.state));
       }
     });
 
     return states.size;
-  }, [dbLeads]);
+  }, [bookedOrders]);
 
   /* ==========================================================
      SALES TEAM
+     Revenue, units and orders booked per assignee. Conversion is the
+     share of their opportunities that became a booked order.
   ========================================================== */
 
   const salesTeam = useMemo<SalesPerson[]>(() => {
     const map = new Map<string, SalesPerson>();
 
-    dbLeads.forEach((lead) => {
-      const name = lead.assigned_to_name || lead.creator_name || "Sales Team";
-
+    const personFor = (name: string) => {
       const current = map.get(name) || {
         name,
         revenue: 0,
@@ -859,64 +867,71 @@ export default function Dashboard() {
         conversion: 0,
       };
 
-      current.revenue += getLeadValue(lead);
-
-      current.units += getLeadUnits(lead);
-
-      if (isWonLead(lead)) {
-        current.deals += 1;
-      }
-
       map.set(name, current);
+
+      return current;
+    };
+
+    bookedOrders.forEach((order) => {
+      const person = personFor(orderAssignee(order));
+
+      person.revenue += Number(order.grand_total || 0);
+      person.units += orderUnits(order);
+      person.deals += 1;
     });
 
-    const result = Array.from(map.values());
+    const opportunityCount = new Map<string, number>();
+
+    opportunities.forEach((opportunity) => {
+      const name = opportunity.assigned_to_name || "Unassigned";
+
+      opportunityCount.set(name, (opportunityCount.get(name) || 0) + 1);
+      personFor(name);
+    });
+
+    dbLeads.forEach((lead) => {
+      personFor(lead.assigned_to_name || lead.creator_name || "Unassigned");
+    });
+
+    const result = Array.from(map.values()).filter(
+      (person) => person.name !== "Unassigned",
+    );
 
     result.forEach((person) => {
-      const leadCount = dbLeads.filter(
-        (lead) =>
-          (lead.assigned_to_name || lead.creator_name || "Sales Team") ===
-          person.name,
-      ).length;
+      const total = opportunityCount.get(person.name) || 0;
 
-      person.conversion =
-        leadCount > 0 ? Math.round((person.deals / leadCount) * 100) : 0;
+      person.conversion = total
+        ? Math.min(100, Math.round((person.deals / total) * 100))
+        : 0;
     });
 
-    return result.sort((a, b) => b.revenue - a.revenue).slice(0, 4);
-  }, [dbLeads]);
+    return result.sort((a, b) => b.revenue - a.revenue);
+  }, [bookedOrders, opportunities, dbLeads]);
 
   const topSalesPerson = salesTeam[0];
 
   /* ==========================================================
      PRODUCT DISTRIBUTION
+     Units sold on booked orders, by product.
   ========================================================== */
 
   const productDistribution = useMemo<ProductData[]>(() => {
     const distribution = new Map<string, number>();
 
-    inventoryItems.forEach((item) => {
-      const product = item.product_type_code || item.category || "Other";
+    bookedOrders.forEach((order) => {
+      (order.items || []).forEach((raw) => {
+        const line = raw as OrderLine;
+        const units = lineUnits(line);
 
-      const quantity =
-        Number(item.attributes?.quantity) ||
-        Number(item.attributes?.stock) ||
-        1;
+        if (!units) {
+          return;
+        }
 
-      distribution.set(product, (distribution.get(product) || 0) + quantity);
-    });
+        const name = lineProduct(line);
 
-    if (distribution.size === 0) {
-      wonLeads.forEach((lead) => {
-        lead.quotation_items?.forEach((item) => {
-          const name = item.item || "Product";
-
-          const quantity = Number(item.qty || 0);
-
-          distribution.set(name, (distribution.get(name) || 0) + quantity);
-        });
+        distribution.set(name, (distribution.get(name) || 0) + units);
       });
-    }
+    });
 
     const entries = Array.from(distribution.entries())
       .sort((a, b) => b[1] - a[1])
@@ -929,10 +944,13 @@ export default function Dashboard() {
       units,
       percentage: (units / maxUnits) * 100,
     }));
-  }, [inventoryItems, wonLeads]);
+  }, [bookedOrders]);
 
   /* ==========================================================
      SALES PIPELINE
+     New Leads: leads not yet converted or dead. The rest are
+     opportunities by stage, with Won being those closed won or with a
+     booked order. Value is the deal value.
   ========================================================== */
 
   const pipeline = useMemo<PipelineStage[]>(() => {
@@ -948,43 +966,103 @@ export default function Dashboard() {
     });
 
     dbLeads.forEach((lead) => {
-      const key = getStageKey(lead);
+      const status = (lead.status || "").toUpperCase();
 
-      const current = map.get(key);
-
-      if (!current) {
+      if (["CONVERTED", "DEAD", "LOST"].includes(status)) {
         return;
       }
 
-      current.count += 1;
+      const stage = map.get("new")!;
 
-      current.revenue += getLeadValue(lead);
+      stage.count += 1;
+      stage.revenue += getLeadValue(lead);
+    });
+
+    const orderedOpportunities = new Set(
+      bookedOrders
+        .map((order) => order.opportunity_id)
+        .filter((id): id is number => typeof id === "number"),
+    );
+
+    opportunities.forEach((opportunity) => {
+      if (opportunity.status === "LOST") {
+        return;
+      }
+
+      const key =
+        opportunity.status === "WON" || orderedOpportunities.has(opportunity.id)
+          ? "won"
+          : opportunity.status === "NEGOTIATION"
+            ? "negotiation"
+            : opportunity.status === "PROPOSAL"
+              ? "proposal"
+              : "qualified";
+
+      const stage = map.get(key)!;
+
+      stage.count += 1;
+      stage.revenue += Number(opportunity.deal_value || 0);
     });
 
     return PIPELINE_STAGES.map((stage) => map.get(stage.key)!);
-  }, [dbLeads]);
+  }, [dbLeads, opportunities, bookedOrders]);
 
   /* ==========================================================
-   ALL ORDERS
-========================================================== */
-  const allOrders = useMemo(() => {
-    return [...dbLeads]
-      .filter(
-        (lead) =>
-          getLeadValue(lead) > 0 || isWonLead(lead) || isQuotationLead(lead),
-      )
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
-  }, [dbLeads]);
+     SALES ACTIVITY
+     The latest leads, quotations and orders, newest first.
+  ========================================================== */
 
-  /* ==========================================================
-   RECENT ORDERS
-========================================================== */
-  const recentOrders = useMemo(() => {
-    return allOrders.slice(0, 5);
-  }, [allOrders]);
+  const activities = useMemo<ActivityItem[]>(() => {
+    const items: ActivityItem[] = [];
+
+    const toDate = (value?: string | null) => {
+      const date = value ? new Date(value) : null;
+
+      return date && !Number.isNaN(date.getTime()) ? date : null;
+    };
+
+    dbLeads.forEach((lead) => {
+      items.push({
+        id: `lead-${lead.id}`,
+        title: "New Lead",
+        person: lead.assigned_to_name || lead.creator_name || "Sales Team",
+        detail: lead.title || getLeadCompanyName(lead),
+        value: getLeadValue(lead),
+        date: toDate(lead.created_at),
+      });
+    });
+
+    quotations.forEach((quotation) => {
+      items.push({
+        id: `quotation-${quotation.id}`,
+        title: `Quotation ${quotationStatusLabel(quotation.status)}`,
+        person:
+          opportunities.find(
+            (opportunity) => opportunity.id === quotation.opportunity_id,
+          )?.assigned_to_name || "Sales Team",
+        detail: `#${quotation.quote_number} · ${
+          quotation.organization_name || quotation.contact_name || ""
+        }`,
+        value: Number(quotation.total_payable || 0),
+        date: toDate(quotation.updated_at || quotation.created_at),
+      });
+    });
+
+    salesOrders.forEach((order) => {
+      items.push({
+        id: `order-${order.id}`,
+        title: isBookedOrder(order) ? "Deal Closed" : "Sales Order Drafted",
+        person: orderAssignee(order),
+        detail: `${orderNumber(order)} · ${order.company_name || order.customer_name}`,
+        value: Number(order.grand_total || 0),
+        date: toDate(order.updated_at || order.created_at),
+      });
+    });
+
+    return items
+      .sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0))
+      .slice(0, 6);
+  }, [dbLeads, quotations, salesOrders, opportunities]);
 
   /* ==========================================================
    ORDERS TABLE
@@ -1185,23 +1263,17 @@ export default function Dashboard() {
 
   const exportActivityData = useCallback(() => {
     exportRows(`sales-activity-${new Date().toISOString().slice(0, 10)}.csv`, [
-      ["Activity", "Sales Person", "Customer", "Value"],
+      ["Activity", "Sales Person", "Details", "Value", "Date"],
 
-      ...recentOrders.map((lead) => [
-        isWonLead(lead)
-          ? "Deal Closed"
-          : isQuotationLead(lead)
-            ? "New Quotation Sent"
-            : "New Lead",
-
-        lead.creator_name || "Sales Team",
-
-        lead.title || "",
-
-        getLeadValue(lead),
+      ...activities.map((activity) => [
+        activity.title,
+        activity.person,
+        activity.detail,
+        activity.value,
+        activity.date ? activity.date.toLocaleDateString("en-IN") : "",
       ]),
     ]);
-  }, [exportRows, recentOrders]);
+  }, [exportRows, activities]);
 
   const exportOrdersData = useCallback(() => {
     exportRows(`recent-orders-${new Date().toISOString().slice(0, 10)}.csv`, [
@@ -1748,21 +1820,15 @@ export default function Dashboard() {
 
     const rowHeight = 85;
 
-    const height = 80 + Math.max(recentOrders.length, 1) * rowHeight;
+    const height = 80 + Math.max(activities.length, 1) * rowHeight;
 
-    const rows = recentOrders
-      .map((lead, index) => {
+    const rows = activities
+      .map((item, index) => {
         const y = 55 + index * rowHeight;
 
-        const activity = isWonLead(lead)
-          ? "Deal Closed"
-          : isQuotationLead(lead)
-            ? "New Quotation Sent"
-            : "New Lead";
+        const activity = escapeSvgText(item.title);
 
-        const date = getLeadDate(lead);
-
-        const dateLabel = date ? date.toLocaleDateString("en-IN") : "—";
+        const dateLabel = item.date ? item.date.toLocaleDateString("en-IN") : "—";
 
         return `
                 <line
@@ -1797,7 +1863,7 @@ export default function Dashboard() {
                   font-size="12"
                   fill="#64748b"
                 >
-                  ${lead.creator_name || "Sales Team"}
+                  ${escapeSvgText(item.person)}
                 </text>
 
                 <text
@@ -1806,7 +1872,7 @@ export default function Dashboard() {
                   font-size="12"
                   fill="#64748b"
                 >
-                  ${lead.title || "Sales activity"}
+                  ${escapeSvgText(item.detail || "Sales activity")}
                 </text>
 
                 <text
@@ -1827,7 +1893,7 @@ export default function Dashboard() {
                   font-weight="700"
                   fill="#233353"
                 >
-                  ${formatCurrency(getLeadValue(lead))}
+                  ${formatCurrency(item.value)}
                 </text>
               `;
       })
@@ -1866,7 +1932,7 @@ export default function Dashboard() {
     );
 
     addToast("Sales activity chart downloaded.", "success");
-  }, [recentOrders, addToast]);
+  }, [activities, addToast]);
 
   /* ==========================================================
      RECENT ORDERS CHART DOWNLOAD
@@ -2098,7 +2164,7 @@ export default function Dashboard() {
 
           <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
             Top State:{" "}
-            <span className="font-medium">{topRegion?.name || "—"}</span>
+            <span className="font-medium">{topRegion?.state || "—"}</span>
           </p>
         </div>
 
@@ -2678,28 +2744,35 @@ export default function Dashboard() {
           </div>
 
           <div className="mt-6 space-y-6">
-            {recentOrders.length > 0 ? (
-              recentOrders.slice(0, 4).map((lead) => (
+            {activities.length > 0 ? (
+              activities.slice(0, 4).map((item) => (
                 <div
-                  key={lead.id}
+                  key={item.id}
                   className="relative border-l-2 border-slate-200 pl-5 dark:border-slate-700"
                 >
                   <div className="absolute -left-[7px] top-1 h-3 w-3 rounded-full border-2 border-white bg-[#38588f] dark:border-[#051422]" />
 
-                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    {isWonLead(lead)
-                      ? "Deal Closed"
-                      : isQuotationLead(lead)
-                        ? "New Quotation Sent"
-                        : "New Lead"}
-                  </h4>
+                  <div className="flex items-start justify-between gap-2">
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      {item.title}
+                    </h4>
+
+                    <span className="shrink-0 text-[10px] text-slate-400">
+                      {item.date ? item.date.toLocaleDateString("en-IN") : ""}
+                    </span>
+                  </div>
 
                   <p className="mt-1 text-[10px] text-slate-400">
-                    {lead.creator_name || "Sales Team"}
+                    {item.person}
                   </p>
 
                   <div className="mt-2 rounded-lg bg-slate-50 p-3 text-[10px] text-slate-500 dark:bg-[#071929] dark:text-slate-400">
-                    {lead.title}
+                    {item.detail}
+                    {item.value > 0 && (
+                      <span className="ml-1 font-semibold text-slate-700 dark:text-slate-200">
+                        · {formatCurrency(item.value)}
+                      </span>
+                    )}
                   </div>
                 </div>
               ))
