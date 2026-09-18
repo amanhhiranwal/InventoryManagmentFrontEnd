@@ -87,6 +87,11 @@ interface Order {
   _id: string;
   customer_name: string;
 
+  /** "SO-00003", assigned by the backend. */
+  order_number?: string | null;
+  /** Customer details saved with the order, incl. the primary contact. */
+  customer_information?: Record<string, unknown> | null;
+
   company_name?: string;
   customer_type?: string;
   assigned_to?: string;
@@ -221,7 +226,17 @@ const getAssignedTo = (order: Order) =>
 
 const getCustomerType = (order: Order) => order.customer_type || "Distributor";
 
-const getState = (order: Order) => order.state || "Delhi";
+const getState = (order: Order) => order.state || "-";
+
+/* The contact's real email from the customer details saved on the order. */
+const getContactEmail = (order: Order) => {
+  const contact = (order.customer_information?.primary_contact || {}) as Record<
+    string,
+    unknown
+  >;
+
+  return typeof contact.email === "string" ? contact.email : "";
+};
 
 /* =========================================================
    COMPONENT
@@ -3420,25 +3435,25 @@ export default function OrdersListPage() {
                         <input type="checkbox" className="rounded" />
                       </td>
 
-                      <td className="px-3 py-3 text-xs font-medium text-slate-700">
-                        #{order._id}
+                      <td className="whitespace-nowrap px-3 py-3 text-[11px] font-medium text-slate-800 dark:text-slate-300">
+                        #{order.order_number || `SO-${order._id}`}
                       </td>
 
                       <td className="px-3 py-3">
                         <div>
-                          <p className="text-xs font-bold text-slate-800">
+                          <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
                             {order.customer_name}
                           </p>
 
-                          <p className="text-[10px] text-slate-500">
-                            {order.customer_name
-                              ?.toLowerCase()
-                              .replace(/\s+/g, ".")}
-                            @example.com
-                          </p>
+                          {getContactEmail(order) && (
+                            <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
+                              {getContactEmail(order)}
+                            </p>
+                          )}
 
-                          <p className="text-[10px] text-slate-500">
-                            ◉ {getState(order)}
+                          <p className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                            <FiMapPin size={9} />
+                            {getState(order)}
                           </p>
                         </div>
                       </td>
