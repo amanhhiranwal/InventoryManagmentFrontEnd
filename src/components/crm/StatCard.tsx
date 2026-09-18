@@ -77,7 +77,15 @@ export default function StatCard({
       </p>
 
       {caption && (
-        <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
+        <p
+          className={`mt-1 text-[10px] ${
+            change
+              ? positive
+                ? "text-emerald-500"
+                : "text-rose-500"
+              : "text-slate-400 dark:text-slate-500"
+          }`}
+        >
           {caption}
         </p>
       )}

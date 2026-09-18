@@ -567,7 +567,7 @@ function OpportunitiesPageInner() {
 
   const [search, setSearch] = useState("");
 
-  const [viewMode, setViewMode] = useState<"board" | "list">("board");
+  const [viewMode, setViewMode] = useState<"board" | "list">("list");
 
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;

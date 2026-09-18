@@ -2248,21 +2248,21 @@ export default function QuotationPage() {
                     </td>
 
                     <td className="px-3 py-4">
-                      <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                      <span className="whitespace-nowrap text-[11px] font-medium text-slate-800 dark:text-slate-300">
                         #{quotation.quote_number}
                       </span>
                     </td>
 
                     <td className="px-3 py-4">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">
+                      <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
                         {quotation.contact_name || "—"}
                       </p>
 
-                      <p className="mt-1 text-[10px] text-slate-400">
+                      <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
                         {quotation.email || "No email"}
                       </p>
 
-                      <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-400">
+                      <p className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
                         <FiMapPin size={9} />
                         {quotation.state_name ||
                           quotation.billing_address?.state ||
@@ -2271,39 +2271,39 @@ export default function QuotationPage() {
                     </td>
 
                     <td className="px-3 py-4">
-                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <p className="text-[12px] text-slate-700 dark:text-slate-300">
                         {quotation.opportunity_name ||
                           quotation.organization_name ||
                           "—"}
                       </p>
 
                       {quotation.opportunity_id && (
-                        <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                        <p className="text-[10px] text-slate-500">
                           #{quotation.opportunity_id} ↗
                         </p>
                       )}
                     </td>
 
                     <td className="px-3 py-4">
-                      <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                      <span className="whitespace-nowrap text-[10px] font-medium text-slate-800 dark:text-slate-200">
                         {compactMoney(quotation.total_payable)}
                       </span>
                     </td>
 
                     <td className="px-3 py-4">
-                      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 dark:border-[#0d2336] dark:bg-[#071929]">
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#233353] text-[9px] font-bold text-white">
-                          {getInitials(userName(quotation.assigned_to_id))}
+                      <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-slate-100 px-2 py-1 dark:bg-[#0b2034]">
+                        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] text-slate-700 dark:bg-[#17304a] dark:text-slate-200">
+                          {getInitials(userName(quotation.assigned_to_id)).charAt(0)}
                         </span>
 
-                        <span className="max-w-[110px] truncate text-[10px] font-semibold text-slate-700 dark:text-slate-200">
+                        <span className="max-w-[110px] truncate text-[10px] text-slate-700 dark:text-slate-200">
                           {userName(quotation.assigned_to_id)}
                         </span>
                       </div>
                     </td>
 
                     <td className="px-3 py-4">
-                      <span className="text-[10px] font-medium text-slate-400">
+                      <span className="whitespace-nowrap text-[10px] text-slate-700 dark:text-slate-300">
                         {formatDate(quotation.quotation_date || quotation.created_at)}
                       </span>
                     </td>
