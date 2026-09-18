@@ -2154,16 +2154,18 @@ export default function QuotationPage() {
 
       {/* STATUS TABS */}
 
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Tabs sit on the table's top edge, as folder tabs, in the design. */}
+      <div>
+      <div className="flex items-end gap-1 overflow-x-auto px-5">
         {STATUS_TABS.map((tab) => (
           <button
             key={tab.value}
             type="button"
             onClick={() => setStatusTab(tab.value)}
-            className={`rounded-lg border px-3.5 py-2 text-[11px] font-semibold transition ${
+            className={`whitespace-nowrap rounded-t-lg px-3.5 py-1.5 text-[11px] font-medium transition-colors ${
               statusTab === tab.value
-                ? "border-[#233353] bg-[#233353] text-white"
-                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
+                ? "bg-[#233353] text-white dark:bg-[#2b4470]"
+                : "bg-white text-[#474747] hover:bg-slate-50 dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
             }`}
           >
             {tab.label} ({tabCounts[tab.value] ?? 0})
@@ -2398,6 +2400,7 @@ export default function QuotationPage() {
           noun="quotations"
         />
       </TableCard>
+      </div>
 
       {sendTarget && (
         <SendQuotationModal
