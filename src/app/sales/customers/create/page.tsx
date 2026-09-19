@@ -1,1026 +1,774 @@
 "use client";
 
-import { useState } from "react";
-import api from "@/lib/axios";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useUIStore } from "@/lib/store/ui.store";
-import PageHeader from "@/components/ui/PageHeader";
-import Button from "@/components/ui/Button";
-import Input from "@/components/ui/Input";
+import { AxiosError } from "axios";
+import { FiChevronDown, FiX } from "react-icons/fi";
 import {
-  FiArrowLeft,
-  FiUploadCloud,
-  FiPlus,
-  FiTrash2,
-  FiUser,
-  FiHome,
-  FiSave
-} from "react-icons/fi";
+  LuBuilding2,
+  LuFileText,
+  LuFileUp,
+  LuIdCard,
+  LuMapPin,
+  LuSquareUser,
+} from "react-icons/lu";
+import { CgSpinner } from "react-icons/cg";
 
-interface ServingCompany {
-  id: string;
-  nameAndYear: string;
-  maxCredit: number;
-  creditDays: number;
-  turnover: number;
+import api from "@/lib/axios";
+import { FormCard, FormSectionBlock } from "@/components/crm/FormCard";
+import FormPageHeader, {
+  CancelButton,
+  DraftButton,
+  SubmitButton,
+} from "@/components/crm/FormPageHeader";
+import { useUIStore } from "@/lib/store/ui.store";
+import { useAuthStore } from "@/features/auth/store/auth.store";
+import {
+  CustomerPayload,
+  createCustomerApi,
+  getCustomerApi,
+  updateCustomerApi,
+} from "@/features/customers/api/customers.api";
+import { getCustomerTypesApi } from "@/features/inventory/api/inventory.api";
+import { getStatesApi } from "@/features/locations/api/locations.api";
+import { getUsersApi, User } from "@/features/users/api/users.api";
+
+const FALLBACK_CUSTOMER_TYPES = [
+  "Distributor",
+  "OEM",
+  "End Customer",
+  "Institution",
+  "Corporate",
+  "Other",
+];
+
+const COUNTRIES = ["India", "United States", "China", "Malaysia", "Indonesia"];
+
+/** Mobile prefixes offered next to the number, as in the design. */
+const DIAL_CODES = [
+  { code: "+91", flag: "🇮🇳" },
+  { code: "+1", flag: "🇺🇸" },
+  { code: "+86", flag: "🇨🇳" },
+  { code: "+60", flag: "🇲🇾" },
+  { code: "+62", flag: "🇮🇩" },
+];
+
+interface CustomerForm {
+  customerType: string;
+  organizationName: string;
+  website: string;
+  address: string;
+  state: string;
+  city: string;
+  country: string;
+  pinCode: string;
+  contactName: string;
+  designation: string;
+  dialCode: string;
+  mobile: string;
+  email: string;
+  leadSource: string;
+  assignedToId: string;
+  remarks: string;
+  attachments: string[];
 }
 
-export default function CreateCustomerPage() {
+type FormErrors = Partial<Record<keyof CustomerForm, string>>;
+
+const EMPTY_FORM: CustomerForm = {
+  customerType: "",
+  organizationName: "",
+  website: "",
+  address: "",
+  state: "",
+  city: "",
+  country: "",
+  pinCode: "",
+  contactName: "",
+  designation: "",
+  dialCode: "+91",
+  mobile: "",
+  email: "",
+  leadSource: "",
+  assignedToId: "",
+  remarks: "",
+  attachments: [],
+};
+
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** "+91 9876543210" -> ["+91", "9876543210"]. */
+function splitPhone(phone?: string): [string, string] {
+  const match = (phone || "").trim().match(/^(\+\d{1,3})\s*(.*)$/);
+  return match ? [match[1], match[2]] : ["+91", (phone || "").trim()];
+}
+
+function userName(user: User) {
+  return `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email;
+}
+
+/**
+ * New Customer, as designed: organization, location and primary contact on
+ * the left; lead source, owner, remarks and files on the right.
+ *
+ * "Create Lead" saves the customer and opens its lead with the chosen Lead
+ * Source; "Save as Draft" keeps the customer without a lead. ?edit=<id>
+ * reopens a customer.
+ */
+export default function CustomerFormPage() {
   const router = useRouter();
   const { addToast } = useUIStore();
+  const currentUserId = useAuthStore((state) => state.user?.id);
 
-  // Step state
-  const [submitting, setSubmitting] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [convertedLeadId, setConvertedLeadId] = useState<number | null>(null);
+  const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState<"draft" | "lead" | "save" | null>(null);
+  const [dragging, setDragging] = useState(false);
 
-  // --- Profile Images ---
-  const [userImage, setUserImage] = useState<string | null>(null);
-  const [shopImage, setShopImage] = useState<string | null>(null);
+  const [customerTypes, setCustomerTypes] = useState<string[]>(FALLBACK_CUSTOMER_TYPES);
+  const [states, setStates] = useState<string[]>([]);
+  const [leadSources, setLeadSources] = useState<string[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
 
-  // --- Page 1: Basic Firm Details ---
-  const [firmName1, setFirmName1] = useState("");
-  const [firmName2, setFirmName2] = useState("");
-  const [address1, setAddress1] = useState("");
-  const [address2, setAddress2] = useState("");
-  const [address3, setAddress3] = useState("");
-  const [region, setRegion] = useState("");
-  const [subRegion, setSubRegion] = useState("");
-  const [territory, setTerritory] = useState("");
-  const [warehouse, setWarehouse] = useState("");
-  const [district, setDistrict] = useState("");
-  const [pincode, setPincode] = useState("");
-  const [mobileNo, setMobileNo] = useState("");
-  const [email, setEmail] = useState("");
+  const isEdit = Boolean(editId);
 
-  // --- Page 2: Operational Data ---
-  const [distanceHQ, setDistanceHQ] = useState("");
-  const [statusOfFeed, setStatusOfFeed] = useState("Proprietorship"); // Proprietorship, Partnership, Company, Co-operative Society
+  const update = <K extends keyof CustomerForm>(field: K, value: CustomerForm[K]) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: undefined }));
+  };
 
-  // --- Segment-wise Turnover (Fertilizer, Pesticide, Seed, Other) ---
-  const [turnoverData, setTurnoverData] = useState({
-    fertilizer: { wholesale: 0, retail: 0 },
-    pesticide: { wholesale: 0, retail: 0 },
-    seed: { wholesale: 0, retail: 0 },
-    other: { wholesale: 0, retail: 0 },
+  /* Read ?edit= directly so the page needs no Suspense boundary. */
+  useEffect(() => {
+    setEditId(new URLSearchParams(window.location.search).get("edit"));
+  }, []);
+
+  useEffect(() => {
+    getCustomerTypesApi()
+      .then((types) => {
+        const names = types.map((type) => type.name).filter(Boolean);
+        if (names.length) setCustomerTypes(names);
+      })
+      .catch(() => undefined);
+
+    getStatesApi()
+      .then((list) => setStates(list.map((state) => state.name).filter(Boolean)))
+      .catch(() => undefined);
+
+    api
+      .get("/api/v1/lead-sources")
+      .then(({ data }) =>
+        setLeadSources(
+          (Array.isArray(data?.data) ? data.data : [])
+            .filter((source: { is_active?: boolean }) => source.is_active !== false)
+            /* In the order they were set up - Marketing, Cold Calling,
+               In-bound - as the design lists them. */
+            .sort((a: { id: string }, b: { id: string }) => Number(a.id) - Number(b.id))
+            .map((source: { name: string }) => source.name),
+        ),
+      )
+      .catch(() => undefined);
+
+    getUsersApi(1, 500, { skipErrorToast: true })
+      .then((response) => setUsers(response.data))
+      .catch(() => undefined);
+  }, []);
+
+  /* A new customer is assigned to whoever is adding it until changed. */
+  useEffect(() => {
+    if (!isEdit && currentUserId) {
+      setForm((current) =>
+        current.assignedToId ? current : { ...current, assignedToId: currentUserId },
+      );
+    }
+  }, [isEdit, currentUserId]);
+
+  useEffect(() => {
+    if (!editId) return;
+
+    setLoading(true);
+
+    getCustomerApi(editId)
+      .then((customer) => {
+        const [dialCode, mobile] = splitPhone(customer.phone);
+
+        setConvertedLeadId(customer.converted_lead_id ?? null);
+        setForm({
+          customerType: customer.customer_type || "",
+          organizationName: customer.name || "",
+          website: customer.website || "",
+          address: customer.address || "",
+          state: customer.state || "",
+          city: customer.city || "",
+          country: customer.country || "",
+          pinCode: customer.pin_code || "",
+          contactName: customer.contact_name || "",
+          designation: customer.designation || "",
+          dialCode,
+          mobile,
+          email: customer.email || "",
+          leadSource: customer.lead_source || "",
+          assignedToId: customer.assigned_to_id || "",
+          remarks: customer.remarks || "",
+          attachments: customer.attachments || [],
+        });
+      })
+      .catch((error) => {
+        console.error(error);
+        addToast("Could not open this customer.", "error");
+        router.push("/sales/customers");
+      })
+      .finally(() => setLoading(false));
+  }, [editId, addToast, router]);
+
+  /* Every field is required to open a lead, as marked in the design; a draft
+     only needs a name to be found again. */
+  const validate = (full: boolean) => {
+    const next: FormErrors = {};
+    const required = (field: keyof CustomerForm, message: string) => {
+      if (!String(form[field] || "").trim()) next[field] = message;
+    };
+
+    required("organizationName", "Organization name is required.");
+
+    if (full) {
+      required("customerType", "Select the customer type.");
+      required("website", "Organization website is required.");
+      required("address", "Street address is required.");
+      required("state", "State is required.");
+      required("city", "City is required.");
+      required("country", "Country is required.");
+      required("pinCode", "PIN / ZIP code is required.");
+      required("contactName", "Full name is required.");
+      required("designation", "Designation is required.");
+      required("mobile", "Mobile number is required.");
+      required("email", "Email address is required.");
+      required("leadSource", "Select the lead source.");
+      required("assignedToId", "Select who it is assigned to.");
+    }
+
+    if (form.email.trim() && !EMAIL.test(form.email.trim()))
+      next.email = "Enter a valid email address.";
+    if (form.mobile.trim() && !/^[0-9]{6,14}$/.test(form.mobile.replace(/\s/g, "")))
+      next.mobile = "Enter digits only, 6 to 14 long.";
+    if (form.pinCode.trim() && !/^[A-Za-z0-9 -]{3,10}$/.test(form.pinCode.trim()))
+      next.pinCode = "Enter a valid PIN / ZIP code.";
+    if (form.website.trim() && !/^(https?:\/\/)?[\w-]+(\.[\w-]+)+.*$/.test(form.website.trim()))
+      next.website = "Enter a website like www.company.com.";
+
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const buildPayload = (): CustomerPayload => ({
+    name: form.organizationName.trim(),
+    customer_type: form.customerType,
+    website: form.website.trim(),
+    address: form.address.trim(),
+    state: form.state,
+    city: form.city.trim(),
+    country: form.country,
+    pin_code: form.pinCode.trim(),
+    contact_name: form.contactName.trim(),
+    designation: form.designation.trim(),
+    phone: form.mobile.trim() ? `${form.dialCode} ${form.mobile.replace(/\s/g, "")}` : "",
+    email: form.email.trim(),
+    lead_source: form.leadSource,
+    assigned_to_id: form.assignedToId,
+    remarks: form.remarks.trim(),
+    attachments: form.attachments,
   });
 
-  const handleTurnoverChange = (row: keyof typeof turnoverData, col: "wholesale" | "retail", val: string) => {
-    const num = parseFloat(val) || 0;
-    setTurnoverData((prev) => ({
-      ...prev,
-      [row]: { ...prev[row], [col]: num },
-    }));
-  };
-
-  // --- GST Type & License Registrations ---
-  const [gstType, setGstType] = useState<"REGISTERED" | "UNREGISTERED">("REGISTERED");
-  const [gstDetails, setGstDetails] = useState("");
-  const [gstFile, setGstFile] = useState<string | null>(null);
-  const [panNumber, setPanNumber] = useState("");
-  const [panFile, setPanFile] = useState<string | null>(null);
-  const [dateOfEstablishment, setDateOfEstablishment] = useState("");
-  const [registrationNoOfFirm, setRegistrationNoOfFirm] = useState("");
-  const [pesticideLicenseNo, setPesticideLicenseNo] = useState("");
-  const [pesticideLicenseFile, setPesticideLicenseFile] = useState<string | null>(null);
-  const [fertilizerLicenseNo, setFertilizerLicenseNo] = useState("");
-  const [fertilizerLicenseFile, setFertilizerLicenseFile] = useState<string | null>(null);
-
-  // --- Bank details ---
-  const [bankAccountNo, setBankAccountNo] = useState("");
-  const [bankAccountFile, setBankAccountFile] = useState<string | null>(null);
-  const [ifscCode, setIfscCode] = useState("");
-  const [bankersName, setBankersName] = useState("");
-  const [bankersAddress, setBankersAddress] = useState("");
-  const [chequeAuthName, setChequeAuthName] = useState("");
-
-  // --- Infrastructure Details ---
-  const [noOfGodown, setNoOfGodown] = useState("");
-  const [sizeSqFt, setSizeSqFt] = useState("");
-  const [godownOwnership, setGodownOwnership] = useState<"SELF" | "RENTED">("SELF");
-  const [godownElectricityFile, setGodownElectricityFile] = useState<string | null>(null);
-  const [godownWaterFile, setGodownWaterFile] = useState<string | null>(null);
-
-  const [noOfRetailOutlets, setNoOfRetailOutlets] = useState("");
-  const [outletsOwnership, setOutletsOwnership] = useState<"SELF" | "RENTED">("SELF");
-  const [outletsElectricityFile, setOutletsElectricityFile] = useState<string | null>(null);
-  const [outletsWaterFile, setOutletsWaterFile] = useState<string | null>(null);
-
-  // --- Serving Companies list ---
-  const [servingCompanies, setServingCompanies] = useState<ServingCompany[]>([
-    { id: "1", nameAndYear: "", maxCredit: 0, creditDays: 0, turnover: 0 }
-  ]);
-
-  const addServingCompanyRow = () => {
-    setServingCompanies([
-      ...servingCompanies,
-      { id: Date.now().toString(), nameAndYear: "", maxCredit: 0, creditDays: 0, turnover: 0 }
-    ]);
-  };
-
-  const removeServingCompanyRow = (id: string) => {
-    if (servingCompanies.length === 1) return;
-    setServingCompanies(servingCompanies.filter((item) => item.id !== id));
-  };
-
-  const handleServingCompanyChange = (id: string, field: keyof ServingCompany, val: any) => {
-    setServingCompanies(
-      servingCompanies.map((item) =>
-        item.id === id ? { ...item, [field]: val } : item
-      )
-    );
-  };
-
-  // --- Details of Security Deposit ---
-  const [secChequeNo, setSecChequeNo] = useState("");
-  const [secDateOfIssue, setSecDateOfIssue] = useState("");
-  const [secAmount, setSecAmount] = useState("");
-  const [secBankDrawn, setSecBankDrawn] = useState("");
-
-  // --- Targets ---
-  const [targetCurrentYear, setTargetCurrentYear] = useState("");
-  const [targetNextYear, setTargetNextYear] = useState("");
-  const [insecticidesLicenseFile, setInsecticidesLicenseFile] = useState<string | null>(null);
-
-  // --- Page 4: KYC Upload Checklist ---
-  const [fileBalSheet, setFileBalSheet] = useState<string | null>(null);
-  const [fileITR, setFileITR] = useState<string | null>(null);
-  const [fileResidence, setFileResidence] = useState<string | null>(null);
-  const [filePhotoId, setFilePhotoId] = useState<string | null>(null);
-  const [fileKYCPartners, setFileKYCPartners] = useState<string | null>(null);
-  const [fileDeedOrMoA, setFileDeedOrMoA] = useState<string | null>(null);
-  const [fileChequesAndLetterhead, setFileChequesAndLetterhead] = useState<string | null>(null);
-  const [fileBankStatement, setFileBankStatement] = useState<string | null>(null);
-  const [fileDirectorSign, setFileDirectorSign] = useState<string | null>(null);
-
-  // Helper file uploader simulator
-  const handleSimulatedUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (name: string) => void) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setter(file.name);
-      addToast(`Document '${file.name}' attached successfully.`, "success");
-    }
-  };
-
-  const handleSaveDistributor = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!firmName1.trim()) {
-      addToast("Name of Firm 1 is required.", "warning");
+  const save = async (mode: "draft" | "lead" | "save") => {
+    if (!validate(mode === "lead")) {
+      addToast("Please fill in the highlighted fields.", "warning");
       return;
     }
-    if (!mobileNo.trim() || !email.trim()) {
-      addToast("Contact credentials (Mobile and Email) are required.", "warning");
-      return;
-    }
+
+    const payload: CustomerPayload = {
+      ...buildPayload(),
+      create_lead: mode === "lead",
+      draft: mode === "draft",
+    };
 
     try {
-      setSubmitting(true);
-      const res = await api.post("/api/v1/customers/", {
-        name: firmName1.trim(),
-        email: email.trim(),
-        phone: mobileNo.trim(),
-        address: (address1 + " " + address2 + " " + address3).trim(),
-        gst: gstDetails.trim(),
-        pan: panNumber.trim(),
-        category: "Agriculture Distributor",
-        isRegistered: gstType === "REGISTERED",
-        kycDocs: [
-          gstFile,
-          panFile,
-          pesticideLicenseFile,
-          fertilizerLicenseFile,
-          bankAccountFile,
-          godownElectricityFile,
-          godownWaterFile,
-          outletsElectricityFile,
-          outletsWaterFile,
-          insecticidesLicenseFile,
-          fileBalSheet,
-          fileITR,
-          fileResidence,
-          filePhotoId,
-          fileKYCPartners,
-          fileDeedOrMoA,
-          fileChequesAndLetterhead,
-          fileBankStatement,
-          fileDirectorSign
-        ].filter(Boolean) as string[]
-      });
-      if (res.data?.success) {
-        // Create lead automatically
-        try {
-          await api.post("/api/v1/leads/", {
-            title: firmName1.trim(),
-            description: "Customer Profile Lead: " + firmName1.trim(),
-            status: "active"
-          });
-        } catch (leadErr) {
-          console.error("Failed to auto-create lead:", leadErr);
-        }
-        addToast("Customer/Distributor " + firmName1 + " registered and added as a lead successfully!", "success");
-        router.push("/sales/customers");
-      }
-    } catch (err: any) {
-      console.error(err);
-      addToast(err.response?.data?.detail || "Failed to register customer distributor profile.", "error");
+      setSaving(mode);
+
+      const saved = editId
+        ? await updateCustomerApi(editId, payload)
+        : await createCustomerApi(payload);
+
+      addToast(
+        saved.lead_id
+          ? `${saved.name} saved and Lead #${saved.lead_id} created.`
+          : mode === "draft"
+            ? `${saved.name} saved as a draft.`
+            : `${saved.name} saved.`,
+        "success",
+      );
+
+      router.push("/sales/customers");
+    } catch (error) {
+      console.error(error);
+      const detail = (error as AxiosError<{ detail?: string }>).response?.data?.detail;
+      addToast(typeof detail === "string" ? detail : "Could not save the customer.", "error");
     } finally {
-      setSubmitting(false);
+      setSaving(null);
     }
   };
 
-  // Calculations Turnover Segment Wise
-  const fertTotal = turnoverData.fertilizer.wholesale + turnoverData.fertilizer.retail;
-  const pestTotal = turnoverData.pesticide.wholesale + turnoverData.pesticide.retail;
-  const seedTotal = turnoverData.seed.wholesale + turnoverData.seed.retail;
-  const otherTotal = turnoverData.other.wholesale + turnoverData.other.retail;
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    save(convertedLeadId ? "save" : "lead");
+  };
 
-  const totalWholesale = turnoverData.fertilizer.wholesale + turnoverData.pesticide.wholesale + turnoverData.seed.wholesale + turnoverData.other.wholesale;
-  const totalRetail = turnoverData.fertilizer.retail + turnoverData.pesticide.retail + turnoverData.seed.retail + turnoverData.other.retail;
-  const grandTotalTurnover = fertTotal + pestTotal + seedTotal + otherTotal;
+  /* Only the names are kept - there is no file store behind the form yet,
+     the same as the lead form's attachments. */
+  const addFiles = (files: FileList | null) => {
+    const accepted = Array.from(files || []).filter((file) => {
+      const ok = /\.(pdf|docx?|xlsx?)$/i.test(file.name) && file.size <= 10 * 1024 * 1024;
+      if (!ok) addToast(`${file.name}: PDF, DOC or XLS up to 10MB only.`, "warning");
+      return ok;
+    });
 
-  // Companies turnover pesticide calculation
-  const totalServingTurnover = servingCompanies.reduce((acc, curr) => acc + (curr.turnover || 0), 0);
+    if (accepted.length) {
+      update("attachments", [
+        ...form.attachments,
+        ...accepted.map((file) => file.name).filter((name) => !form.attachments.includes(name)),
+      ]);
+    }
+  };
+
+  const title = isEdit ? "Edit Customer" : "New Customer";
 
   return (
-    <div className="space-y-6 pb-12">
-      <div className="flex items-center gap-3">
-        <Button variant="outline" onClick={() => router.push("/sales/customers")} className="!p-2.5 rounded-xl">
-          <FiArrowLeft className="text-sm" />
-        </Button>
-        <PageHeader
-          title="Create Single Record"
-          description="Register a new customer distributor profile with complete KYC and infrastructure documentation."
-        />
-      </div>
+    <div className="min-h-full pb-8">
+      <FormPageHeader
+        title={title}
+        parentLabel="Customers"
+        currentLabel={isEdit ? "Edit" : "New"}
+        badge={isEdit && convertedLeadId ? "" : "Draft"}
+        actions={
+          <>
+            <CancelButton onClick={() => router.push("/sales/customers")} />
 
-      <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/50 dark:border-[#0d2336] shadow-sm">
-        {/* Header Title with minimize symbol */}
-        <div className="flex justify-between items-center px-6 py-4.5 border-b border-slate-100 dark:border-[#0d2336]/40">
-          <h3 className="text-sm font-bold text-slate-450 dark:text-slate-300 uppercase tracking-wider font-sans">
-            Create Distributor
-          </h3>
-          <span className="w-4.5 h-1 bg-slate-300 rounded-full cursor-pointer hover:bg-slate-500" />
+            {convertedLeadId ? (
+              <SubmitButton formId="customer-form" disabled={Boolean(saving) || loading}>
+                {saving === "save" ? "Saving..." : "Save Changes"}
+              </SubmitButton>
+            ) : (
+              <>
+                <DraftButton disabled={Boolean(saving) || loading} onClick={() => save("draft")}>
+                  {saving === "draft" ? "Saving..." : "Save as Draft"}
+                </DraftButton>
+
+                <SubmitButton formId="customer-form" disabled={Boolean(saving) || loading}>
+                  {saving === "lead" ? "Creating..." : "Create Lead"}
+                </SubmitButton>
+              </>
+            )}
+          </>
+        }
+      />
+
+      {loading ? (
+        <div className="flex min-h-[420px] items-center justify-center rounded-xl bg-white text-slate-400 dark:bg-[#071929]">
+          <CgSpinner className="animate-spin text-3xl" />
         </div>
-
-        <form onSubmit={handleSaveDistributor} className="p-6 space-y-8">
-          
-          {/* USER & SHOP IMAGES SECTION */}
-          <div className="flex flex-wrap gap-8 items-center border-b border-slate-100 dark:border-[#0d2336]/30 pb-6">
-            {/* User Image Slot */}
-            <div className="space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                Upload user image
-              </span>
-              <div className="relative group w-28 h-28 border border-slate-200 dark:border-[#0d2336] rounded-xl flex items-center justify-center bg-slate-50 dark:bg-slate-900 overflow-hidden shadow-inner">
-                {userImage ? (
-                  <span className="text-xs font-mono font-semibold text-slate-500 text-center px-2 truncate">{userImage}</span>
-                ) : (
-                  <div className="text-center space-y-1">
-                    <FiUser className="text-3xl text-slate-300 mx-auto" />
-                    <span className="text-[9px] text-slate-400 font-bold block">No photo</span>
-                  </div>
-                )}
-                <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-all">
-                  <FiUploadCloud className="text-white text-lg" />
-                  <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setUserImage)} />
-                </label>
-              </div>
-            </div>
-
-            {/* Shop Image Slot */}
-            <div className="space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                Upload shop image
-              </span>
-              <div className="relative group w-28 h-28 border border-slate-200 dark:border-[#0d2336] rounded-xl flex items-center justify-center bg-slate-50 dark:bg-slate-900 overflow-hidden shadow-inner">
-                {shopImage ? (
-                  <span className="text-xs font-mono font-semibold text-slate-500 text-center px-2 truncate">{shopImage}</span>
-                ) : (
-                  <div className="text-center space-y-1">
-                    <FiHome className="text-3xl text-slate-300 mx-auto" />
-                    <span className="text-[9px] text-slate-400 font-bold block">No photo</span>
-                  </div>
-                )}
-                <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-all">
-                  <FiUploadCloud className="text-white text-lg" />
-                  <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setShopImage)} />
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* PAGE 1: BASIC FIRM IDENTITY DETAILS */}
-          <div className="space-y-4">
-            <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-primary border-l-2 border-primary pl-2 mb-2">
-              Firm Specifications
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Name of Firm 1 *"
-                required
-                placeholder="Name of Firm 1"
-                value={firmName1}
-                onChange={(e) => setFirmName1(e.target.value)}
-              />
-              <Input
-                label="Name of Firm 2"
-                placeholder="Name of Firm 2"
-                value={firmName2}
-                onChange={(e) => setFirmName2(e.target.value)}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Input
-                label="Address 1 *"
-                required
-                placeholder="Address 1"
-                value={address1}
-                onChange={(e) => setAddress1(e.target.value)}
-              />
-              <Input
-                label="Address 2"
-                placeholder="Address 2"
-                value={address2}
-                onChange={(e) => setAddress2(e.target.value)}
-              />
-              <Input
-                label="Address 3"
-                placeholder="Address 3"
-                value={address3}
-                onChange={(e) => setAddress3(e.target.value)}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Region</label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-                  value={region}
-                  onChange={(e) => setRegion(e.target.value)}
-                >
-                  <option value="">Select Region</option>
-                  <option value="North">North Zone</option>
-                  <option value="West">West Zone</option>
-                  <option value="Center">Center Zone</option>
-                  <option value="South">South Zone</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Sub-Region</label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-                  value={subRegion}
-                  onChange={(e) => setSubRegion(e.target.value)}
-                >
-                  <option value="">Select Sub-Region</option>
-                  <option value="Zone A">Zone A</option>
-                  <option value="Zone B">Zone B</option>
-                  <option value="Zone C">Zone C</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Territory</label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-                  value={territory}
-                  onChange={(e) => setTerritory(e.target.value)}
-                >
-                  <option value="">Select Territory</option>
-                  <option value="Area 1">Area 1</option>
-                  <option value="Area 2">Area 2</option>
-                  <option value="Area 3">Area 3</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Ware-Houses</label>
-                <select
-                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-                  value={warehouse}
-                  onChange={(e) => setWarehouse(e.target.value)}
-                >
-                  <option value="">Select Ware-House</option>
-                  <option value="HQ Warehouse">HQ Warehouse</option>
-                  <option value="Zonal Repository">Zonal Repository</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="md:col-span-2">
-                <Input
-                  label="District"
-                  placeholder="District"
-                  value={district}
-                  onChange={(e) => setDistrict(e.target.value)}
+      ) : (
+        <form
+          id="customer-form"
+          noValidate
+          onSubmit={handleSubmit}
+          className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_372px]"
+        >
+          {/* LEFT */}
+          <FormCard>
+            <FormSectionBlock first icon={<LuBuilding2 />} title="Organization Details">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <SelectField
+                  label="Customer Type"
+                  required
+                  placeholder="Select the customer type"
+                  value={form.customerType}
+                  options={customerTypes}
+                  error={errors.customerType}
+                  onChange={(value) => update("customerType", value)}
                 />
-              </div>
-              <Input
-                label="Pincode"
-                placeholder="Pincode"
-                value={pincode}
-                onChange={(e) => setPincode(e.target.value)}
-              />
-              <Input
-                label="Mobile No. *"
-                required
-                placeholder="Mobile No."
-                value={mobileNo}
-                onChange={(e) => setMobileNo(e.target.value)}
-              />
-              <Input
-                label="Email *"
-                required
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-          </div>
 
-          {/* PAGE 2: SEGMENT TURNOVER & COMPLIANCE LICENSES */}
-          <div className="space-y-6 pt-4 border-t border-slate-100 dark:border-[#0d2336]/30">
-            <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-primary border-l-2 border-primary pl-2">
-              Turnover & Registrations
-            </h4>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-              <Input
-                label="Distance From H.Q."
-                placeholder="Distance From H.Q."
-                value={distanceHQ}
-                onChange={(e) => setDistanceHQ(e.target.value)}
-              />
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Status of Feed</label>
-                <div className="flex flex-wrap gap-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  {["Proprietorship", "Partnership", "Company", "Co-operative Society"].map((item) => (
-                    <label key={item} className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="statusOfFeed"
-                        checked={statusOfFeed === item}
-                        onChange={() => setStatusOfFeed(item)}
-                      />
-                      <span>{item}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Turnover Matrix Table */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-                Sales Turnover-Segment Wise (For Last Year) In Lakh:
-              </label>
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#0d2336]/50">
-                <table className="w-full text-xs text-left border-collapse font-sans">
-                  <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-[#0d2336] text-[10px] font-extrabold uppercase text-slate-500">
-                      <th className="p-3">Product</th>
-                      <th className="p-3">Wholesale</th>
-                      <th className="p-3">Retail</th>
-                      <th className="p-3 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-[#0d2336]/35 font-semibold text-slate-700 dark:text-slate-200">
-                    {[
-                      { key: "fertilizer", label: "Fertilizer" },
-                      { key: "pesticide", label: "Pesticide" },
-                      { key: "seed", label: "Seed" },
-                      { key: "other", label: "Other" },
-                    ].map((row) => {
-                      const rKey = row.key as keyof typeof turnoverData;
-                      const lineTotal = turnoverData[rKey].wholesale + turnoverData[rKey].retail;
-                      return (
-                        <tr key={row.key} className="hover:bg-slate-50/20">
-                          <td className="p-3 font-bold">{row.label}</td>
-                          <td className="p-2">
-                            <input
-                              type="number"
-                              className="w-full bg-slate-50/60 dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-lg px-2.5 py-1 text-xs text-slate-800 dark:text-white"
-                              placeholder="0.00"
-                              onChange={(e) => handleTurnoverChange(rKey, "wholesale", e.target.value)}
-                            />
-                          </td>
-                          <td className="p-2">
-                            <input
-                              type="number"
-                              className="w-full bg-slate-50/60 dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-lg px-2.5 py-1 text-xs text-slate-800 dark:text-white"
-                              placeholder="0.00"
-                              onChange={(e) => handleTurnoverChange(rKey, "retail", e.target.value)}
-                            />
-                          </td>
-                          <td className="p-3 text-right font-mono font-bold">₹{lineTotal.toFixed(2)}</td>
-                        </tr>
-                      );
-                    })}
-                    {/* Total Row */}
-                    <tr className="bg-slate-50/80 dark:bg-slate-900/50 font-bold border-t border-slate-200 dark:border-[#0d2336]">
-                      <td className="p-3 text-primary uppercase">Total</td>
-                      <td className="p-3 font-mono">₹{totalWholesale.toFixed(2)}</td>
-                      <td className="p-3 font-mono">₹{totalRetail.toFixed(2)}</td>
-                      <td className="p-3 text-right font-mono text-primary font-black">₹{grandTotalTurnover.toFixed(2)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* GST TYPE */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center pt-2">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">GST TYPE</label>
-                <div className="flex gap-4 text-xs font-semibold text-slate-700 dark:text-slate-350">
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="gstType"
-                      checked={gstType === "REGISTERED"}
-                      onChange={() => setGstType("REGISTERED")}
-                    />
-                    <span>REGISTERED</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="gstType"
-                      checked={gstType === "UNREGISTERED"}
-                      onChange={() => setGstType("UNREGISTERED")}
-                    />
-                    <span>UNREGISTERED</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* GST details */}
-              {gstType === "REGISTERED" && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">GST Registration Details</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-xl px-3.5 py-2.5 text-xs outline-none"
-                      placeholder="GSTIN"
-                      value={gstDetails}
-                      onChange={(e) => setGstDetails(e.target.value)}
-                    />
-                    <label className="p-2.5 bg-slate-100 dark:bg-[#071929] hover:bg-primary hover:text-white dark:hover:bg-primary text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#0d2336] rounded-xl cursor-pointer transition-all shrink-0">
-                      <FiUploadCloud className="text-sm" />
-                      <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setGstFile)} />
-                    </label>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* PAN & establishment dates */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Pan Number</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-xl px-3.5 py-2.5 text-xs outline-none"
-                    placeholder="PAN Number"
-                    value={panNumber}
-                    onChange={(e) => setPanNumber(e.target.value)}
-                  />
-                  <label className="p-2.5 bg-slate-100 dark:bg-[#071929] hover:bg-primary hover:text-white dark:hover:bg-primary text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#0d2336] rounded-xl cursor-pointer transition-all shrink-0">
-                    <FiUploadCloud className="text-sm" />
-                    <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setPanFile)} />
-                  </label>
-                </div>
-              </div>
-
-              <Input
-                label="Date of Establishment of Firm"
-                type="date"
-                value={dateOfEstablishment}
-                onChange={(e) => setDateOfEstablishment(e.target.value)}
-              />
-
-              <Input
-                label="Registration No. of Firm"
-                placeholder="Registration No. of Firm"
-                value={registrationNoOfFirm}
-                onChange={(e) => setRegistrationNoOfFirm(e.target.value)}
-              />
-            </div>
-
-            {/* License Numbers */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Pesticide License No.</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-xl px-3.5 py-2.5 text-xs outline-none"
-                    placeholder="Pesticide License No."
-                    value={pesticideLicenseNo}
-                    onChange={(e) => setPesticideLicenseNo(e.target.value)}
-                  />
-                  <label className="p-2.5 bg-slate-100 dark:bg-[#071929] hover:bg-primary hover:text-white dark:hover:bg-primary text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#0d2336] rounded-xl cursor-pointer transition-all shrink-0">
-                    <FiUploadCloud className="text-sm" />
-                    <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setPesticideLicenseFile)} />
-                  </label>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Fertilizer License No.</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-xl px-3.5 py-2.5 text-xs outline-none"
-                    placeholder="Fertilizer License No."
-                    value={fertilizerLicenseNo}
-                    onChange={(e) => setFertilizerLicenseNo(e.target.value)}
-                  />
-                  <label className="p-2.5 bg-slate-100 dark:bg-[#071929] hover:bg-primary hover:text-white dark:hover:bg-primary text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#0d2336] rounded-xl cursor-pointer transition-all shrink-0">
-                    <FiUploadCloud className="text-sm" />
-                    <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setFertilizerLicenseFile)} />
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            {/* Banker details */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Bank Account No.</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-xl px-3.5 py-2.5 text-xs outline-none"
-                    placeholder="Bank Account No."
-                    value={bankAccountNo}
-                    onChange={(e) => setBankAccountNo(e.target.value)}
-                  />
-                  <label className="p-2.5 bg-slate-100 dark:bg-[#071929] hover:bg-primary hover:text-white dark:hover:bg-primary text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#0d2336] rounded-xl cursor-pointer transition-all shrink-0">
-                    <FiUploadCloud className="text-sm" />
-                    <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setBankAccountFile)} />
-                  </label>
-                </div>
-              </div>
-
-              <Input
-                label="IFSC Code"
-                placeholder="IFSC Code"
-                value={ifscCode}
-                onChange={(e) => setIfscCode(e.target.value)}
-              />
-
-              <Input
-                label="Banker's Name"
-                placeholder="Banker's Name"
-                value={bankersName}
-                onChange={(e) => setBankersName(e.target.value)}
-              />
-
-              <Input
-                label="Banker's Address"
-                placeholder="Banker's Address"
-                value={bankersAddress}
-                onChange={(e) => setBankersAddress(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* PAGE 3: INFRASTRUCTURE & SECURITY DEPOSITS */}
-          <div className="space-y-6 pt-4 border-t border-slate-100 dark:border-[#0d2336]/30">
-            <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-primary border-l-2 border-primary pl-2">
-              Infrastructure & Security
-            </h4>
-
-            <Input
-              label="Cheque Signing Auth. Name"
-              placeholder="Cheque Signing Authority Name"
-              value={chequeAuthName}
-              onChange={(e) => setChequeAuthName(e.target.value)}
-            />
-
-            {/* Details of Infrastructure */}
-            <div className="space-y-4 p-4.5 bg-slate-50/50 dark:bg-[#071929]/20 border border-slate-150/40 rounded-2xl">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
-                Details of Infrastructure/Facility of Distribution
-              </p>
-              
-              {/* Godown Row */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
-                <Input
-                  label="No. of Godown"
-                  placeholder="No. of Godown"
-                  value={noOfGodown}
-                  onChange={(e) => setNoOfGodown(e.target.value)}
+                <TextField
+                  label="Organization Name"
+                  required
+                  placeholder="Enter name here"
+                  value={form.organizationName}
+                  error={errors.organizationName}
+                  onChange={(value) => update("organizationName", value)}
                 />
-                <Input
-                  label="Size Sq/Ft."
-                  placeholder="Size Sq/Ft."
-                  value={sizeSqFt}
-                  onChange={(e) => setSizeSqFt(e.target.value)}
-                />
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Ownership</label>
-                  <div className="flex gap-4 text-xs font-semibold text-slate-700 dark:text-slate-350">
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="godownOwnership"
-                        checked={godownOwnership === "SELF"}
-                        onChange={() => setGodownOwnership("SELF")}
-                      />
-                      <span>SELF</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="godownOwnership"
-                        checked={godownOwnership === "RENTED"}
-                        onChange={() => setGodownOwnership("RENTED")}
-                      />
-                      <span>RENTED</span>
-                    </label>
-                  </div>
-                </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Electricity bill</label>
-                  <label className="flex items-center justify-between border border-slate-200 dark:border-[#0d2336]/40 bg-white dark:bg-slate-900 rounded-xl px-3.5 py-2.5 cursor-pointer transition-all hover:border-slate-400">
-                    <span className="text-xs text-slate-400 truncate max-w-[120px]">{godownElectricityFile || "Upload File"}</span>
-                    <FiUploadCloud className="text-slate-400 text-sm shrink-0" />
-                    <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setGodownElectricityFile)} />
-                  </label>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Water bill</label>
-                  <label className="flex items-center justify-between border border-slate-200 dark:border-[#0d2336]/40 bg-white dark:bg-slate-900 rounded-xl px-3.5 py-2.5 cursor-pointer transition-all hover:border-slate-400">
-                    <span className="text-xs text-slate-400 truncate max-w-[120px]">{godownWaterFile || "Upload File"}</span>
-                    <FiUploadCloud className="text-slate-400 text-sm shrink-0" />
-                    <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setGodownWaterFile)} />
-                  </label>
-                </div>
-              </div>
-
-              {/* Retail Outlet Row */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center pt-2">
                 <div className="md:col-span-2">
-                  <Input
-                    label="No. of Retail Outlets"
-                    placeholder="No. of Retail Outlets"
-                    value={noOfRetailOutlets}
-                    onChange={(e) => setNoOfRetailOutlets(e.target.value)}
+                  <TextField
+                    label="Organization Website"
+                    required
+                    placeholder="www.company.com"
+                    value={form.website}
+                    error={errors.website}
+                    onChange={(value) => update("website", value)}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Ownership</label>
-                  <div className="flex gap-4 text-xs font-semibold text-slate-700 dark:text-slate-350">
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="outletsOwnership"
-                        checked={outletsOwnership === "SELF"}
-                        onChange={() => setOutletsOwnership("SELF")}
-                      />
-                      <span>SELF</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="outletsOwnership"
-                        checked={outletsOwnership === "RENTED"}
-                        onChange={() => setOutletsOwnership("RENTED")}
-                      />
-                      <span>RENTED</span>
-                    </label>
+              </div>
+            </FormSectionBlock>
+
+            <FormSectionBlock icon={<LuMapPin />} title="Location Information">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <TextField
+                  label="Street Address"
+                  required
+                  placeholder="Street Address, Building, Suite"
+                  value={form.address}
+                  error={errors.address}
+                  onChange={(value) => update("address", value)}
+                />
+
+                <TextField
+                  label="State / Province"
+                  required
+                  placeholder="State"
+                  list="customer-states"
+                  value={form.state}
+                  error={errors.state}
+                  onChange={(value) => update("state", value)}
+                />
+                <datalist id="customer-states">
+                  {states.map((state) => (
+                    <option key={state} value={state} />
+                  ))}
+                </datalist>
+
+                <TextField
+                  label="City"
+                  required
+                  placeholder="Type or select"
+                  value={form.city}
+                  error={errors.city}
+                  onChange={(value) => update("city", value)}
+                />
+
+                <SelectField
+                  label="Country"
+                  required
+                  placeholder="Select here"
+                  value={form.country}
+                  options={COUNTRIES}
+                  error={errors.country}
+                  onChange={(value) => update("country", value)}
+                />
+
+                <div className="md:col-span-2">
+                  <TextField
+                    label="PIN / ZIP Code"
+                    required
+                    placeholder="Pin Code"
+                    value={form.pinCode}
+                    error={errors.pinCode}
+                    onChange={(value) => update("pinCode", value)}
+                  />
+                </div>
+              </div>
+            </FormSectionBlock>
+
+            <FormSectionBlock icon={<LuIdCard />} title="Primary Contact">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <TextField
+                  label="Full Name"
+                  required
+                  placeholder="Enter full name"
+                  value={form.contactName}
+                  error={errors.contactName}
+                  onChange={(value) => update("contactName", value)}
+                />
+
+                <TextField
+                  label="Designation"
+                  required
+                  placeholder="e.g. Procurement Manager"
+                  value={form.designation}
+                  error={errors.designation}
+                  onChange={(value) => update("designation", value)}
+                />
+
+                <div>
+                  <label className="mb-1.5 block">
+                    Mobile Number<span className="ml-0.5">*</span>
+                  </label>
+
+                  <div className="flex gap-2">
+                    <div className="relative w-[92px] shrink-0">
+                      <select
+                        value={form.dialCode}
+                        onChange={(event) => update("dialCode", event.target.value)}
+                        aria-label="Country code"
+                        className="w-full appearance-none border bg-white pl-2.5 pr-6 outline-none focus:border-[#233353] dark:bg-[#071929]"
+                      >
+                        {DIAL_CODES.map((dial) => (
+                          <option key={dial.code} value={dial.code}>
+                            {dial.flag} {dial.code}
+                          </option>
+                        ))}
+                      </select>
+                      <FiChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#141414] dark:text-slate-400" />
+                    </div>
+
+                    <input
+                      inputMode="numeric"
+                      value={form.mobile}
+                      placeholder="XXXXXXXXXX"
+                      onChange={(event) => update("mobile", event.target.value.replace(/[^0-9 ]/g, ""))}
+                      aria-invalid={Boolean(errors.mobile)}
+                      className={`min-w-0 flex-1 border bg-white px-3 outline-none focus:border-[#233353] dark:bg-[#071929] ${
+                        errors.mobile ? "!border-rose-400" : ""
+                      }`}
+                    />
                   </div>
+
+                  {errors.mobile && <p className="mt-1 text-[11px] text-rose-500">{errors.mobile}</p>}
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Electricity bill</label>
-                  <label className="flex items-center justify-between border border-slate-200 dark:border-[#0d2336]/40 bg-white dark:bg-slate-900 rounded-xl px-3.5 py-2.5 cursor-pointer transition-all hover:border-slate-400">
-                    <span className="text-xs text-slate-400 truncate max-w-[120px]">{outletsElectricityFile || "Upload File"}</span>
-                    <FiUploadCloud className="text-slate-400 text-sm shrink-0" />
-                    <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setOutletsElectricityFile)} />
-                  </label>
-                </div>
+                <TextField
+                  label="Email Address"
+                  required
+                  type="email"
+                  placeholder="Enter email address"
+                  value={form.email}
+                  error={errors.email}
+                  onChange={(value) => update("email", value)}
+                />
+              </div>
+            </FormSectionBlock>
+          </FormCard>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Water bill</label>
-                  <label className="flex items-center justify-between border border-slate-200 dark:border-[#0d2336]/40 bg-white dark:bg-slate-900 rounded-xl px-3.5 py-2.5 cursor-pointer transition-all hover:border-slate-400">
-                    <span className="text-xs text-slate-400 truncate max-w-[120px]">{outletsWaterFile || "Upload File"}</span>
-                    <FiUploadCloud className="text-slate-400 text-sm shrink-0" />
-                    <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setOutletsWaterFile)} />
+          {/* RIGHT */}
+          <FormCard className="h-fit">
+            <FormSectionBlock first icon={<LuSquareUser />} title="Sales Information">
+              <div className="space-y-4">
+                <SelectField
+                  label="Lead Source"
+                  required
+                  placeholder="Select here"
+                  value={form.leadSource}
+                  options={leadSources}
+                  error={errors.leadSource}
+                  onChange={(value) => update("leadSource", value)}
+                />
+
+                <div>
+                  <label className="mb-1.5 block">
+                    Assigned to<span className="ml-0.5">*</span>
                   </label>
+
+                  <div className="relative">
+                    <select
+                      value={form.assignedToId}
+                      onChange={(event) => update("assignedToId", event.target.value)}
+                      aria-invalid={Boolean(errors.assignedToId)}
+                      className={`w-full appearance-none border bg-white px-3 pr-9 outline-none focus:border-[#233353] dark:bg-[#071929] ${
+                        errors.assignedToId ? "!border-rose-400" : ""
+                      }`}
+                    >
+                      <option value="">Select here</option>
+                      {users.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {userName(user)}
+                        </option>
+                      ))}
+                    </select>
+
+                    <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#141414] dark:text-slate-400" />
+                  </div>
+
+                  {errors.assignedToId && (
+                    <p className="mt-1 text-[11px] text-rose-500">{errors.assignedToId}</p>
+                  )}
                 </div>
               </div>
-            </div>
+            </FormSectionBlock>
 
-            {/* Serving Companies Addable Table */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Name of the Companies currently serving and their respective turnover of pesticides for the last year:
-                </label>
-                <Button type="button" size="sm" onClick={addServingCompanyRow} icon={<FiPlus />}>
-                  Add Row
-                </Button>
-              </div>
+            <FormSectionBlock icon={<LuFileText />} title="Requirements & Files">
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block">Remarks</label>
+                  <textarea
+                    rows={5}
+                    value={form.remarks}
+                    onChange={(event) => update("remarks", event.target.value)}
+                    placeholder="Enter specific hardware requirements or customization requests..."
+                    className="w-full resize-none border p-3 outline-none focus:border-[#233353]"
+                  />
+                </div>
 
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-[#0d2336]/50">
-                <table className="w-full text-xs text-left border-collapse font-sans">
-                  <thead>
-                    <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-[#0d2336] text-[10px] font-extrabold uppercase text-slate-500">
-                      <th className="p-3 w-12 text-center">Sr. No.</th>
-                      <th className="p-3">Name of the Company & Year of Distributorship</th>
-                      <th className="p-3 w-40">Max. Credit Amount (₹)</th>
-                      <th className="p-3 w-40">Maximum Credit Days</th>
-                      <th className="p-3 w-40">Turnover (₹)</th>
-                      <th className="p-3 w-16 text-center">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-150 font-semibold text-slate-700 dark:text-slate-200">
-                    {servingCompanies.map((row, idx) => (
-                      <tr key={row.id}>
-                        <td className="p-3 text-center font-mono">{idx + 1}</td>
-                        <td className="p-2">
-                          <input
-                            type="text"
-                            required
-                            className="w-full bg-slate-50/60 dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-lg px-2.5 py-1 text-xs text-slate-800 dark:text-white"
-                            placeholder="Company & Year"
-                            value={row.nameAndYear}
-                            onChange={(e) => handleServingCompanyChange(row.id, "nameAndYear", e.target.value)}
-                          />
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            className="w-full bg-slate-50/60 dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-lg px-2.5 py-1 text-xs text-slate-800 dark:text-white"
-                            placeholder="Credit Amount"
-                            value={row.maxCredit || ""}
-                            onChange={(e) => handleServingCompanyChange(row.id, "maxCredit", parseFloat(e.target.value) || 0)}
-                          />
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            className="w-full bg-slate-50/60 dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-lg px-2.5 py-1 text-xs text-slate-800 dark:text-white"
-                            placeholder="Credit Days"
-                            value={row.creditDays || ""}
-                            onChange={(e) => handleServingCompanyChange(row.id, "creditDays", parseInt(e.target.value) || 0)}
-                          />
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            className="w-full bg-slate-50/60 dark:bg-slate-900 border border-slate-200 dark:border-[#0d2336]/40 rounded-lg px-2.5 py-1 text-xs text-slate-800 dark:text-white"
-                            placeholder="Turnover"
-                            value={row.turnover || ""}
-                            onChange={(e) => handleServingCompanyChange(row.id, "turnover", parseFloat(e.target.value) || 0)}
-                          />
-                        </td>
-                        <td className="p-2 text-center">
+                <div>
+                  <label className="mb-1.5 block">Attachments</label>
+
+                  <label
+                    onDragOver={(event) => event.preventDefault()}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setDragging(true);
+                    }}
+                    onDragLeave={() => setDragging(false)}
+                    onDrop={(event: DragEvent<HTMLLabelElement>) => {
+                      event.preventDefault();
+                      setDragging(false);
+                      addFiles(event.dataTransfer.files);
+                    }}
+                    className={`flex min-h-[112px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-5 text-center transition ${
+                      dragging
+                        ? "border-[#233353] bg-[#233353]/5"
+                        : "border-[#bdbdbd] hover:bg-slate-50 dark:border-[#17304a] dark:hover:bg-[#0b2034]"
+                    }`}
+                  >
+                    <LuFileUp className="mb-2 text-[18px] text-[#777777]" />
+                    <span className="text-[12px] text-[#777777]">Drop files or click to upload</span>
+                    <span className="mt-0.5 text-[10px] text-[#a9a9a9]">PDF, DOC, XLS up to 10MB</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx"
+                      className="hidden"
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        addFiles(event.target.files);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+
+                  {form.attachments.length > 0 && (
+                    <ul className="mt-2 space-y-1.5">
+                      {form.attachments.map((name) => (
+                        <li
+                          key={name}
+                          className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-600 dark:bg-[#0b2034] dark:text-slate-300"
+                        >
+                          <span className="truncate">{name}</span>
                           <button
                             type="button"
-                            onClick={() => removeServingCompanyRow(row.id)}
-                            className="p-1 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer border-none bg-transparent"
-                            disabled={servingCompanies.length === 1}
+                            aria-label={`Remove ${name}`}
+                            onClick={() =>
+                              update(
+                                "attachments",
+                                form.attachments.filter((item) => item !== name),
+                              )
+                            }
+                            className="shrink-0 text-slate-400 hover:text-rose-500"
                           >
-                            <FiTrash2 className="text-sm" />
+                            <FiX size={12} />
                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {/* Total Row */}
-                    <tr className="bg-slate-50/80 dark:bg-slate-900/50 font-bold border-t border-slate-200 dark:border-[#0d2336]">
-                      <td colSpan={4} className="p-3 uppercase text-primary text-right">Total</td>
-                      <td colSpan={2} className="p-3 font-mono text-primary font-black">₹{totalServingTurnover.toLocaleString('en-IN')}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Details of Security Deposit */}
-            <div className="space-y-3 p-4 bg-slate-50/50 dark:bg-[#071929]/20 border border-slate-150/40 rounded-2xl">
-              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
-                Details of Security Deposit
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Input
-                  label="Cheque No."
-                  placeholder="Cheque No."
-                  value={secChequeNo}
-                  onChange={(e) => setSecChequeNo(e.target.value)}
-                />
-                <Input
-                  label="Date of Issue"
-                  type="date"
-                  value={secDateOfIssue}
-                  onChange={(e) => setSecDateOfIssue(e.target.value)}
-                />
-                <Input
-                  label="Amount"
-                  placeholder="Amount"
-                  value={secAmount}
-                  onChange={(e) => setSecAmount(e.target.value)}
-                />
-                <Input
-                  label="Bank Drawn"
-                  placeholder="Bank Drawn"
-                  value={secBankDrawn}
-                  onChange={(e) => setSecBankDrawn(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Sales targets */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Sales target for the current year (In, Rs. Lakh)"
-                placeholder="Current Year Target"
-                value={targetCurrentYear}
-                onChange={(e) => setTargetCurrentYear(e.target.value)}
-              />
-              <Input
-                label="Sales target for the Next Year (In, Rs. Lakh)"
-                placeholder="Next Year Target"
-                value={targetNextYear}
-                onChange={(e) => setTargetNextYear(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Insecticides License</label>
-              <label className="flex items-center justify-between border border-slate-200 dark:border-[#0d2336]/40 bg-white dark:bg-slate-900 rounded-xl px-3.5 py-2.5 cursor-pointer transition-all hover:border-slate-400 max-w-md">
-                <span className="text-xs text-slate-400 truncate">{insecticidesLicenseFile || "Upload File"}</span>
-                <FiUploadCloud className="text-slate-400 text-sm shrink-0" />
-                <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, setInsecticidesLicenseFile)} />
-              </label>
-            </div>
-          </div>
-
-          {/* PAGE 4: KYC FILE COMPLIANCE CHECKLIST */}
-          <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-[#0d2336]/30">
-            <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-primary border-l-2 border-primary pl-2 mb-2">
-              KYC Compliance Checklist (File Attachments)
-            </h4>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                { label: "Bal. Sheet of last 2Y", val: fileBalSheet, set: setFileBalSheet },
-                { label: "I.T.R of last 2 year", val: fileITR, set: setFileITR },
-                { label: "Proof of Residence", val: fileResidence, set: setFileResidence },
-                { label: "Proof of Photo Id", val: filePhotoId, set: setFilePhotoId },
-                { label: "K.Y.C of Partners", val: fileKYCPartners, set: setFileKYCPartners },
-                { label: "Partnership Deed / MoA / AoA with latest amendment", val: fileDeedOrMoA, set: setFileDeedOrMoA },
-                { label: "4 Cheques (Nationalized Bank Only) & 2 Letterheads with Stamp and Sign", val: fileChequesAndLetterhead, set: setFileChequesAndLetterhead },
-                { label: "Copy of Last 12 months Bank Statement (Account verified by Bank)", val: fileBankStatement, set: setFileBankStatement },
-                { label: "Sign of Proprietor/Managing Partner/Director authorized to sign Cheques attested by bank", val: fileDirectorSign, set: setFileDirectorSign },
-              ].map((item, idx) => (
-                <div key={idx} className="p-3.5 border border-slate-200/60 dark:border-[#0d2336]/50 bg-slate-50/30 dark:bg-slate-900/10 rounded-xl flex items-center justify-between hover:border-slate-350 transition-all">
-                  <div className="pr-4">
-                    <p className="text-xs font-bold text-slate-800 dark:text-white leading-normal">{item.label}</p>
-                    <p className="text-[9.5px] text-slate-400 mt-1 truncate max-w-[280px]">
-                      {item.val ? `✓ Attached: ${item.val}` : "Awaiting document attachment"}
-                    </p>
-                  </div>
-                  <label className="p-2 bg-slate-100 dark:bg-[#071929] hover:bg-primary hover:text-white dark:hover:bg-primary text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#0d2336] rounded-lg cursor-pointer transition-all shrink-0">
-                    <FiUploadCloud className="text-sm" />
-                    <input type="file" className="hidden" onChange={(e) => handleSimulatedUpload(e, item.set)} />
-                  </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-100 dark:border-[#0d2336]/30">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.push("/sales/customers")}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              loading={submitting}
-              icon={<FiSave />}
-            >
-              Save Distributor Record
-            </Button>
-          </div>
-
+              </div>
+            </FormSectionBlock>
+          </FormCard>
         </form>
+      )}
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  onChange,
+  required,
+  placeholder,
+  type = "text",
+  error,
+  list,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  placeholder?: string;
+  type?: string;
+  error?: string;
+  list?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-1.5 block">
+        {label}
+        {required && <span className="ml-0.5">*</span>}
+      </label>
+
+      <input
+        type={type}
+        list={list}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        aria-invalid={Boolean(error)}
+        className={`w-full border bg-white px-3 outline-none focus:border-[#233353] dark:bg-[#071929] ${
+          error ? "!border-rose-400" : ""
+        }`}
+      />
+
+      {error && <p className="mt-1 text-[11px] text-rose-500">{error}</p>}
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+  required,
+  placeholder,
+  error,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  required?: boolean;
+  placeholder?: string;
+  error?: string;
+}) {
+  /* Keep a stored value selectable even if it is not in today's list. */
+  const choices = value && !options.includes(value) ? [value, ...options] : options;
+
+  return (
+    <div>
+      <label className="mb-1.5 block">
+        {label}
+        {required && <span className="ml-0.5">*</span>}
+      </label>
+
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-invalid={Boolean(error)}
+          className={`w-full appearance-none border bg-white px-3 pr-9 outline-none focus:border-[#233353] dark:bg-[#071929] ${
+            value ? "" : "!text-[#a9a9a9]"
+          } ${error ? "!border-rose-400" : ""}`}
+        >
+          <option value="">{placeholder || `Select ${label}`}</option>
+          {choices.map((option) => (
+            <option key={option} value={option} className="text-[#141414]">
+              {option}
+            </option>
+          ))}
+        </select>
+
+        <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#141414] dark:text-slate-400" />
       </div>
+
+      {error && <p className="mt-1 text-[11px] text-rose-500">{error}</p>}
     </div>
   );
 }

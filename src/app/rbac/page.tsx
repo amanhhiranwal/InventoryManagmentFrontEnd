@@ -80,10 +80,31 @@ function errorText(err: unknown, fallback: string) {
   return (typeof data?.detail === "string" && data.detail) || data?.message || fallback;
 }
 
+/** Actions inside a page that need their own tick, beyond opening it.
+    Keyed by the page's permission; the backend checks each key. */
+const PAGE_ACTIONS: Record<string, { key: string; title: string }[]> = {
+  "customer.read": [
+    { key: "customer.bulk_upload", title: "Bulk Upload from Excel" },
+  ],
+};
+
 /** The pages a menu group grants. A group with sub-pages grants those; a
-    standalone page (Dashboard, Customers...) grants itself. */
+    standalone page (Dashboard, Customers...) grants itself. Each page is
+    followed by any actions that need their own tick. */
 function groupPages(group: DBMenuItem): DBMenuItem[] {
-  return group.children && group.children.length > 0 ? group.children : [group];
+  const pages =
+    group.children && group.children.length > 0 ? group.children : [group];
+
+  return pages.flatMap((page) => [
+    page,
+    ...(PAGE_ACTIONS[page.permission_key || ""] || []).map((action) => ({
+      ...page,
+      id: `${page.id}:${action.key}`,
+      title: action.title,
+      permission_key: action.key,
+      children: [],
+    })),
+  ]);
 }
 
 export default function RBACPage() {
@@ -665,8 +686,12 @@ export default function RBACPage() {
 
                             <div className="flex items-center gap-2">
                               <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-[#0d2336] px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-800">
-                                {group.children && group.children.length > 0
-                                  ? `${assignedChildCount} / ${childPermKeys.length} Submenus Enabled`
+                                {children.length > 1
+                                  ? `${assignedChildCount} / ${childPermKeys.length} ${
+                                      group.children && group.children.length > 0
+                                        ? "Submenus"
+                                        : "Permissions"
+                                    } Enabled`
                                   : assignedChildCount > 0
                                     ? "Page Enabled"
                                     : "Page Hidden"}
