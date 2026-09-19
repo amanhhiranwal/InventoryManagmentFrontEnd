@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "@/lib/axios";
 import { useRouter } from "next/navigation";
-import Card from "@/components/ui/Card";
-import Table from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Input from "@/components/ui/Input";
@@ -13,13 +11,23 @@ import CustomerContactDrawer, {
 } from "@/components/ui/CustomerContactDrawer";
 
 import { useUIStore } from "@/lib/store/ui.store";
+import CustomerImportModal from "@/features/customers/components/CustomerImportModal";
+import Pagination from "@/components/crm/Pagination";
+import {
+  LIST_TABLE,
+  ListPage,
+  ListPageHeader,
+  ListToolbar,
+  PrimaryAction,
+  TableCard,
+} from "@/components/crm/ListPageShell";
 import { createLeadApi } from "@/features/workflows/api/workflows.api";
 import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
 
 import {
   FiPlus,
-  FiSearch,
   FiCalendar,
+  FiMapPin,
   FiChevronDown,
   FiUserPlus,
   FiFile,
@@ -31,8 +39,6 @@ import {
   FiSlash,
   FiX,
   FiDownload,
-  FiSliders,
-  FiRefreshCw,
 } from "react-icons/fi";
 
 import { CgSpinner } from "react-icons/cg";
@@ -127,7 +133,14 @@ function normalizeCustomer(raw: any, index: number): Customer {
     customerType:
       raw.customerType ?? raw.customer_type ?? raw.type ?? "Distributor",
 
-    assignedTo: raw.assignedTo ?? raw.assigned_to_name ?? raw.assigned_to ?? "",
+    /* Customers carry no assignee yet; the person who added the account
+       owns it, as on the Leads list. */
+    assignedTo:
+      raw.assignedTo ??
+      raw.assigned_to_name ??
+      raw.assigned_to ??
+      raw.creator_name ??
+      "",
 
     assignedToId: raw.assignedToId ?? raw.assigned_to_id ?? "",
 
@@ -215,6 +228,7 @@ export default function CustomersPage() {
   // --------------------------------------------------
 
   const [newCustomerMenuOpen, setNewCustomerMenuOpen] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // --------------------------------------------------
   // Export menu
@@ -416,7 +430,8 @@ export default function CustomersPage() {
 
       const matchesAssigned = !assignedTo || customer.assignedTo === assignedTo;
 
-      const matchesStatus = status === "All" || customer.status === status;
+      const matchesStatus =
+        !status || status === "All" || customer.status === status;
 
       const matchesState = !stateFilter || customer.state === stateFilter;
 
@@ -789,7 +804,7 @@ export default function CustomersPage() {
 
   const handleAddFromExcel = () => {
     setNewCustomerMenuOpen(false);
-    addToast("Excel import is ready to be connected.", "info");
+    setShowImportModal(true);
   };
 
   // --------------------------------------------------
@@ -959,215 +974,102 @@ ${convertDesc.trim()}`,
     (dateFrom || dateTo ? 1 : 0) +
     (customerType ? 1 : 0) +
     (assignedTo ? 1 : 0) +
-    (status !== "All" ? 1 : 0) +
+    (status && status !== "All" ? 1 : 0) +
     (stateFilter ? 1 : 0);
 
   return (
-    <div
-      className="space-y-5 pb-10"
-      onClick={() => {
-        setOpenRowMenu(null);
-        setNewCustomerMenuOpen(false);
-        setExportMenuOpen(false);
-      }}
-    >
-      {/* ============================================================
-               PAGE HEADER
-      ============================================================ */}
+    <ListPage>
+      <div
+        className="space-y-5"
+        onClick={() => {
+          setOpenRowMenu(null);
+          setNewCustomerMenuOpen(false);
+          setExportMenuOpen(false);
+        }}
+      >
+        {/* ============================================================
+            PAGE HEADER
+        ============================================================ */}
 
-      <div className="flex items-center justify-between">
-        {/* Page title + refresh */}
+        <ListPageHeader
+          title="Customers"
+          refreshing={loading}
+          onRefresh={handleRefreshCustomers}
+          actions={
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => setExportMenuOpen((prev) => !prev)}
+                title="More Actions"
+                aria-label="More Actions"
+                className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-white text-[#131313] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
+              >
+                <FiMoreVertical size={15} />
+              </button>
 
-        <div className="flex items-center gap-2">
-          <h1
-            className="
-        text-xl
-        sm:text-2xl
-        font-bold
-        text-slate-900
-        dark:text-white
-        tracking-tight
-      "
-          >
-            Customers
-          </h1>
+              {exportMenuOpen && (
+                <div className="absolute right-0 top-9 z-50 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
+                  <MenuItem icon={<FiDownload />} onClick={handleExportData}>
+                    Export Data
+                  </MenuItem>
 
-          <button
-            type="button"
-            onClick={handleRefreshCustomers}
-            disabled={loading}
-            title="Refresh customers"
-            aria-label="Refresh customers"
-            className="
-        w-7 h-7
-        rounded-lg
-        border
-        border-slate-200
-        dark:border-[#0d2336]
-        bg-white
-        dark:bg-[#051422]
-        text-slate-500
-        dark:text-slate-300
-        flex
-        items-center
-        justify-center
-        hover:bg-slate-50
-        dark:hover:bg-[#071929]
-        hover:text-[#233353]
-        dark:hover:text-white
-        transition-all
-        disabled:opacity-50
-        disabled:cursor-not-allowed
-      "
-          >
-            <FiRefreshCw
-              className={`text-sm ${
-                loading ? "animate-spin text-[#233353]" : ""
-              }`}
-            />
-          </button>
-        </div>
+                  <MenuItem icon={<FiDownload />} onClick={handleDownloadChart}>
+                    Download Chart
+                  </MenuItem>
+                </div>
+              )}
+            </div>
+          }
+        />
 
-        {/* More actions */}
+        {/* ============================================================
+            SEARCH + FILTER + NEW CUSTOMER
+        ============================================================ */}
 
         <div className="relative" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => setExportMenuOpen((prev) => !prev)}
-            className="
-        w-10 h-10
-        rounded-xl
-        flex
-        items-center
-        justify-center
-        bg-white
-        dark:bg-[#051422]
-        border
-        border-slate-200
-        dark:border-[#0d2336]
-        text-slate-600
-        dark:text-slate-300
-        hover:bg-slate-50
-        dark:hover:bg-[#071929]
-        transition-colors
-      "
-            title="More Actions"
-          >
-            <FiMoreVertical className="text-lg" />
-          </button>
-
-          {exportMenuOpen && (
-            <div
-              className="
-          absolute
-          right-0
-          top-12
-          z-50
-          w-48
-          rounded-xl
-          border
-          border-slate-200
-          dark:border-[#0d2336]
-          bg-white
-          dark:bg-[#071929]
-          shadow-xl
-          overflow-hidden
-        "
-            >
-              <button
-                type="button"
-                onClick={handleExportData}
-                className="
-            w-full
-            px-4 py-3
-            text-left
-            text-sm
-            text-slate-700
-            dark:text-slate-200
-            hover:bg-slate-50
-            dark:hover:bg-[#0b2032]
-            flex
-            items-center
-            gap-3
-          "
+          <ListToolbar
+            search={search}
+            onSearchChange={setSearch}
+            placeholder="Search Customers"
+            activeFilterCount={activeFilterCount}
+            onToggleFilters={() => {
+              setFilterOpen((prev) => !prev);
+              setNewCustomerMenuOpen(false);
+            }}
+            trailing={
+              <PrimaryAction
+                onClick={() => {
+                  setNewCustomerMenuOpen((prev) => !prev);
+                  setFilterOpen(false);
+                }}
+                icon={<FiPlus size={15} />}
               >
-                <FiDownload className="text-slate-500" />
+                New Customer
+              </PrimaryAction>
+            }
+          />
 
-                <span>Export Data</span>
-              </button>
+          {/* New Customer menu */}
+          {newCustomerMenuOpen && (
+            <div className="absolute right-0 top-[48px] z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
+              <MenuItem icon={<FiUserPlus />} onClick={handleAddSingleLead}>
+                Add Single Lead
+              </MenuItem>
 
-              <button
-                type="button"
-                onClick={handleDownloadChart}
-                className="
-            w-full
-            px-4 py-3
-            text-left
-            text-sm
-            text-slate-700
-            dark:text-slate-200
-            hover:bg-slate-50
-            dark:hover:bg-[#0b2032]
-            flex
-            items-center
-            gap-3
-          "
-              >
-                <FiDownload className="text-slate-500" />
+              <MenuItem icon={<FiFile />} onClick={handleAddFromExcel}>
+                Add From Excel
+              </MenuItem>
 
-                <span>Download Chart</span>
-              </button>
+              <MenuItem icon={<FiLink />} onClick={openIntegrationContact}>
+                Add From Integration
+              </MenuItem>
             </div>
           )}
-        </div>
-      </div>
 
-      {/* ============================================================
-        SEARCH + FILTER
-     ============================================================ */}
-
-      <div className="flex items-center gap-3">
-        {/* Search */}
-        <div className="relative flex-1">
-          <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
-
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search Customers"
-            className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] text-sm text-slate-800 dark:text-white outline-none focus:border-[#233353] transition-colors"
-          />
-        </div>
-
-        {/* Filter */}
-        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => setFilterOpen((prev) => !prev)}
-            className={`relative h-12 w-12 rounded-xl border flex items-center justify-center transition-all ${
-              filterOpen || activeFilterCount > 0
-                ? "border-[#233353] bg-[#233353] text-white"
-                : "border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#071929]"
-            }`}
-            title="Filter Customers"
-          >
-            {/* Screenshot-style sliders icon */}
-            <FiSliders className="text-[18px]" />
-
-            {/* Filter count */}
-            {activeFilterCount > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center border-2 border-white dark:border-[#051422]">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
-
-          {/* Filter Dropdown */}
+          {/* Filter popover */}
           {filterOpen && (
-            <div className="absolute right-0 top-14 z-50 w-[520px] rounded-2xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] shadow-2xl p-5">
-              {/* Date range */}
-              <div className="flex items-center justify-between mb-5">
+            <div className="absolute right-0 top-[48px] z-50 w-full max-w-[520px] rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.12)] sm:right-[150px] dark:border-[#17304a] dark:bg-[#071929]">
+              <div className="mb-4 flex items-center justify-between">
                 <label className="text-xs font-medium text-slate-500">
                   Date Range
                 </label>
@@ -1175,40 +1077,39 @@ ${convertDesc.trim()}`,
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="text-xs text-red-400 hover:text-red-500"
+                  className="text-[11px] font-medium text-rose-500 hover:text-rose-600"
                 >
                   × Clear Filter
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 mb-5">
-                <div className="flex-1 relative">
-                  <FiCalendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <div className="mb-5 flex items-center gap-2">
+                <div className="relative flex-1">
+                  <FiCalendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
 
                   <input
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#071929] text-xs text-slate-700 dark:text-white outline-none"
+                    className="h-[39px] w-full rounded-lg border border-[#d1d1d1] bg-white pl-10 pr-3 text-[13px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
                   />
                 </div>
 
                 <span className="text-slate-400">-</span>
 
-                <div className="flex-1 relative">
-                  <FiCalendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <div className="relative flex-1">
+                  <FiCalendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
 
                   <input
                     type="date"
                     value={dateTo}
                     min={dateFrom || undefined}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#071929] text-xs text-slate-700 dark:text-white outline-none"
+                    className="h-[39px] w-full rounded-lg border border-[#d1d1d1] bg-white pl-10 pr-3 text-[13px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
                   />
                 </div>
               </div>
 
-              {/* Customer Type / Assigned */}
               <div className="grid grid-cols-2 gap-4">
                 <FilterSelect
                   label="Customer Type"
@@ -1227,8 +1128,7 @@ ${convertDesc.trim()}`,
                 />
               </div>
 
-              {/* Status / State */}
-              <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="mt-4 grid grid-cols-2 gap-4">
                 <FilterSelect
                   label="Status"
                   value={status}
@@ -1240,18 +1140,17 @@ ${convertDesc.trim()}`,
                 <FilterSelect
                   label="State"
                   value={stateFilter}
-                  placeholder="Status"
+                  placeholder="Select State"
                   options={stateOptions}
                   onChange={setStateFilter}
                 />
               </div>
 
-              {/* Footer */}
-              <div className="flex items-center justify-end gap-5 mt-6">
+              <div className="mt-6 flex items-center justify-end gap-5">
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-[#233353]"
+                  className="text-xs font-medium text-slate-600 hover:text-[#233353] dark:text-slate-300"
                 >
                   Clear All Filter
                 </button>
@@ -1262,7 +1161,7 @@ ${convertDesc.trim()}`,
                     setFilterOpen(false);
                     setCurrentPage(1);
                   }}
-                  className="px-5 py-2.5 rounded-xl bg-[#233353] hover:bg-[#101725] text-white text-xs font-bold"
+                  className="h-[39px] rounded-lg bg-[#273756] px-5 text-[13px] font-medium text-white transition hover:bg-[#18243a]"
                 >
                   Apply Filter
                 </button>
@@ -1271,258 +1170,244 @@ ${convertDesc.trim()}`,
           )}
         </div>
 
-        {/* New Customer */}
-        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => setNewCustomerMenuOpen((prev) => !prev)}
-            className="h-12 px-5 rounded-xl bg-[#233353] hover:bg-[#101725] text-white text-sm font-bold flex items-center gap-2 shadow-sm transition-colors"
-          >
-            <FiPlus className="text-base" />
+        {/* ============================================================
+            CUSTOMER TABLE
+        ============================================================ */}
 
-            <span>New Customer</span>
-          </button>
-
-          {newCustomerMenuOpen && (
-            <div className="absolute right-0 top-14 z-50 w-56 bg-white dark:bg-[#071929] border border-slate-200 dark:border-[#0d2336] rounded-xl shadow-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={handleAddSingleLead}
-                className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032]"
-              >
-                <FiUserPlus />
-
-                <span>Add Single Lead</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleAddFromExcel}
-                className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032]"
-              >
-                <FiFile />
-
-                <span>Add From Excel</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={openIntegrationContact}
-                className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032]"
-              >
-                <FiLink />
-
-                <span>Add From Integration</span>
-              </button>
+        <TableCard>
+          {loading ? (
+            <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 text-slate-400">
+              <CgSpinner className="animate-spin text-3xl text-[#233353]" />
+              <span className="text-xs font-semibold">Loading customers...</span>
             </div>
+          ) : filteredCustomers.length === 0 ? (
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-2 text-center">
+              <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">
+                No Customers Found
+              </p>
+              <p className="text-[12px] text-[#777777] dark:text-slate-400">
+                Try changing your search or filters.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table
+                  className={`w-full min-w-[900px] border-collapse text-left ${LIST_TABLE}`}
+                >
+                  <thead>
+                    <tr>
+                      <th className="w-12 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all customers"
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Cust. ID" />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Customer Name" />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Company" />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Assigned To" />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Status" />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Last Activity" />
+                      </th>
+                      <th className="px-4 py-3 text-center">Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {paginatedCustomers.map((customer, index) => {
+                      const isConverted = convertedCustomerIds.includes(
+                        customer.id,
+                      );
+
+                      const globalIndex = (currentPage - 1) * PAGE_SIZE + index;
+
+                      const customerId = `#CUS-${1042 + globalIndex}`;
+
+                      return (
+                        <tr
+                          key={customer.id}
+                          onClick={() => openContactDetails(customer)}
+                          className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-[#0b2034]/50"
+                        >
+                          <td
+                            className="px-4 py-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${customer.name}`}
+                              className="h-4 w-4 rounded border-slate-300"
+                            />
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <span className="whitespace-nowrap text-[11px] font-medium text-slate-800 dark:text-slate-300">
+                              {customerId}
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
+                              {customer.contactName || customer.name}
+                            </p>
+
+                            <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
+                              {customer.email || "No email"}
+                            </p>
+
+                            <p className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                              <FiMapPin size={9} />
+                              {customer.state || customer.address || "India"}
+                            </p>
+
+                            {isConverted && (
+                              <span className="mt-1 inline-flex rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
+                                In Lead Pipeline
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="max-w-[180px] px-4 py-3">
+                            <p className="text-[12px] text-slate-700 dark:text-slate-300">
+                              {customer.name}
+                            </p>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            {customer.assignedTo ? (
+                              <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-slate-100 px-2 py-1 dark:bg-[#0b2034]">
+                                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] text-slate-700 dark:bg-[#17304a] dark:text-slate-200">
+                                  {customer.assignedTo.charAt(0).toUpperCase()}
+                                </span>
+
+                                <span className="max-w-[130px] truncate text-[10px] text-slate-700 dark:text-slate-200">
+                                  {customer.assignedTo}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400">
+                                Unassigned
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <CustomerStatus status={customer.status} />
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <span className="whitespace-nowrap text-[10px] text-slate-700 dark:text-slate-300">
+                              {formatDate(customer.lastActivity)}
+                            </span>
+                          </td>
+
+                          <td
+                            className="px-4 py-3"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                title="Contact Details"
+                                aria-label="Contact Details"
+                                onClick={() => openContactDetails(customer)}
+                                className="rounded-lg p-2 text-[#131313] transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#0b2034]"
+                              >
+                                <FiPhone size={13} />
+                              </button>
+
+                              <div className="relative">
+                                <button
+                                  type="button"
+                                  title="More Actions"
+                                  aria-label="More Actions"
+                                  onClick={() =>
+                                    setOpenRowMenu(
+                                      openRowMenu === customer.id
+                                        ? null
+                                        : customer.id,
+                                    )
+                                  }
+                                  className="rounded-lg p-2 text-[#131313] transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#0b2034]"
+                                >
+                                  <FiMoreVertical size={14} />
+                                </button>
+
+                                {openRowMenu === customer.id && (
+                                  <div className="absolute right-0 top-full z-40 mt-1 w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
+                                    <MenuItem
+                                      icon={<FiEdit2 />}
+                                      onClick={() => openContactDetails(customer)}
+                                    >
+                                      Edit
+                                    </MenuItem>
+
+                                    <MenuItem
+                                      icon={<FiActivity />}
+                                      onClick={() => openContactDetails(customer)}
+                                    >
+                                      View Activities
+                                    </MenuItem>
+
+                                    <MenuItem
+                                      icon={<FiSlash />}
+                                      onClick={() => openContactDetails(customer)}
+                                    >
+                                      Deactivate
+                                    </MenuItem>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <Pagination
+                page={currentPage}
+                pageSize={PAGE_SIZE}
+                totalItems={filteredCustomers.length}
+                totalPages={Math.max(
+                  1,
+                  Math.ceil(filteredCustomers.length / PAGE_SIZE),
+                )}
+                onPageChange={setCurrentPage}
+                noun="customers"
+              />
+            </>
           )}
-        </div>
+        </TableCard>
       </div>
 
-      {/* ============================================================
-          CUSTOMER TABLE
-      ============================================================ */}
-
-      <Card bodyClassName="!p-0" className="overflow-visible">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
-            <CgSpinner className="animate-spin text-3xl text-[#233353]" />
-            <span className="text-xs font-semibold">Loading customers...</span>
-          </div>
-        ) : (
-          <Table
-            headers={[
-              "",
-              "Cust. ID",
-              "Customer Name",
-              "Company",
-              "Assigned To",
-              "Status",
-              "Last Activity",
-              "Actions",
-            ]}
-            currentPage={currentPage}
-            totalItems={filteredCustomers.length}
-            pageSize={PAGE_SIZE}
-            onPageChange={(page) => setCurrentPage(page)}
-          >
-            {paginatedCustomers.map((customer, index) => {
-              const isConverted = convertedCustomerIds.includes(customer.id);
-
-              const globalIndex = (currentPage - 1) * PAGE_SIZE + index;
-
-              const customerId = `#CUS-${1042 + globalIndex}`;
-
-              return (
-                <tr
-                  key={customer.id}
-                  className="group hover:bg-slate-50 dark:hover:bg-[#071929]/40 transition-colors"
-                >
-                  {/* Checkbox */}
-                  <td className="px-4 py-4 w-12">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 rounded border-slate-300"
-                    />
-                  </td>
-
-                  {/* ID */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      {customerId}
-                    </span>
-                  </td>
-
-                  {/* Customer */}
-                  <td className="px-4 py-4 min-w-[260px]">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-[#0b2032] flex items-center justify-center text-[11px] font-bold text-[#233353] dark:text-white shrink-0">
-                        {customer.name
-                          .split(" ")
-                          .slice(0, 2)
-                          .map((part) => part[0])
-                          .join("")
-                          .toUpperCase()}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                          {customer.contactName || customer.name}
-                        </p>
-
-                        <p className="text-[11px] text-slate-500 truncate">
-                          {customer.email}
-                        </p>
-
-                        <p className="text-[10px] text-slate-500">
-                          {customer.state || customer.address || "India"}
-                        </p>
-
-                        {isConverted && (
-                          <span className="inline-flex mt-1 text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                            In Lead Pipeline
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* Company */}
-                  <td className="px-4 py-4 min-w-[180px]">
-                    <p className="text-xs font-medium text-slate-700 dark:text-slate-200">
-                      {customer.name}
-                    </p>
-                  </td>
-
-                  {/* Assigned */}
-                  <td className="px-4 py-4">
-                    {customer.assignedTo ? (
-                      <span className="inline-flex items-center px-3 py-1 rounded-md bg-slate-100 dark:bg-[#0b2032] text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                        {customer.assignedTo}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400">—</span>
-                    )}
-                  </td>
-
-                  {/* Status */}
-                  <td className="px-4 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-semibold ${
-                        customer.status === "Active"
-                          ? "border-emerald-400 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20"
-                          : "border-red-400 text-red-500 bg-red-50 dark:bg-red-950/20"
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          customer.status === "Active"
-                            ? "bg-emerald-500"
-                            : "bg-red-500"
-                        }`}
-                      />
-
-                      {customer.status}
-                    </span>
-                  </td>
-
-                  {/* Last activity */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="text-xs text-slate-600 dark:text-slate-300">
-                      {formatDate(customer.lastActivity)}
-                    </span>
-                  </td>
-
-                  {/* Actions */}
-                  <td
-                    className="px-4 py-4"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-end gap-3">
-                      {/* Phone */}
-                      <button
-                        type="button"
-                        title="Contact Details"
-                        onClick={() => openContactDetails(customer)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-[#0b2032] hover:text-[#233353] transition-colors"
-                      >
-                        <FiPhone />
-                      </button>
-
-                      {/* Three dots */}
-                      <div className="relative">
-                        <button
-                          type="button"
-                          title="More"
-                          onClick={() =>
-                            setOpenRowMenu(
-                              openRowMenu === customer.id ? null : customer.id,
-                            )
-                          }
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-[#0b2032]"
-                        >
-                          <FiMoreVertical />
-                        </button>
-
-                        {openRowMenu === customer.id && (
-                          <div className="absolute right-0 top-9 z-40 w-44 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#071929] shadow-xl overflow-hidden">
-                            <button
-                              type="button"
-                              onClick={() => openContactDetails(customer)}
-                              className="w-full px-4 py-3 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032] flex items-center gap-3"
-                            >
-                              <FiEdit2 />
-                              Edit
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openContactDetails(customer)}
-                              className="w-full px-4 py-3 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032] flex items-center gap-3"
-                            >
-                              <FiActivity />
-                              View Activities
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openContactDetails(customer)}
-                              className="w-full px-4 py-3 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032] flex items-center gap-3"
-                            >
-                              <FiSlash />
-                              Deactivate
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </Table>
-        )}
-      </Card>
+      {showImportModal && (
+        <CustomerImportModal
+          onClose={() => setShowImportModal(false)}
+          onImported={(result) => {
+            addToast(
+              `${result.created} customer${result.created === 1 ? "" : "s"} imported.`,
+              "success",
+            );
+            fetchCustomers();
+          }}
+        />
+      )}
 
       {/* ============================================================
           CONTACT DETAILS DRAWER
@@ -1832,7 +1717,7 @@ ${convertDesc.trim()}`,
           </div>
         </Modal>
       )}
-    </div>
+    </ListPage>
   );
 }
 
@@ -1863,7 +1748,7 @@ function FilterSelect({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="appearance-none w-full h-11 px-3.5 pr-9 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#071929] text-xs text-slate-700 dark:text-white outline-none cursor-pointer"
+          className="h-[39px] w-full cursor-pointer appearance-none rounded-lg border border-[#d1d1d1] bg-white px-3.5 pr-9 text-[13px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
         >
           <option value="">{placeholder}</option>
 
@@ -1877,5 +1762,66 @@ function FilterSelect({
         <FiChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
       </div>
     </div>
+  );
+}
+
+/* ================================================================
+   SMALL PIECES
+================================================================ */
+
+/** Column label with the design's sort chevrons. */
+function SortLabel({ label }: { label: string }) {
+  return (
+    <span className="flex items-center gap-2 whitespace-nowrap">
+      {label}
+
+      <span className="flex flex-col leading-[6px] text-slate-300">
+        <span>⌃</span>
+        <span>⌄</span>
+      </span>
+    </span>
+  );
+}
+
+/** Outlined pill with a leading dot, as in the design. */
+function CustomerStatus({ status }: { status: Customer["status"] }) {
+  const active = status === "Active";
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${
+        active
+          ? "border-emerald-400 bg-emerald-50 text-emerald-600 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+          : "border-rose-400 bg-rose-50 text-rose-500 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-400"
+      }`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          active ? "bg-emerald-500" : "bg-rose-500"
+        }`}
+      />
+      {status}
+    </span>
+  );
+}
+
+function MenuItem({
+  icon,
+  onClick,
+  children,
+}: {
+  icon: React.ReactNode;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-[#0b2034]"
+    >
+      <span className="text-slate-500">{icon}</span>
+      {children}
+    </button>
   );
 }
