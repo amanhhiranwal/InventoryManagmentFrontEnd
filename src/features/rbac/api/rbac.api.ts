@@ -5,6 +5,12 @@ export interface Role {
   name: string;
   description?: string;
   permissions?: Permission[];
+  /** Depth on the hierarchy chart, 1 at the top. Absent when the role is
+      not on any chart. */
+  level?: number | null;
+  /** Roles directly above this one on the chart. */
+  parent_role_ids?: string[];
+  user_count?: number;
 }
 
 export interface Permission {
@@ -20,7 +26,18 @@ export const getRolesApi = async (): Promise<Role[]> => {
     id: String(r.id),
     name: r.role_name,
     description: r.description,
+    level: r.level ?? null,
+    parent_role_ids: (r.parent_role_ids || []).map(String),
+    user_count: r.user_count ?? 0,
   }));
+};
+
+export const updateRoleApi = async (
+  roleId: string,
+  name: string,
+  description?: string,
+): Promise<void> => {
+  await api.put(`/api/v1/rbac/roles/${roleId}`, { role_name: name, description });
 };
 
 export const getPermissionsApi = async (): Promise<Permission[]> => {

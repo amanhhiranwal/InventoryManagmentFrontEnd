@@ -62,9 +62,11 @@ export default function CompaniesPage() {
 
   const user = useAuthStore((state) => state.user);
   const superAdmin = user?.is_super_admin === true;
-  const canViewCompanies = hasPermission("company.view");
-  const canUpdateCompany = hasPermission("company.update");
-  const canDeleteCompany = hasPermission("company.delete");
+  /* The Roles & Access matrix grants "company.read"; changes are for the
+     super admin only, as on the backend. */
+  const canViewCompanies = hasPermission("company.read") || hasPermission("company.view");
+  const canUpdateCompany = superAdmin;
+  const canDeleteCompany = superAdmin;
   const showAddCompany = superAdmin;
 
   const fetchCompanies = useCallback(async () => {

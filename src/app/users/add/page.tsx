@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { AxiosError } from "axios";
 import { useRouter } from "next/navigation";
-import { createUserApi } from "@/features/users/api/users.api";
+import { createUserApi, getUsersApi, User } from "@/features/users/api/users.api";
 import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
 import { getCompaniesApi, Company } from "@/features/companies/api/companies.api";
 import { getLocationsApi, Location } from "@/features/locations/api/locations.api";
@@ -20,6 +20,7 @@ export default function AddUserPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [managers, setManagers] = useState<User[]>([]);
   const [loadingSetup, setLoadingSetup] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,6 +35,7 @@ export default function AddUserPage() {
     status: "active",
     role_ids: [] as string[],
     company_ids: [] as string[],
+    reports_to_id: "",
   });
 
   const user = useAuthStore((state) => state.user);
@@ -45,11 +47,13 @@ export default function AddUserPage() {
     const fetchData = async () => {
       try {
         setLoadingSetup(true);
-        const [rolesData, companiesResponse, locationsResponse] = await Promise.all([
+        const [rolesData, companiesResponse, locationsResponse, usersResponse] = await Promise.all([
           getRolesApi(),
           getCompaniesApi(1, 100),
           getLocationsApi(1, 100),
+          getUsersApi(1, 500),
         ]);
+        setManagers(usersResponse.data);
         setRoles(rolesData);
         setCompanies(companiesResponse.data);
         setLocations(locationsResponse.data);
@@ -79,13 +83,19 @@ export default function AddUserPage() {
 
     try {
       setSubmitting(true);
-      await createUserApi(formData);
+      await createUserApi({
+        ...formData,
+        reports_to_id: formData.reports_to_id || null,
+      });
       addToast("User created successfully!", "success");
       router.push("/users");
     } catch (err: unknown) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
-      addToast(axiosError.response?.data?.message || "Failed to create user.", "error");
+      const axiosError = err as AxiosError<{ message?: string; detail?: string }>;
+      addToast(
+        axiosError.response?.data?.detail || axiosError.response?.data?.message || "Failed to create user.",
+        "error",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -317,6 +327,35 @@ export default function AddUserPage() {
             selectedIds={formData.role_ids}
             onChange={(ids) => setFormData({ ...formData, role_ids: ids })}
           />
+
+          {/* With the hierarchy on the Workflows page, this decides whose
+              records the manager sees. */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Reports To
+            </label>
+            <div className="relative">
+              <select
+                name="reports_to_id"
+                className="w-full appearance-none rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400 cursor-pointer"
+                value={formData.reports_to_id}
+                onChange={handleChange}
+              >
+                <option value="">No manager</option>
+                {managers.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {`${m.first_name || ""} ${m.last_name || ""}`.trim() || m.email}
+                  </option>
+                ))}
+              </select>
+              <span className="absolute inset-y-0 right-3.5 flex items-center pointer-events-none text-slate-400 text-[10px]">
+                ▼
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Must hold a role above this user&apos;s in the hierarchy.
+            </p>
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 pt-2">

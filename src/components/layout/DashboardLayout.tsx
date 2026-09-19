@@ -1,6 +1,7 @@
 import Navbar from "@/components/layout/Navbar";
 import Sidebar from "@/components/sidebar/Sidebar";
 import ProtectedRoute from "@/components/common/ProtectedRoute";
+import RouteAccessGuard from "@/components/common/RouteAccessGuard";
 
 export default function DashboardLayout({
   children,
@@ -19,7 +20,7 @@ export default function DashboardLayout({
           <Navbar />
 
           <main className="flex-grow overflow-y-auto p-5 bg-[#f3f3f3] dark:bg-[#020b12] text-slate-900 dark:text-slate-100 transition-colors duration-300">
-            {children}
+            <RouteAccessGuard>{children}</RouteAccessGuard>
           </main>
         </div>
       </div>

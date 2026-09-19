@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useUIStore } from "@/lib/store/ui.store";
+import { useAuthStore } from "@/features/auth/store/auth.store";
 import { FiPlus, FiTrash2, FiSearch, FiUser } from "react-icons/fi";
 import {
   getCustomerTypesApi,
@@ -19,6 +20,9 @@ import { CgSpinner } from "react-icons/cg";
 
 export default function CustomerTypesPage() {
   const { addToast } = useUIStore();
+  /* Master data is maintained by the super admin; other roles given
+     this page see it read-only. */
+  const superAdmin = useAuthStore((state) => state.user?.is_super_admin === true);
   const [types, setTypes] = useState<CustomerTypeModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -108,13 +112,15 @@ export default function CustomerTypesPage() {
           title="Customer Types Master"
           description="Manage classifications and profiles for lead segmentation."
         />
-        <Button
-          onClick={() => setShowAddModal(true)}
-          icon={<FiPlus />}
-          className="shrink-0"
-        >
-          Add Customer Type
-        </Button>
+        {superAdmin && (
+          <Button
+            onClick={() => setShowAddModal(true)}
+            icon={<FiPlus />}
+            className="shrink-0"
+          >
+            Add Customer Type
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-3 max-w-md bg-white dark:bg-[#051422] rounded-xl border border-slate-200 dark:border-[#0d2336] px-3.5 py-2">
@@ -156,16 +162,18 @@ export default function CustomerTypesPage() {
                   {t.description || <span className="italic">No description</span>}
                 </td>
                 <td className="py-4 px-5 text-right">
-                  <button
-                    onClick={() => {
-                      setTypeToDelete(t);
-                      setShowDeleteModal(true);
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
-                    title="Delete Customer Type"
-                  >
-                    <FiTrash2 className="text-sm" />
-                  </button>
+                  {superAdmin && (
+                    <button
+                      onClick={() => {
+                        setTypeToDelete(t);
+                        setShowDeleteModal(true);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
+                      title="Delete Customer Type"
+                    >
+                      <FiTrash2 className="text-sm" />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
