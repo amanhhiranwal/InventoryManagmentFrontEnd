@@ -11,6 +11,9 @@ export interface User {
   role_ids?: string[];
   company_ids?: string[];
   is_super_admin: boolean;
+  /** The manager this user reports to. */
+  reports_to_id?: string | null;
+  reports_to_name?: string | null;
 }
 
 export interface CreateUserPayload {
@@ -22,6 +25,7 @@ export interface CreateUserPayload {
   employee_id?: string;
   role_ids?: string[];
   company_ids?: string[];
+  reports_to_id?: string | null;
 }
 
 export const getUsersApi = async (page: number = 1, size: number = 20, options?: { skipErrorToast?: boolean }): Promise<{ data: User[]; total: number }> => {

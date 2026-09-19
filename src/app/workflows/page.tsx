@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef, MouseEvent as ReactMouseEvent } from "react";
 import { AxiosError } from "axios";
 import { useUIStore } from "@/lib/store/ui.store";
+import { useAuthStore } from "@/features/auth/store/auth.store";
+import { hasPermission } from "@/features/auth/utils/permissions";
 import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
 import {
   getWorkflowsApi,
@@ -28,8 +30,20 @@ interface CanvasNode {
   y: number;
 }
 
+/** The FastAPI error text, falling back to the older message field. */
+function errorText(err: unknown, fallback: string) {
+  const data = (err as AxiosError<{ detail?: string; message?: string }>)
+    .response?.data;
+  return (typeof data?.detail === "string" && data.detail) || data?.message || fallback;
+}
+
 export default function WorkflowsPage() {
   const { addToast } = useUIStore();
+  /* The hierarchy decides who sees whose records, so only a super admin
+     changes it. A role given this page views it read-only, cut down by the
+     backend to its own level and the roles below. */
+  const superAdmin = useAuthStore((state) => state.user?.is_super_admin === true);
+  const canView = superAdmin || hasPermission("workflow.read");
   const [roles, setRoles] = useState<Role[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,8 +95,8 @@ export default function WorkflowsPage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (canView) fetchData();
+  }, [canView]);
 
   const handleAddNode = () => {
     if (!selectedRoleId) {
@@ -218,7 +232,12 @@ export default function WorkflowsPage() {
     }));
     setCanvasNodes(loadedNodes);
     setCanvasEdges(wf.edges || []);
-    addToast(`Loaded workflow '${wf.name}' onto canvas for editing!`, "info");
+    addToast(
+      superAdmin
+        ? `Loaded workflow '${wf.name}' onto canvas for editing!`
+        : `Showing '${wf.name}'.`,
+      "info",
+    );
   };
 
   // Save Workflow
@@ -271,8 +290,7 @@ export default function WorkflowsPage() {
       fetchData();
     } catch (err: unknown) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
-      addToast(axiosError.response?.data?.message || "Failed to save workflow.", "error");
+      addToast(errorText(err, "Failed to save workflow."), "error");
     } finally {
       setSubmitting(false);
     }
@@ -294,7 +312,7 @@ export default function WorkflowsPage() {
       fetchData();
     } catch (err: unknown) {
       console.error(err);
-      addToast("Failed to delete workflow.", "error");
+      addToast(errorText(err, "Failed to delete workflow."), "error");
     } finally {
       setDeleting(false);
     }
@@ -312,16 +330,28 @@ export default function WorkflowsPage() {
     return `M ${startX} ${startY} C ${startX} ${controlY}, ${endX} ${controlY}, ${endX} ${endY}`;
   };
 
+  if (!canView) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-8 text-center dark:border-[#0d2336] dark:bg-[#051422]">
+        <h2 className="mb-2 text-xl font-bold text-slate-800 dark:text-white">Access Denied</h2>
+        <p className="max-w-md text-sm text-slate-500 dark:text-slate-400">
+          Your role has not been given Workflows.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Custom Workflows"
-        description="Design approval routing and lead visibility flowcharts dynamically."
+        description="Draw the reporting hierarchy, e.g. CEO → AVP → Zonal Head → Area Manager. Each role sees its own records and those of the roles below it; roles on the same level never see each other's."
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Designer Sidebar controls */}
         <div className="space-y-6 lg:col-span-1">
+          {superAdmin && (
           <Card title="Workflow Properties">
             <form onSubmit={handleSaveWorkflow} className="space-y-4">
               {editingWorkflowId && (
@@ -339,7 +369,7 @@ export default function WorkflowsPage() {
               <Input
                 label="Workflow Name"
                 required
-                placeholder="e.g. Lead Hierarchy Flow"
+                placeholder="e.g. Sales"
                 value={workflowName}
                 onChange={(e) => setWorkflowName(e.target.value)}
               />
@@ -403,6 +433,7 @@ export default function WorkflowsPage() {
               </div>
             </form>
           </Card>
+          )}
 
           <Card title="Active Workflows">
             <div className="space-y-3">
@@ -429,10 +460,11 @@ export default function WorkflowsPage() {
                         type="button"
                         onClick={() => handleLoadWorkflow(wf)}
                         className="p-1.5 text-slate-400 hover:text-primary rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
-                        title="Load & Edit Workflow"
+                        title={superAdmin ? "Load & Edit Workflow" : "View Workflow"}
                       >
                         <FiEdit2 className="text-sm" />
                       </button>
+                      {superAdmin && (
                       <button
                         type="button"
                         onClick={() => handleOpenDeleteModal(wf)}
@@ -441,6 +473,7 @@ export default function WorkflowsPage() {
                       >
                         <FiTrash2 className="text-sm" />
                       </button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -458,7 +491,7 @@ export default function WorkflowsPage() {
           <div className="flex-1 rounded-2xl border border-slate-200 dark:border-[#0d2336] bg-slate-900 overflow-hidden relative shadow-xl">
             <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md border border-slate-800 rounded-xl px-3 py-1.5 text-[10px] text-slate-350">
               <FiActivity className="text-primary animate-pulse" />
-              <span>Canvas Designer: Click output handle, then click target input handle to connect nodes.</span>
+              <span>Connect senior to junior: click the senior role&apos;s bottom handle, then the junior role&apos;s top handle.</span>
             </div>
 
             <svg
@@ -565,6 +598,7 @@ export default function WorkflowsPage() {
 
                         {/* Node Body */}
                         <div className="relative">
+                          {superAdmin && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -575,6 +609,7 @@ export default function WorkflowsPage() {
                           >
                             ✕
                           </button>
+                          )}
 
                           <div className="pr-4">
                             <p className="text-[10px] text-slate-400 uppercase tracking-wider font-extrabold">

@@ -17,6 +17,42 @@ import PageHeader from "@/components/ui/PageHeader";
 import Table from "@/components/ui/Table";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
 
+/** The manager a user reports to. With the role hierarchy on the Workflows
+    page it decides whose records each manager sees: a Zonal Head sees only
+    the Area Managers who report to them. */
+function ReportsToSelect({
+  value,
+  onChange,
+  users,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  users: User[];
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        Reports To
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none transition-all focus:border-primary"
+      >
+        <option value="">No manager</option>
+        {users.map((u) => (
+          <option key={u.id} value={u.id}>
+            {`${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email}
+          </option>
+        ))}
+      </select>
+      <p className="text-[11px] text-slate-400">
+        Must hold a role above this user&apos;s in the hierarchy.
+      </p>
+    </div>
+  );
+}
+
 export default function UserListPage() {
   const { addToast } = useUIStore();
   const [users, setUsers] = useState<User[]>([]);
@@ -43,7 +79,12 @@ export default function UserListPage() {
     employee_id: "",
     role_ids: [] as string[],
     company_ids: [] as string[],
+    reports_to_id: "",
   });
+
+  /* Everyone the Reports To picker can offer - the table only holds one
+     page of users, so it is loaded separately. */
+  const [managerOptions, setManagerOptions] = useState<User[]>([]);
 
   // Edit User Profile Modal States
   const [editUser, setEditUser] = useState<User | null>(null);
@@ -53,6 +94,7 @@ export default function UserListPage() {
   const [editEmployeeId, setEditEmployeeId] = useState("");
   const [editRoleIds, setEditRoleIds] = useState<string[]>([]);
   const [editCompanyIds, setEditCompanyIds] = useState<string[]>([]);
+  const [editReportsToId, setEditReportsToId] = useState("");
   const [updating, setUpdating] = useState(false);
 
   // Delete User Modal States
@@ -73,20 +115,22 @@ export default function UserListPage() {
       const hasCompanyView = hasPermission("company.view");
       const hasRoleRead = hasPermission("role.read");
 
-      const [usersResponse, rolesData, companiesData] = await Promise.all([
+      const [usersResponse, rolesData, companiesData, everyone] = await Promise.all([
         getUsersApi(currentPage, pageSize),
         hasRoleRead ? getRolesApi() : Promise.resolve([]),
         hasCompanyView ? getCompaniesApi().then((res) => res.data) : Promise.resolve([]),
+        getUsersApi(1, 500, { skipErrorToast: true }).catch(() => ({ data: [] as User[], total: 0 })),
       ]);
       setUsers(usersResponse.data);
+      setManagerOptions(everyone.data);
       setTotalItems(usersResponse.total);
       setRoles(rolesData);
       setCompanies(companiesData);
     } catch (err: unknown) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
+      const axiosError = err as AxiosError<{ message?: string; detail?: string }>;
       addToast(
-        axiosError.response?.data?.message || "Failed to fetch users or roles dashboard data.",
+        axiosError.response?.data?.detail || axiosError.response?.data?.message || "Failed to fetch users or roles dashboard data.",
         "error"
       );
     } finally {
@@ -108,6 +152,7 @@ export default function UserListPage() {
     setEditEmployeeId(u.employee_id || "");
     setEditRoleIds(u.role_ids || []);
     setEditCompanyIds(u.company_ids || []);
+    setEditReportsToId(u.reports_to_id || "");
   };
 
   const handleUpdateUser = async (e: React.FormEvent) => {
@@ -127,14 +172,15 @@ export default function UserListPage() {
         employee_id: editEmployeeId,
         role_ids: editRoleIds,
         company_ids: editCompanyIds,
+        reports_to_id: editReportsToId || null,
       });
       addToast("User updated successfully!", "success");
       setEditUser(null);
       fetchData();
     } catch (err: unknown) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
-      addToast(axiosError.response?.data?.message || "Failed to update user.", "error");
+      const axiosError = err as AxiosError<{ message?: string; detail?: string }>;
+      addToast(axiosError.response?.data?.detail || axiosError.response?.data?.message || "Failed to update user.", "error");
     } finally {
       setUpdating(false);
     }
@@ -156,8 +202,8 @@ export default function UserListPage() {
       fetchData();
     } catch (err: unknown) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
-      addToast(axiosError.response?.data?.message || "Failed to delete user.", "error");
+      const axiosError = err as AxiosError<{ message?: string; detail?: string }>;
+      addToast(axiosError.response?.data?.detail || axiosError.response?.data?.message || "Failed to delete user.", "error");
     } finally {
       setDeleting(false);
     }
@@ -172,7 +218,10 @@ export default function UserListPage() {
 
     try {
       setCreating(true);
-      await createUserApi(formData);
+      await createUserApi({
+        ...formData,
+        reports_to_id: formData.reports_to_id || null,
+      });
       addToast("User created successfully!", "success");
       setFormData({
         first_name: "",
@@ -183,13 +232,14 @@ export default function UserListPage() {
         employee_id: "",
         role_ids: [],
         company_ids: [],
+        reports_to_id: "",
       });
       setShowCreateModal(false);
       fetchData(); // Refresh list
     } catch (err: unknown) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
-      addToast(axiosError.response?.data?.message || "Failed to create user.", "error");
+      const axiosError = err as AxiosError<{ message?: string; detail?: string }>;
+      addToast(axiosError.response?.data?.detail || axiosError.response?.data?.message || "Failed to create user.", "error");
     } finally {
       setCreating(false);
     }
@@ -328,6 +378,12 @@ export default function UserListPage() {
                       <FiPhone className="shrink-0 text-[10px]" />
                       <span>{u.phone_number || "N/A"}</span>
                     </p>
+                    <p className="text-slate-400">
+                      Reports to:{" "}
+                      <span className="font-semibold text-slate-600 dark:text-slate-300">
+                        {u.reports_to_name || "—"}
+                      </span>
+                    </p>
                   </div>
                 </td>
                 <td className="py-4 px-5 text-right">
@@ -422,6 +478,12 @@ export default function UserListPage() {
             onChange={(ids) => setFormData({ ...formData, role_ids: ids })}
           />
 
+          <ReportsToSelect
+            value={formData.reports_to_id}
+            onChange={(id) => setFormData({ ...formData, reports_to_id: id })}
+            users={managerOptions}
+          />
+
           <SearchableMultiSelect
             label="Assigned Companies"
             placeholder="Select companies..."
@@ -483,6 +545,12 @@ export default function UserListPage() {
               options={roles.map((r) => ({ id: r.id, name: r.name }))}
               selectedIds={editRoleIds}
               onChange={(ids) => setEditRoleIds(ids)}
+            />
+
+            <ReportsToSelect
+              value={editReportsToId}
+              onChange={setEditReportsToId}
+              users={managerOptions.filter((m) => m.id !== editUser.id)}
             />
 
             <SearchableMultiSelect
