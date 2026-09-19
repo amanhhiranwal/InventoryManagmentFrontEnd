@@ -1,72 +1,81 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import api from "@/lib/axios";
 import { useRouter } from "next/navigation";
-import Card from "@/components/ui/Card";
-import Table from "@/components/ui/Table";
-import Button from "@/components/ui/Button";
-import Modal from "@/components/ui/Modal";
-import Input from "@/components/ui/Input";
-import CustomerContactDrawer, {
-  ContactDrawerCustomer,
-} from "@/components/ui/CustomerContactDrawer";
+import { AxiosError } from "axios";
 
+import Modal from "@/components/ui/Modal";
+import CustomerContactDrawer from "@/components/ui/CustomerContactDrawer";
+import Pagination from "@/components/crm/Pagination";
+import {
+  LIST_TABLE,
+  ListPage,
+  ListPageHeader,
+  ListToolbar,
+  PrimaryAction,
+  TableCard,
+} from "@/components/crm/ListPageShell";
 import { useUIStore } from "@/lib/store/ui.store";
-import { createLeadApi } from "@/features/workflows/api/workflows.api";
-import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
+import { useAuthStore } from "@/features/auth/store/auth.store";
+import { hasPermission } from "@/features/auth/utils/permissions";
+import CustomerImportModal from "@/features/customers/components/CustomerImportModal";
+import {
+  CUSTOMER_BULK_UPLOAD_PERMISSION,
+  CUSTOMER_STAGES,
+  CustomerActivity,
+  CustomerActivityType,
+  CustomerModel,
+  CustomerStage,
+  convertCustomerToLeadApi,
+  getCustomerActivitiesApi,
+  getCustomerApi,
+  getCustomersApi,
+  logCustomerActivityApi,
+  updateCustomerStageApi,
+  updateCustomerStatusApi,
+} from "@/features/customers/api/customers.api";
+import { getUsersApi, User } from "@/features/users/api/users.api";
+import { getStatesApi } from "@/features/locations/api/locations.api";
 
 import {
-  FiPlus,
-  FiSearch,
+  FiActivity,
   FiCalendar,
   FiChevronDown,
-  FiUserPlus,
+  FiDownload,
+  FiEdit2,
   FiFile,
   FiLink,
-  FiPhone,
+  FiMapPin,
   FiMoreVertical,
-  FiEdit2,
-  FiActivity,
+  FiPhone,
+  FiPlus,
+  FiRotateCcw,
   FiSlash,
-  FiX,
-  FiDownload,
-  FiSliders,
-  FiRefreshCw,
+  FiUserPlus,
 } from "react-icons/fi";
-
 import { CgSpinner } from "react-icons/cg";
 
+/** A row of the list: the stored customer plus the fields the table,
+    filters and export read. */
 interface Customer {
   id: string;
+  code: string;
   name: string;
-  isRegistered: boolean;
+  contactName: string;
   email: string;
   phone: string;
   address: string;
-  contactName: string;
-  contactEmail: string;
-  contactPhone: string;
   gst?: string;
   pan?: string;
   category: string;
-  kycDocs: string[];
   status: "Active" | "Inactive";
-
-  // New UI fields
+  stage: CustomerStage;
   customerType?: string;
   assignedTo?: string;
-  assignedToId?: string;
   state?: string;
   lastActivity?: string;
-  image?: string;
-}
-
-interface InvoiceItem {
-  description: string;
-  qty: number;
-  price: number;
-  gstRate: number;
+  convertedLeadId?: number | null;
+  raw: CustomerModel;
 }
 
 const CUSTOMER_TYPES = [
@@ -80,69 +89,27 @@ const CUSTOMER_TYPES = [
 
 const STATUS_OPTIONS = ["All", "Active", "Inactive"];
 
-function normalizeCustomer(raw: any, index: number): Customer {
+function toRow(raw: CustomerModel): Customer {
   return {
-    id: String(raw.id ?? raw._id ?? `customer-${index}`),
-
-    name:
-      raw.name ??
-      raw.company ??
-      raw.company_name ??
-      raw.firm_name ??
-      "Unnamed Customer",
-
-    email: raw.email ?? raw.contact_email ?? "",
-
-    phone: raw.phone ?? raw.mobile ?? raw.mobile_no ?? raw.contact_phone ?? "",
-
-    address: raw.address ?? "",
-
-    contactName:
-      raw.contactName ??
-      raw.contact_name ??
-      raw.contact_person ??
-      raw.name ??
-      "",
-
-    contactEmail: raw.contactEmail ?? raw.contact_email ?? raw.email ?? "",
-
-    contactPhone: raw.contactPhone ?? raw.contact_phone ?? raw.phone ?? "",
-
-    gst: raw.gst ?? raw.gstin ?? "",
-    pan: raw.pan ?? "",
-
-    category: raw.category ?? raw.customer_category ?? "General",
-
-    kycDocs: Array.isArray(raw.kycDocs)
-      ? raw.kycDocs
-      : Array.isArray(raw.kyc_docs)
-        ? raw.kyc_docs
-        : [],
-
-    status:
-      raw.status === "Inactive" || raw.status === "inactive"
-        ? "Inactive"
-        : "Active",
-
-    customerType:
-      raw.customerType ?? raw.customer_type ?? raw.type ?? "Distributor",
-
-    assignedTo: raw.assignedTo ?? raw.assigned_to_name ?? raw.assigned_to ?? "",
-
-    assignedToId: raw.assignedToId ?? raw.assigned_to_id ?? "",
-
-    state: raw.state ?? raw.region ?? "",
-
-    lastActivity:
-      raw.lastActivity ??
-      raw.last_activity ??
-      raw.updated_at ??
-      raw.created_at ??
-      "",
-
-    image: raw.image ?? raw.profile_image ?? raw.user_image ?? "",
-
-    isRegistered: Boolean(raw.isRegistered ?? raw.is_registered ?? raw.gst),
+    id: raw.id,
+    code: raw.customer_code ? `#${raw.customer_code}` : "—",
+    name: raw.name || "Unnamed Customer",
+    contactName: raw.contact_name || raw.name || "",
+    email: raw.email || "",
+    phone: raw.phone || "",
+    address: raw.address || "",
+    gst: raw.gst || "",
+    pan: raw.pan || "",
+    category: raw.category || "General",
+    status: raw.status === "Inactive" ? "Inactive" : "Active",
+    stage: (raw.stage || "NEW") as CustomerStage,
+    customerType: raw.customer_type || "",
+    /* A customer with no assignee is followed up by whoever added it. */
+    assignedTo: raw.assigned_to_name || raw.creator_name || "",
+    state: raw.state || "",
+    lastActivity: raw.last_activity_at || raw.updated_at || raw.created_at || "",
+    convertedLeadId: raw.converted_lead_id ?? null,
+    raw,
   };
 }
 
@@ -179,220 +146,148 @@ function formatDate(value?: string) {
   });
 }
 
+function errorText(error: unknown, fallback: string) {
+  const data = (error as AxiosError<{ detail?: string; message?: string }>)
+    .response?.data;
+  return (typeof data?.detail === "string" && data.detail) || data?.message || fallback;
+}
+
 export default function CustomersPage() {
   const router = useRouter();
   const { addToast } = useUIStore();
+  const superAdmin = useAuthStore((state) => state.user?.is_super_admin === true);
 
-  // --------------------------------------------------
-  // Customers
-  // --------------------------------------------------
+  /* Add From Excel needs its own tick in Roles & Access. */
+  const canBulkUpload =
+    superAdmin || hasPermission(CUSTOMER_BULK_UPLOAD_PERMISSION);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // --------------------------------------------------
-  // Search
-  // --------------------------------------------------
-
   const [search, setSearch] = useState("");
 
-  // --------------------------------------------------
-  // Filter
-  // --------------------------------------------------
-
   const [filterOpen, setFilterOpen] = useState(false);
-
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-
   const [customerType, setCustomerType] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [status, setStatus] = useState("All");
   const [stateFilter, setStateFilter] = useState("");
 
-  // --------------------------------------------------
-  // New Customer menu
-  // --------------------------------------------------
-
   const [newCustomerMenuOpen, setNewCustomerMenuOpen] = useState(false);
-
-  // --------------------------------------------------
-  // Export menu
-  // --------------------------------------------------
-
+  const [showImportModal, setShowImportModal] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
-
-  // --------------------------------------------------
-  // Row menu
-  // --------------------------------------------------
-
   const [openRowMenu, setOpenRowMenu] = useState<string | null>(null);
 
-  // --------------------------------------------------
-  // Contact drawer
-  // --------------------------------------------------
-
-  const [drawerOpen, setDrawerOpen] = useState(false);
-
-  const [drawerCustomer, setDrawerCustomer] =
-    useState<ContactDrawerCustomer | null>(null);
-
-  // --------------------------------------------------
-  // Pagination
-  // --------------------------------------------------
-
   const [currentPage, setCurrentPage] = useState(1);
-
   const PAGE_SIZE = 10;
 
-  // --------------------------------------------------
-  // Convert lead
-  // --------------------------------------------------
+  /* Contact Details */
+  const [drawerCustomer, setDrawerCustomer] = useState<CustomerModel | null>(null);
+  const [activities, setActivities] = useState<CustomerActivity[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [drawerBusy, setDrawerBusy] = useState(false);
 
-  const [showConvertModal, setShowConvertModal] = useState(false);
-
-  const [selectedConvertCustomer, setSelectedConvertCustomer] =
-    useState<Customer | null>(null);
-
+  /* Convert To Lead */
+  const [convertTarget, setConvertTarget] = useState<CustomerModel | null>(null);
   const [convertTitle, setConvertTitle] = useState("");
-  const [convertDesc, setConvertDesc] = useState("");
-
-  const [dbRoles, setDbRoles] = useState<Role[]>([]);
-  const [selectedRoleId, setSelectedRoleId] = useState("");
-
-  const [convertingLead, setConvertingLead] = useState(false);
-
-  const [convertedCustomerIds, setConvertedCustomerIds] = useState<string[]>(
-    [],
-  );
+  const [convertRemarks, setConvertRemarks] = useState("");
+  const [convertAssignee, setConvertAssignee] = useState("");
+  const [converting, setConverting] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [masterStates, setMasterStates] = useState<string[]>([]);
 
   // --------------------------------------------------
-  // Invoice
-  // --------------------------------------------------
-
-  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [invoiceCustomer] = useState<Customer | null>(null);
-
-  const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([
-    {
-      description: "Product / Service Supply",
-      qty: 1,
-      price: 50000,
-      gstRate: 18,
-    },
-  ]);
-
-  const [invoiceNumber] = useState("");
-
-  const [showPrintModal, setShowPrintModal] = useState(false);
-
-  const [printedInvoice, setPrintedInvoice] = useState<{
-    customer: Customer;
-    items: InvoiceItem[];
-    invoiceNo: string;
-    subTotal: number;
-    gstTotal: number;
-    grandTotal: number;
-    date: string;
-  } | null>(null);
-
-  // --------------------------------------------------
-  // Fetch customers
+  // Loading
   // --------------------------------------------------
 
   const fetchCustomers = useCallback(async () => {
     try {
       setLoading(true);
-
-      const res = await api.get("/api/v1/customers/");
-
-      const list = Array.isArray(res.data?.data)
-        ? res.data.data
-        : Array.isArray(res.data)
-          ? res.data
-          : [];
-
-      setCustomers(
-        list.map((item: any, index: number) => normalizeCustomer(item, index)),
-      );
+      const list = await getCustomersApi();
+      setCustomers(list.map(toRow));
     } catch (error) {
       console.error("Failed to fetch customers:", error);
       setCustomers([]);
-      addToast("Failed to load customers.", "error");
+      addToast(errorText(error, "Failed to load customers."), "error");
     } finally {
       setLoading(false);
     }
   }, [addToast]);
 
-  // --------------------------------------------------
-  // Page refresh
-  // --------------------------------------------------
-
   const handleRefreshCustomers = async () => {
     await fetchCustomers();
   };
 
-  // --------------------------------------------------
-  // Initial load
-  // --------------------------------------------------
-
   useEffect(() => {
     fetchCustomers();
-
-    const loadRoles = async () => {
-      try {
-        const roles = await getRolesApi();
-
-        setDbRoles(roles || []);
-
-        if (roles?.length) {
-          setSelectedRoleId(roles[0].id);
-        }
-      } catch (error) {
-        console.error("Failed to load roles:", error);
-      }
-    };
-
-    loadRoles();
   }, [fetchCustomers]);
 
-  // --------------------------------------------------
-  // Filter options
-  // --------------------------------------------------
+  /* The State filter lists every state in the States master, not only the
+     ones customers already have - otherwise it is empty until one is set. */
+  useEffect(() => {
+    getStatesApi()
+      .then((list) => setMasterStates(list.map((state) => state.name).filter(Boolean)))
+      .catch(() => setMasterStates([]));
+  }, []);
 
-  const assignedOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        customers
-          .map((customer) => customer.assignedTo)
-          .filter((value): value is string => Boolean(value)),
-      ),
+  /* Replace one customer in the list after an action, without a reload. */
+  const applyCustomer = (updated: CustomerModel) => {
+    setCustomers((current) =>
+      current.map((row) => (row.id === updated.id ? toRow(updated) : row)),
     );
-  }, [customers]);
+    setDrawerCustomer((open) => (open?.id === updated.id ? updated : open));
+  };
 
-  const stateOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        customers
-          .map((customer) => customer.state)
-          .filter((value): value is string => Boolean(value)),
+  const loadActivities = useCallback(async (id: string) => {
+    try {
+      setActivitiesLoading(true);
+      setActivities(await getCustomerActivitiesApi(id));
+    } catch (error) {
+      console.error(error);
+      setActivities([]);
+    } finally {
+      setActivitiesLoading(false);
+    }
+  }, []);
+
+  // --------------------------------------------------
+  // Filters
+  // --------------------------------------------------
+
+  const assignedOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          customers
+            .map((customer) => customer.assignedTo)
+            .filter((value): value is string => Boolean(value)),
+        ),
       ),
-    );
-  }, [customers]);
+    [customers],
+  );
 
-  // --------------------------------------------------
-  // Filtering
-  // --------------------------------------------------
+  const stateOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...masterStates,
+          ...customers
+            .map((customer) => customer.state)
+            .filter((value): value is string => Boolean(value)),
+        ]),
+      ).sort((a, b) => a.localeCompare(b)),
+    [customers, masterStates],
+  );
 
   const filteredCustomers = useMemo(() => {
     const searchValue = search.trim().toLowerCase();
-
     const fromDate = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null;
-
     const toDate = dateTo ? new Date(`${dateTo}T23:59:59`) : null;
 
     return customers.filter((customer) => {
       const searchableText = [
+        customer.code,
         customer.name,
         customer.contactName,
         customer.email,
@@ -408,16 +303,10 @@ export default function CustomersPage() {
         .join(" ")
         .toLowerCase();
 
-      const matchesSearch =
-        !searchValue || searchableText.includes(searchValue);
-
-      const matchesCustomerType =
-        !customerType || customer.customerType === customerType;
-
+      const matchesSearch = !searchValue || searchableText.includes(searchValue);
+      const matchesCustomerType = !customerType || customer.customerType === customerType;
       const matchesAssigned = !assignedTo || customer.assignedTo === assignedTo;
-
-      const matchesStatus = status === "All" || customer.status === status;
-
+      const matchesStatus = !status || status === "All" || customer.status === status;
       const matchesState = !stateFilter || customer.state === stateFilter;
 
       let matchesDate = true;
@@ -428,13 +317,8 @@ export default function CustomersPage() {
         if (!activityDate) {
           matchesDate = false;
         } else {
-          if (fromDate && activityDate < fromDate) {
-            matchesDate = false;
-          }
-
-          if (toDate && activityDate > toDate) {
-            matchesDate = false;
-          }
+          if (fromDate && activityDate < fromDate) matchesDate = false;
+          if (toDate && activityDate > toDate) matchesDate = false;
         }
       }
 
@@ -447,20 +331,7 @@ export default function CustomersPage() {
         matchesDate
       );
     });
-  }, [
-    customers,
-    search,
-    dateFrom,
-    dateTo,
-    customerType,
-    assignedTo,
-    status,
-    stateFilter,
-  ]);
-
-  // --------------------------------------------------
-  // Pagination
-  // --------------------------------------------------
+  }, [customers, search, dateFrom, dateTo, customerType, assignedTo, status, stateFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -470,10 +341,6 @@ export default function CustomersPage() {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   );
-
-  // --------------------------------------------------
-  // Clear filters
-  // --------------------------------------------------
 
   const clearFilters = () => {
     setDateFrom("");
@@ -485,8 +352,15 @@ export default function CustomersPage() {
     setCurrentPage(1);
   };
 
+  const activeFilterCount =
+    (dateFrom || dateTo ? 1 : 0) +
+    (customerType ? 1 : 0) +
+    (assignedTo ? 1 : 0) +
+    (status && status !== "All" ? 1 : 0) +
+    (stateFilter ? 1 : 0);
+
   // --------------------------------------------------
-  // Export Data
+  // Export
   // --------------------------------------------------
 
   const handleExportData = () => {
@@ -497,13 +371,13 @@ export default function CustomersPage() {
 
     const headers = [
       "Customer ID",
-      "Customer Name",
+      "Company",
       "Contact Name",
       "Email",
       "Phone",
-      "Company",
       "Customer Type",
       "Assigned To",
+      "Stage",
       "Status",
       "State",
       "Last Activity",
@@ -512,39 +386,31 @@ export default function CustomersPage() {
       "PAN",
     ];
 
-    const rows = filteredCustomers.map((customer, index) => {
-      const customerId = `CUS-${1042 + index}`;
+    const stageLabel = (stage: CustomerStage) =>
+      CUSTOMER_STAGES.find((item) => item.value === stage)?.label || stage;
 
-      return [
-        customerId,
-        customer.name,
-        customer.contactName,
-        customer.email,
-        customer.phone,
-        customer.name,
-        customer.customerType || "",
-        customer.assignedTo || "",
-        customer.status,
-        customer.state || "",
-        formatDate(customer.lastActivity),
-        customer.category,
-        customer.gst || "",
-        customer.pan || "",
-      ];
-    });
+    const rows = filteredCustomers.map((customer) => [
+      customer.code.replace("#", ""),
+      customer.name,
+      customer.contactName,
+      customer.email,
+      customer.phone,
+      customer.customerType || "",
+      customer.assignedTo || "",
+      stageLabel(customer.stage),
+      customer.status,
+      customer.state || "",
+      formatDate(customer.lastActivity),
+      customer.category,
+      customer.gst || "",
+      customer.pan || "",
+    ]);
 
     const escapeCsvValue = (value: unknown) => {
       const stringValue = String(value ?? "");
-
-      if (
-        stringValue.includes(",") ||
-        stringValue.includes('"') ||
-        stringValue.includes("\n")
-      ) {
-        return `"${stringValue.replace(/"/g, '""')}"`;
-      }
-
-      return stringValue;
+      return /[",\n]/.test(stringValue)
+        ? `"${stringValue.replace(/"/g, '""')}"`
+        : stringValue;
     };
 
     const csvContent = [
@@ -552,33 +418,22 @@ export default function CustomersPage() {
       ...rows.map((row) => row.map(escapeCsvValue).join(",")),
     ].join("\n");
 
-    const blob = new Blob([csvContent], {
-      type: "text/csv;charset=utf-8;",
-    });
-
-    const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(
+      new Blob([csvContent], { type: "text/csv;charset=utf-8;" }),
+    );
 
     const link = document.createElement("a");
     link.href = url;
     link.download = `customers-${new Date().toISOString().slice(0, 10)}.csv`;
-
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
     URL.revokeObjectURL(url);
 
     setExportMenuOpen(false);
 
-    addToast(
-      `${filteredCustomers.length} customer records exported successfully.`,
-      "success",
-    );
+    addToast(`${filteredCustomers.length} customer records exported successfully.`, "success");
   };
-
-  // --------------------------------------------------
-  // Download Customer Chart
-  // --------------------------------------------------
 
   const handleDownloadChart = () => {
     const activeCustomers = filteredCustomers.filter(
@@ -725,60 +580,6 @@ export default function CustomersPage() {
     }, "image/png");
   };
   // --------------------------------------------------
-  // Contact drawer
-  // --------------------------------------------------
-
-  const openContactDetails = (customer: Customer | ContactDrawerCustomer) => {
-    setOpenRowMenu(null);
-    setNewCustomerMenuOpen(false);
-
-    const normalized: ContactDrawerCustomer = {
-      id: customer.id,
-      name: customer.name,
-      contactName: customer.contactName || customer.name,
-      email: customer.email,
-      phone: customer.phone,
-      company: "company" in customer ? customer.company : customer.name,
-      designation:
-        "designation" in customer ? customer.designation : "Contact Person",
-      location:
-        "location" in customer
-          ? customer.location
-          : customer.address || "India",
-      status: customer.status,
-      customerType:
-        "customerType" in customer
-          ? customer.customerType || "Distributor"
-          : "Distributor",
-      image: "image" in customer ? customer.image : undefined,
-    };
-
-    setDrawerCustomer(normalized);
-    setDrawerOpen(true);
-  };
-
-  // --------------------------------------------------
-  // Integration contact
-  // --------------------------------------------------
-
-  const openIntegrationContact = () => {
-    setNewCustomerMenuOpen(false);
-
-    openContactDetails({
-      id: "integration-rakesh-suri",
-      name: "Rakesh Suri",
-      contactName: "Rakesh Suri",
-      email: "rakesh@techvision.com",
-      phone: "9876543210",
-      company: "TechVision Corp",
-      designation: "IT Director",
-      location: "Karnataka",
-      status: "Active",
-      customerType: "Corporate",
-    });
-  };
-
-  // --------------------------------------------------
   // New Customer menu
   // --------------------------------------------------
 
@@ -789,385 +590,244 @@ export default function CustomersPage() {
 
   const handleAddFromExcel = () => {
     setNewCustomerMenuOpen(false);
-    addToast("Excel import is ready to be connected.", "info");
-  };
 
-  // --------------------------------------------------
-  // Drawer actions
-  // --------------------------------------------------
-
-  const handleDrawerEdit = (customer: ContactDrawerCustomer) => {
-    addToast(`Edit customer: ${customer.name}`, "info");
-  };
-
-  const handleDrawerMarkDead = (customer: ContactDrawerCustomer) => {
-    addToast(`${customer.name} marked as dead.`, "warning");
-  };
-
-  // --------------------------------------------------
-  // Convert to Lead
-  // --------------------------------------------------
-
-  const openConvertLead = (customer: Customer) => {
-    setSelectedConvertCustomer(customer);
-
-    setConvertTitle(`Lead: ${customer.name}`);
-
-    setConvertDesc(
-      `Client: ${customer.name}
-Contact: ${customer.contactName || customer.name} (${customer.phone})
-Email: ${customer.email}
-Address: ${customer.address}
-Customer Type: ${customer.customerType || "Distributor"}
-Dealing Category: ${customer.category}
-Tax Registration: ${
-        customer.isRegistered
-          ? `GST Registered (${customer.gst || "N/A"})`
-          : `Unregistered (PAN: ${customer.pan || "N/A"})`
-      }`,
-    );
-
-    setShowConvertModal(true);
-  };
-
-  const handleConvertLeadConfirm = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!selectedConvertCustomer) return;
-
-    if (!convertTitle.trim()) {
-      addToast("Lead Title is required.", "warning");
+    if (!canBulkUpload) {
+      addToast("Your role has not been given Bulk Upload for customers.", "warning");
       return;
     }
 
+    setShowImportModal(true);
+  };
+
+  const openIntegrationContact = () => {
+    setNewCustomerMenuOpen(false);
+    addToast("No integration is connected yet.", "info");
+  };
+
+  // --------------------------------------------------
+  // Contact Details
+  // --------------------------------------------------
+
+  const openContactDetails = (customer: Customer) => {
+    setOpenRowMenu(null);
+    setNewCustomerMenuOpen(false);
+    setDrawerCustomer(customer.raw);
+    loadActivities(customer.id);
+
+    /* Pick up anything changed since the list loaded. */
+    getCustomerApi(customer.id)
+      .then(applyCustomer)
+      .catch(() => undefined);
+  };
+
+  const editCustomer = (customer: CustomerModel) => {
+    router.push(`/sales/customers/create?edit=${customer.id}`);
+  };
+
+  /** Runs a drawer action, refreshing the customer and its timeline. */
+  const runDrawerAction = async (
+    customer: CustomerModel,
+    action: () => Promise<CustomerModel | void>,
+    success: string,
+    failure: string,
+  ) => {
     try {
-      setConvertingLead(true);
-
-      const selectedRole = dbRoles.find((role) => role.id === selectedRoleId);
-
-      const roleName = selectedRole?.name || "Workflow Role";
-
-      await createLeadApi({
-        title: convertTitle.trim(),
-        description: `Target Role: ${roleName}
-
-${convertDesc.trim()}`,
-        status: "new",
-      });
-
-      setConvertedCustomerIds((prev) => [...prev, selectedConvertCustomer.id]);
-
-      addToast("Customer converted to Sales Lead successfully!", "success");
-
-      setShowConvertModal(false);
-      setSelectedConvertCustomer(null);
+      setDrawerBusy(true);
+      const updated = await action();
+      if (updated) applyCustomer(updated);
+      await loadActivities(customer.id);
+      addToast(success, "success");
+      return true;
     } catch (error) {
       console.error(error);
-
-      addToast("Failed to create Lead in workflow pipeline.", "error");
+      addToast(errorText(error, failure), "error");
+      return false;
     } finally {
-      setConvertingLead(false);
+      setDrawerBusy(false);
     }
   };
 
-  // --------------------------------------------------
-  // Invoice
-  // --------------------------------------------------
+  const changeStage = (customer: CustomerModel, stage: CustomerStage) => {
+    const label = CUSTOMER_STAGES.find((item) => item.value === stage)?.label;
 
-  const addInvoiceRow = () => {
-    setInvoiceItems((prev) => [
-      ...prev,
-      {
-        description: "",
-        qty: 1,
-        price: 0,
-        gstRate: invoiceCustomer?.isRegistered ? 18 : 0,
+    runDrawerAction(
+      customer,
+      () => updateCustomerStageApi(customer.id, stage),
+      `Moved to ${label}.`,
+      "Could not change the stage.",
+    );
+  };
+
+  const logActivity = (
+    customer: CustomerModel,
+    type: CustomerActivityType,
+    description: string,
+  ) =>
+    runDrawerAction(
+      customer,
+      async () => {
+        await logCustomerActivityApi(customer.id, type, description);
+        return getCustomerApi(customer.id);
       },
-    ]);
-  };
+      "Activity logged.",
+      "Could not log the activity.",
+    );
 
-  const removeInvoiceRow = (index: number) => {
-    setInvoiceItems((prev) => prev.filter((_, i) => i !== index));
-  };
+  const markDead = (customer: CustomerModel, reason: string) =>
+    runDrawerAction(
+      customer,
+      () => updateCustomerStatusApi(customer.id, "Inactive", reason),
+      `${customer.name} marked as dead.`,
+      "Could not mark the customer as dead.",
+    );
 
-  const updateInvoiceItem = (index: number, fields: Partial<InvoiceItem>) => {
-    setInvoiceItems((prev) => {
-      const next = [...prev];
+  const reactivate = (customer: CustomerModel) =>
+    runDrawerAction(
+      customer,
+      () => updateCustomerStatusApi(customer.id, "Active"),
+      `${customer.name} is active again.`,
+      "Could not reactivate the customer.",
+    );
 
-      next[index] = {
-        ...next[index],
-        ...fields,
-      };
+  // --------------------------------------------------
+  // Convert To Lead
+  // --------------------------------------------------
 
-      return next;
-    });
-  };
+  const openConvertLead = (customer: CustomerModel) => {
+    setConvertTarget(customer);
+    setConvertTitle(customer.name);
+    setConvertRemarks("");
+    setConvertAssignee(customer.assigned_to_id || "");
 
-  const generateInvoiceBill = () => {
-    if (!invoiceCustomer) return;
-
-    if (
-      invoiceItems.some(
-        (item) => !item.description.trim() || item.price <= 0 || item.qty <= 0,
-      )
-    ) {
-      addToast(
-        "Please provide valid item description, price, and quantity for all rows.",
-        "warning",
-      );
-      return;
+    if (!users.length) {
+      getUsersApi(1, 500, { skipErrorToast: true })
+        .then((response) => setUsers(response.data))
+        .catch(() => setUsers([]));
     }
-
-    let subTotal = 0;
-    let gstTotal = 0;
-
-    invoiceItems.forEach((item) => {
-      const lineTotal = item.qty * item.price;
-
-      subTotal += lineTotal;
-
-      if (invoiceCustomer.isRegistered) {
-        gstTotal += (lineTotal * item.gstRate) / 100;
-      }
-    });
-
-    const grandTotal = subTotal + gstTotal;
-
-    setPrintedInvoice({
-      customer: invoiceCustomer,
-      items: invoiceItems,
-      invoiceNo: invoiceNumber,
-      subTotal,
-      gstTotal,
-      grandTotal,
-      date: new Date().toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }),
-    });
-
-    setShowInvoiceModal(false);
-    setShowPrintModal(true);
   };
 
-  // --------------------------------------------------
-  // KPI
-  // --------------------------------------------------
+  const confirmConvertLead = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!convertTarget) return;
 
-  const activeFilterCount =
-    (dateFrom || dateTo ? 1 : 0) +
-    (customerType ? 1 : 0) +
-    (assignedTo ? 1 : 0) +
-    (status !== "All" ? 1 : 0) +
-    (stateFilter ? 1 : 0);
+    try {
+      setConverting(true);
+
+      const result = await convertCustomerToLeadApi(convertTarget.id, {
+        title: convertTitle.trim() || undefined,
+        remarks: convertRemarks.trim() || undefined,
+        assigned_to_id: convertAssignee || undefined,
+      });
+
+      applyCustomer(result.customer);
+      if (drawerCustomer?.id === convertTarget.id) loadActivities(convertTarget.id);
+
+      addToast(`Lead #${result.lead_id} created from ${convertTarget.name}.`, "success");
+      setConvertTarget(null);
+    } catch (error) {
+      console.error(error);
+      addToast(errorText(error, "Could not convert this customer to a lead."), "error");
+    } finally {
+      setConverting(false);
+    }
+  };
 
   return (
-    <div
-      className="space-y-5 pb-10"
-      onClick={() => {
-        setOpenRowMenu(null);
-        setNewCustomerMenuOpen(false);
-        setExportMenuOpen(false);
-      }}
-    >
-      {/* ============================================================
-               PAGE HEADER
-      ============================================================ */}
+    <ListPage>
+      <div
+        className="space-y-5"
+        onClick={() => {
+          setOpenRowMenu(null);
+          setNewCustomerMenuOpen(false);
+          setExportMenuOpen(false);
+        }}
+      >
+        {/* ============================================================
+            PAGE HEADER
+        ============================================================ */}
 
-      <div className="flex items-center justify-between">
-        {/* Page title + refresh */}
+        <ListPageHeader
+          title="Customers"
+          refreshing={loading}
+          onRefresh={handleRefreshCustomers}
+          actions={
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => setExportMenuOpen((prev) => !prev)}
+                title="More Actions"
+                aria-label="More Actions"
+                className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-white text-[#131313] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
+              >
+                <FiMoreVertical size={15} />
+              </button>
 
-        <div className="flex items-center gap-2">
-          <h1
-            className="
-        text-xl
-        sm:text-2xl
-        font-bold
-        text-slate-900
-        dark:text-white
-        tracking-tight
-      "
-          >
-            Customers
-          </h1>
+              {exportMenuOpen && (
+                <div className="absolute right-0 top-9 z-50 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
+                  <MenuItem icon={<FiDownload />} onClick={handleExportData}>
+                    Export Data
+                  </MenuItem>
 
-          <button
-            type="button"
-            onClick={handleRefreshCustomers}
-            disabled={loading}
-            title="Refresh customers"
-            aria-label="Refresh customers"
-            className="
-        w-7 h-7
-        rounded-lg
-        border
-        border-slate-200
-        dark:border-[#0d2336]
-        bg-white
-        dark:bg-[#051422]
-        text-slate-500
-        dark:text-slate-300
-        flex
-        items-center
-        justify-center
-        hover:bg-slate-50
-        dark:hover:bg-[#071929]
-        hover:text-[#233353]
-        dark:hover:text-white
-        transition-all
-        disabled:opacity-50
-        disabled:cursor-not-allowed
-      "
-          >
-            <FiRefreshCw
-              className={`text-sm ${
-                loading ? "animate-spin text-[#233353]" : ""
-              }`}
-            />
-          </button>
-        </div>
+                  <MenuItem icon={<FiDownload />} onClick={handleDownloadChart}>
+                    Download Chart
+                  </MenuItem>
+                </div>
+              )}
+            </div>
+          }
+        />
 
-        {/* More actions */}
+        {/* ============================================================
+            SEARCH + FILTER + NEW CUSTOMER
+        ============================================================ */}
 
         <div className="relative" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => setExportMenuOpen((prev) => !prev)}
-            className="
-        w-10 h-10
-        rounded-xl
-        flex
-        items-center
-        justify-center
-        bg-white
-        dark:bg-[#051422]
-        border
-        border-slate-200
-        dark:border-[#0d2336]
-        text-slate-600
-        dark:text-slate-300
-        hover:bg-slate-50
-        dark:hover:bg-[#071929]
-        transition-colors
-      "
-            title="More Actions"
-          >
-            <FiMoreVertical className="text-lg" />
-          </button>
-
-          {exportMenuOpen && (
-            <div
-              className="
-          absolute
-          right-0
-          top-12
-          z-50
-          w-48
-          rounded-xl
-          border
-          border-slate-200
-          dark:border-[#0d2336]
-          bg-white
-          dark:bg-[#071929]
-          shadow-xl
-          overflow-hidden
-        "
-            >
-              <button
-                type="button"
-                onClick={handleExportData}
-                className="
-            w-full
-            px-4 py-3
-            text-left
-            text-sm
-            text-slate-700
-            dark:text-slate-200
-            hover:bg-slate-50
-            dark:hover:bg-[#0b2032]
-            flex
-            items-center
-            gap-3
-          "
+          <ListToolbar
+            search={search}
+            onSearchChange={setSearch}
+            placeholder="Search Customers"
+            activeFilterCount={activeFilterCount}
+            onToggleFilters={() => {
+              setFilterOpen((prev) => !prev);
+              setNewCustomerMenuOpen(false);
+            }}
+            trailing={
+              <PrimaryAction
+                onClick={() => {
+                  setNewCustomerMenuOpen((prev) => !prev);
+                  setFilterOpen(false);
+                }}
+                icon={<FiPlus size={15} />}
               >
-                <FiDownload className="text-slate-500" />
+                New Customer
+              </PrimaryAction>
+            }
+          />
 
-                <span>Export Data</span>
-              </button>
+          {/* New Customer menu */}
+          {newCustomerMenuOpen && (
+            <div className="absolute right-0 top-[48px] z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
+              <MenuItem icon={<FiUserPlus />} onClick={handleAddSingleLead}>
+                Add Single Customer
+              </MenuItem>
 
-              <button
-                type="button"
-                onClick={handleDownloadChart}
-                className="
-            w-full
-            px-4 py-3
-            text-left
-            text-sm
-            text-slate-700
-            dark:text-slate-200
-            hover:bg-slate-50
-            dark:hover:bg-[#0b2032]
-            flex
-            items-center
-            gap-3
-          "
-              >
-                <FiDownload className="text-slate-500" />
+              {/* Only for roles given Bulk Upload in Roles & Access. */}
+              {canBulkUpload && (
+                <MenuItem icon={<FiFile />} onClick={handleAddFromExcel}>
+                  Add From Excel
+                </MenuItem>
+              )}
 
-                <span>Download Chart</span>
-              </button>
+              <MenuItem icon={<FiLink />} onClick={openIntegrationContact}>
+                Add From Integration
+              </MenuItem>
             </div>
           )}
-        </div>
-      </div>
 
-      {/* ============================================================
-        SEARCH + FILTER
-     ============================================================ */}
-
-      <div className="flex items-center gap-3">
-        {/* Search */}
-        <div className="relative flex-1">
-          <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
-
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search Customers"
-            className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] text-sm text-slate-800 dark:text-white outline-none focus:border-[#233353] transition-colors"
-          />
-        </div>
-
-        {/* Filter */}
-        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => setFilterOpen((prev) => !prev)}
-            className={`relative h-12 w-12 rounded-xl border flex items-center justify-center transition-all ${
-              filterOpen || activeFilterCount > 0
-                ? "border-[#233353] bg-[#233353] text-white"
-                : "border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#071929]"
-            }`}
-            title="Filter Customers"
-          >
-            {/* Screenshot-style sliders icon */}
-            <FiSliders className="text-[18px]" />
-
-            {/* Filter count */}
-            {activeFilterCount > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center border-2 border-white dark:border-[#051422]">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
-
-          {/* Filter Dropdown */}
+          {/* Filter popover */}
           {filterOpen && (
-            <div className="absolute right-0 top-14 z-50 w-[520px] rounded-2xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] shadow-2xl p-5">
-              {/* Date range */}
-              <div className="flex items-center justify-between mb-5">
+            <div className="absolute right-0 top-[48px] z-50 w-full max-w-[520px] rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.12)] sm:right-[150px] dark:border-[#17304a] dark:bg-[#071929]">
+              <div className="mb-4 flex items-center justify-between">
                 <label className="text-xs font-medium text-slate-500">
                   Date Range
                 </label>
@@ -1175,40 +835,39 @@ ${convertDesc.trim()}`,
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="text-xs text-red-400 hover:text-red-500"
+                  className="text-[11px] font-medium text-rose-500 hover:text-rose-600"
                 >
                   × Clear Filter
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 mb-5">
-                <div className="flex-1 relative">
-                  <FiCalendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <div className="mb-5 flex items-center gap-2">
+                <div className="relative flex-1">
+                  <FiCalendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
 
                   <input
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#071929] text-xs text-slate-700 dark:text-white outline-none"
+                    className="h-[39px] w-full rounded-lg border border-[#d1d1d1] bg-white pl-10 pr-3 text-[13px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
                   />
                 </div>
 
                 <span className="text-slate-400">-</span>
 
-                <div className="flex-1 relative">
-                  <FiCalendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <div className="relative flex-1">
+                  <FiCalendar className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
 
                   <input
                     type="date"
                     value={dateTo}
                     min={dateFrom || undefined}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="w-full h-11 pl-10 pr-3 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#071929] text-xs text-slate-700 dark:text-white outline-none"
+                    className="h-[39px] w-full rounded-lg border border-[#d1d1d1] bg-white pl-10 pr-3 text-[13px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
                   />
                 </div>
               </div>
 
-              {/* Customer Type / Assigned */}
               <div className="grid grid-cols-2 gap-4">
                 <FilterSelect
                   label="Customer Type"
@@ -1227,8 +886,7 @@ ${convertDesc.trim()}`,
                 />
               </div>
 
-              {/* Status / State */}
-              <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="mt-4 grid grid-cols-2 gap-4">
                 <FilterSelect
                   label="Status"
                   value={status}
@@ -1240,18 +898,17 @@ ${convertDesc.trim()}`,
                 <FilterSelect
                   label="State"
                   value={stateFilter}
-                  placeholder="Status"
+                  placeholder="Select State"
                   options={stateOptions}
                   onChange={setStateFilter}
                 />
               </div>
 
-              {/* Footer */}
-              <div className="flex items-center justify-end gap-5 mt-6">
+              <div className="mt-6 flex items-center justify-end gap-5">
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-[#233353]"
+                  className="text-xs font-medium text-slate-600 hover:text-[#233353] dark:text-slate-300"
                 >
                   Clear All Filter
                 </button>
@@ -1262,7 +919,7 @@ ${convertDesc.trim()}`,
                     setFilterOpen(false);
                     setCurrentPage(1);
                   }}
-                  className="px-5 py-2.5 rounded-xl bg-[#233353] hover:bg-[#101725] text-white text-xs font-bold"
+                  className="h-[39px] rounded-lg bg-[#273756] px-5 text-[13px] font-medium text-white transition hover:bg-[#18243a]"
                 >
                   Apply Filter
                 </button>
@@ -1271,568 +928,338 @@ ${convertDesc.trim()}`,
           )}
         </div>
 
-        {/* New Customer */}
-        <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => setNewCustomerMenuOpen((prev) => !prev)}
-            className="h-12 px-5 rounded-xl bg-[#233353] hover:bg-[#101725] text-white text-sm font-bold flex items-center gap-2 shadow-sm transition-colors"
-          >
-            <FiPlus className="text-base" />
+        {/* ============================================================
+            CUSTOMER TABLE
+        ============================================================ */}
 
-            <span>New Customer</span>
-          </button>
-
-          {newCustomerMenuOpen && (
-            <div className="absolute right-0 top-14 z-50 w-56 bg-white dark:bg-[#071929] border border-slate-200 dark:border-[#0d2336] rounded-xl shadow-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={handleAddSingleLead}
-                className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032]"
-              >
-                <FiUserPlus />
-
-                <span>Add Single Lead</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleAddFromExcel}
-                className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032]"
-              >
-                <FiFile />
-
-                <span>Add From Excel</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={openIntegrationContact}
-                className="w-full px-4 py-3 flex items-center gap-3 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032]"
-              >
-                <FiLink />
-
-                <span>Add From Integration</span>
-              </button>
+        <TableCard>
+          {loading ? (
+            <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 text-slate-400">
+              <CgSpinner className="animate-spin text-3xl text-[#233353]" />
+              <span className="text-xs font-semibold">Loading customers...</span>
             </div>
+          ) : filteredCustomers.length === 0 ? (
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-2 text-center">
+              <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">
+                No Customers Found
+              </p>
+              <p className="text-[12px] text-[#777777] dark:text-slate-400">
+                Try changing your search or filters.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table
+                  className={`w-full min-w-[900px] border-collapse text-left ${LIST_TABLE}`}
+                >
+                  <thead>
+                    <tr>
+                      <th className="w-12 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all customers"
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Cust. ID" />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Customer Name" />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Company" />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Assigned To" />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Status" />
+                      </th>
+                      <th className="px-4 py-3">
+                        <SortLabel label="Last Activity" />
+                      </th>
+                      <th className="px-4 py-3 text-center">Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {paginatedCustomers.map((customer) => (
+                      <tr
+                        key={customer.id}
+                        onClick={() => openContactDetails(customer)}
+                        className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-[#0b2034]/50"
+                      >
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${customer.name}`}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="whitespace-nowrap text-[11px] font-medium text-slate-800 dark:text-slate-300">
+                            {customer.code}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
+                            {customer.contactName || customer.name}
+                          </p>
+
+                          <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
+                            {customer.email || "No email"}
+                          </p>
+
+                          <p className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                            <FiMapPin size={9} />
+                            {customer.state || customer.address || "India"}
+                          </p>
+
+                          {customer.raw.is_draft && (
+                            <span className="mr-1 mt-1 inline-flex rounded bg-[#dae8f4] px-1.5 py-0.5 text-[9px] font-semibold text-[#038aff] dark:bg-blue-950/30 dark:text-blue-400">
+                              Draft
+                            </span>
+                          )}
+
+                          {customer.convertedLeadId && (
+                            <span className="mt-1 inline-flex rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
+                              Lead #{customer.convertedLeadId}
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="max-w-[180px] px-4 py-3">
+                          <p className="text-[12px] text-slate-700 dark:text-slate-300">
+                            {customer.name}
+                          </p>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          {customer.assignedTo ? (
+                            <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded bg-slate-100 px-2 py-1 dark:bg-[#0b2034]">
+                              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] text-slate-700 dark:bg-[#17304a] dark:text-slate-200">
+                                {customer.assignedTo.charAt(0).toUpperCase()}
+                              </span>
+
+                              <span className="max-w-[130px] truncate text-[10px] text-slate-700 dark:text-slate-200">
+                                {customer.assignedTo}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">Unassigned</span>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <CustomerStatus status={customer.status} />
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="whitespace-nowrap text-[10px] text-slate-700 dark:text-slate-300">
+                            {formatDate(customer.lastActivity)}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1">
+                            <a
+                              href={customer.phone ? `tel:${customer.phone}` : undefined}
+                              onClick={(event) => {
+                                if (!customer.phone) {
+                                  event.preventDefault();
+                                  openContactDetails(customer);
+                                }
+                              }}
+                              title={customer.phone ? `Call ${customer.phone}` : "Contact Details"}
+                              aria-label="Call"
+                              className="rounded-lg p-2 text-[#131313] transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#0b2034]"
+                            >
+                              <FiPhone size={13} />
+                            </a>
+
+                            <div className="relative">
+                              <button
+                                type="button"
+                                title="More Actions"
+                                aria-label="More Actions"
+                                onClick={() =>
+                                  setOpenRowMenu(openRowMenu === customer.id ? null : customer.id)
+                                }
+                                className="rounded-lg p-2 text-[#131313] transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#0b2034]"
+                              >
+                                <FiMoreVertical size={14} />
+                              </button>
+
+                              {openRowMenu === customer.id && (
+                                <div className="absolute right-0 top-full z-40 mt-1 w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
+                                  <MenuItem
+                                    icon={<FiEdit2 />}
+                                    onClick={() => editCustomer(customer.raw)}
+                                  >
+                                    Edit
+                                  </MenuItem>
+
+                                  <MenuItem
+                                    icon={<FiActivity />}
+                                    onClick={() => openContactDetails(customer)}
+                                  >
+                                    View Activities
+                                  </MenuItem>
+
+                                  {customer.status === "Inactive" ? (
+                                    <MenuItem
+                                      icon={<FiRotateCcw />}
+                                      onClick={() => {
+                                        setOpenRowMenu(null);
+                                        reactivate(customer.raw);
+                                      }}
+                                    >
+                                      Reactivate
+                                    </MenuItem>
+                                  ) : (
+                                    <MenuItem
+                                      icon={<FiSlash />}
+                                      onClick={() => openContactDetails(customer)}
+                                    >
+                                      Mark as Dead
+                                    </MenuItem>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <Pagination
+                page={currentPage}
+                pageSize={PAGE_SIZE}
+                totalItems={filteredCustomers.length}
+                totalPages={Math.max(1, Math.ceil(filteredCustomers.length / PAGE_SIZE))}
+                onPageChange={setCurrentPage}
+                noun="customers"
+              />
+            </>
           )}
-        </div>
+        </TableCard>
       </div>
 
-      {/* ============================================================
-          CUSTOMER TABLE
-      ============================================================ */}
-
-      <Card bodyClassName="!p-0" className="overflow-visible">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
-            <CgSpinner className="animate-spin text-3xl text-[#233353]" />
-            <span className="text-xs font-semibold">Loading customers...</span>
-          </div>
-        ) : (
-          <Table
-            headers={[
-              "",
-              "Cust. ID",
-              "Customer Name",
-              "Company",
-              "Assigned To",
-              "Status",
-              "Last Activity",
-              "Actions",
-            ]}
-            currentPage={currentPage}
-            totalItems={filteredCustomers.length}
-            pageSize={PAGE_SIZE}
-            onPageChange={(page) => setCurrentPage(page)}
-          >
-            {paginatedCustomers.map((customer, index) => {
-              const isConverted = convertedCustomerIds.includes(customer.id);
-
-              const globalIndex = (currentPage - 1) * PAGE_SIZE + index;
-
-              const customerId = `#CUS-${1042 + globalIndex}`;
-
-              return (
-                <tr
-                  key={customer.id}
-                  className="group hover:bg-slate-50 dark:hover:bg-[#071929]/40 transition-colors"
-                >
-                  {/* Checkbox */}
-                  <td className="px-4 py-4 w-12">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 rounded border-slate-300"
-                    />
-                  </td>
-
-                  {/* ID */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      {customerId}
-                    </span>
-                  </td>
-
-                  {/* Customer */}
-                  <td className="px-4 py-4 min-w-[260px]">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-[#0b2032] flex items-center justify-center text-[11px] font-bold text-[#233353] dark:text-white shrink-0">
-                        {customer.name
-                          .split(" ")
-                          .slice(0, 2)
-                          .map((part) => part[0])
-                          .join("")
-                          .toUpperCase()}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                          {customer.contactName || customer.name}
-                        </p>
-
-                        <p className="text-[11px] text-slate-500 truncate">
-                          {customer.email}
-                        </p>
-
-                        <p className="text-[10px] text-slate-500">
-                          {customer.state || customer.address || "India"}
-                        </p>
-
-                        {isConverted && (
-                          <span className="inline-flex mt-1 text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                            In Lead Pipeline
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* Company */}
-                  <td className="px-4 py-4 min-w-[180px]">
-                    <p className="text-xs font-medium text-slate-700 dark:text-slate-200">
-                      {customer.name}
-                    </p>
-                  </td>
-
-                  {/* Assigned */}
-                  <td className="px-4 py-4">
-                    {customer.assignedTo ? (
-                      <span className="inline-flex items-center px-3 py-1 rounded-md bg-slate-100 dark:bg-[#0b2032] text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                        {customer.assignedTo}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400">—</span>
-                    )}
-                  </td>
-
-                  {/* Status */}
-                  <td className="px-4 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-semibold ${
-                        customer.status === "Active"
-                          ? "border-emerald-400 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20"
-                          : "border-red-400 text-red-500 bg-red-50 dark:bg-red-950/20"
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          customer.status === "Active"
-                            ? "bg-emerald-500"
-                            : "bg-red-500"
-                        }`}
-                      />
-
-                      {customer.status}
-                    </span>
-                  </td>
-
-                  {/* Last activity */}
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="text-xs text-slate-600 dark:text-slate-300">
-                      {formatDate(customer.lastActivity)}
-                    </span>
-                  </td>
-
-                  {/* Actions */}
-                  <td
-                    className="px-4 py-4"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-end gap-3">
-                      {/* Phone */}
-                      <button
-                        type="button"
-                        title="Contact Details"
-                        onClick={() => openContactDetails(customer)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-[#0b2032] hover:text-[#233353] transition-colors"
-                      >
-                        <FiPhone />
-                      </button>
-
-                      {/* Three dots */}
-                      <div className="relative">
-                        <button
-                          type="button"
-                          title="More"
-                          onClick={() =>
-                            setOpenRowMenu(
-                              openRowMenu === customer.id ? null : customer.id,
-                            )
-                          }
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-[#0b2032]"
-                        >
-                          <FiMoreVertical />
-                        </button>
-
-                        {openRowMenu === customer.id && (
-                          <div className="absolute right-0 top-9 z-40 w-44 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#071929] shadow-xl overflow-hidden">
-                            <button
-                              type="button"
-                              onClick={() => openContactDetails(customer)}
-                              className="w-full px-4 py-3 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032] flex items-center gap-3"
-                            >
-                              <FiEdit2 />
-                              Edit
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openContactDetails(customer)}
-                              className="w-full px-4 py-3 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032] flex items-center gap-3"
-                            >
-                              <FiActivity />
-                              View Activities
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openContactDetails(customer)}
-                              className="w-full px-4 py-3 text-left text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-[#0b2032] flex items-center gap-3"
-                            >
-                              <FiSlash />
-                              Deactivate
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </Table>
-        )}
-      </Card>
-
-      {/* ============================================================
-          CONTACT DETAILS DRAWER
-      ============================================================ */}
+      {showImportModal && (
+        <CustomerImportModal
+          onClose={() => setShowImportModal(false)}
+          onImported={(result) => {
+            addToast(
+              `${result.created} customer${result.created === 1 ? "" : "s"} imported.`,
+              "success",
+            );
+            fetchCustomers();
+          }}
+        />
+      )}
 
       <CustomerContactDrawer
-        isOpen={drawerOpen}
         customer={drawerCustomer}
-        onClose={() => setDrawerOpen(false)}
-        onEdit={handleDrawerEdit}
-        onMarkDead={handleDrawerMarkDead}
-        onConvertToLead={(customer) => {
-          const original = customers.find((item) => item.id === customer.id);
-
-          if (original) {
-            setDrawerOpen(false);
-            openConvertLead(original);
-          }
-        }}
+        activities={activities}
+        loading={activitiesLoading}
+        busy={drawerBusy}
+        onClose={() => setDrawerCustomer(null)}
+        onEdit={editCustomer}
+        onStageChange={changeStage}
+        onLogActivity={logActivity}
+        onMarkDead={markDead}
+        onReactivate={reactivate}
+        onConvertToLead={openConvertLead}
       />
 
-      {/* ============================================================
-          CONVERT LEAD MODAL
-      ============================================================ */}
-
-      {showConvertModal && selectedConvertCustomer && (
+      {convertTarget && (
         <Modal
-          isOpen={showConvertModal}
-          onClose={() => setShowConvertModal(false)}
-          title="Convert Customer Account to Lead"
+          isOpen
+          onClose={() => setConvertTarget(null)}
+          title="Convert To Lead"
         >
-          <form onSubmit={handleConvertLeadConfirm} className="space-y-4">
-            <Input
-              label="Lead Title *"
-              required
-              value={convertTitle}
-              onChange={(e) => setConvertTitle(e.target.value)}
-            />
+          <form onSubmit={confirmConvertLead} className="space-y-4">
+            <p className="text-[12px] text-[#777777] dark:text-slate-400">
+              A new lead is opened for{" "}
+              <span className="font-medium text-[#141414] dark:text-white">
+                {convertTarget.name}
+              </span>{" "}
+              with its contact, address and registration details.
+            </p>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Workflow Role Destination
+            <div>
+              <label className="mb-1.5 block text-[12px] text-[#777777] dark:text-slate-400">
+                Lead Title
               </label>
-
-              <select
-                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929] px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-                value={selectedRoleId}
-                onChange={(e) => setSelectedRoleId(e.target.value)}
-              >
-                {dbRoles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Customer Context & Requirements
-              </label>
-
-              <textarea
-                rows={7}
-                value={convertDesc}
-                onChange={(e) => setConvertDesc(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929] p-3 text-xs text-slate-800 dark:text-white outline-none"
+              <input
+                value={convertTitle}
+                onChange={(e) => setConvertTitle(e.target.value)}
+                className="h-[39px] w-full rounded-lg border border-[#d1d1d1] bg-white px-3 text-[13px] text-[#141414] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-[#0d2336]">
-              <Button
-                variant="outline"
+            <div>
+              <label className="mb-1.5 block text-[12px] text-[#777777] dark:text-slate-400">
+                Assign To
+              </label>
+              <div className="relative">
+                <select
+                  value={convertAssignee}
+                  onChange={(e) => setConvertAssignee(e.target.value)}
+                  className="h-[39px] w-full appearance-none rounded-lg border border-[#d1d1d1] bg-white px-3 pr-9 text-[13px] text-[#141414] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                >
+                  <option value="">Same as the customer</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {`${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email}
+                    </option>
+                  ))}
+                </select>
+                <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-[12px] text-[#777777] dark:text-slate-400">
+                Requirements / Remarks
+              </label>
+              <textarea
+                rows={4}
+                value={convertRemarks}
+                onChange={(e) => setConvertRemarks(e.target.value)}
+                placeholder="What is the customer looking for?"
+                className="w-full resize-none rounded-lg border border-[#d1d1d1] bg-[#f3f3f3] p-3 text-[13px] text-[#141414] outline-none placeholder:text-[#a9a9a9] focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-[#17304a]">
+              <button
                 type="button"
-                onClick={() => setShowConvertModal(false)}
+                onClick={() => setConvertTarget(null)}
+                className="h-[39px] rounded-lg border border-[#d1d1d1] bg-white px-4 text-[13px] text-slate-700 hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
               >
                 Cancel
-              </Button>
-
-              <Button type="submit" loading={convertingLead}>
-                Confirm Conversion
-              </Button>
+              </button>
+              <button
+                type="submit"
+                disabled={converting}
+                className="inline-flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white hover:bg-[#18243a] disabled:opacity-50"
+              >
+                {converting && <CgSpinner className="animate-spin" />}
+                Create Lead
+              </button>
             </div>
           </form>
         </Modal>
       )}
-
-      {/* ============================================================
-          INVOICE BUILDER
-      ============================================================ */}
-
-      {showInvoiceModal && invoiceCustomer && (
-        <Modal
-          isOpen={showInvoiceModal}
-          onClose={() => setShowInvoiceModal(false)}
-          title={`Generate Bill: ${invoiceCustomer.name}`}
-          size="lg"
-        >
-          <div className="space-y-5">
-            <div className="flex justify-between items-center bg-slate-50 dark:bg-[#071929] p-3 rounded-xl">
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                Invoice Number:
-              </span>
-
-              <span className="text-xs font-mono font-bold text-[#233353] dark:text-sky-400">
-                {invoiceNumber}
-              </span>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Bill Line Items
-                </label>
-
-                <button
-                  type="button"
-                  onClick={addInvoiceRow}
-                  className="text-xs font-bold text-[#233353] dark:text-sky-400 hover:underline"
-                >
-                  + Add Line Item
-                </button>
-              </div>
-
-              {invoiceItems.map((item, index) => (
-                <div key={index} className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Item description..."
-                    value={item.description}
-                    onChange={(e) =>
-                      updateInvoiceItem(index, {
-                        description: e.target.value,
-                      })
-                    }
-                    className="flex-1 rounded-lg border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929] px-3 py-2 text-xs outline-none"
-                  />
-
-                  <input
-                    type="number"
-                    placeholder="Qty"
-                    value={item.qty}
-                    onChange={(e) =>
-                      updateInvoiceItem(index, {
-                        qty: parseInt(e.target.value) || 0,
-                      })
-                    }
-                    className="w-20 rounded-lg border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929] px-3 py-2 text-xs outline-none"
-                  />
-
-                  <input
-                    type="number"
-                    placeholder="Price"
-                    value={item.price}
-                    onChange={(e) =>
-                      updateInvoiceItem(index, {
-                        price: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                    className="w-28 rounded-lg border border-slate-200 dark:border-[#0d2336] bg-slate-50 dark:bg-[#071929] px-3 py-2 text-xs outline-none"
-                  />
-
-                  {invoiceItems.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeInvoiceRow(index)}
-                      className="text-slate-400 hover:text-red-500"
-                    >
-                      <FiX />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-end gap-2 border-t pt-4">
-              <Button
-                variant="outline"
-                type="button"
-                onClick={() => setShowInvoiceModal(false)}
-              >
-                Cancel
-              </Button>
-
-              <Button type="button" onClick={generateInvoiceBill}>
-                Generate Invoice
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* ============================================================
-          PRINTED INVOICE
-      ============================================================ */}
-
-      {showPrintModal && printedInvoice && (
-        <Modal
-          isOpen={showPrintModal}
-          onClose={() => setShowPrintModal(false)}
-          title="Invoice Document"
-          size="lg"
-        >
-          <div className="space-y-6 p-5 bg-white dark:bg-[#051422]">
-            <div className="flex justify-between border-b pb-4">
-              <div>
-                <h3 className="text-xl font-black text-[#233353] dark:text-white">
-                  ENTERPRISE SAAS
-                </h3>
-
-                <p className="text-xs text-slate-400">
-                  Synergy Platform Billing System
-                </p>
-              </div>
-
-              <div className="text-right text-xs">
-                <p className="font-mono font-bold">
-                  INV: {printedInvoice.invoiceNo}
-                </p>
-
-                <p className="text-slate-400">{printedInvoice.date}</p>
-              </div>
-            </div>
-
-            <div className="text-xs">
-              <p className="font-bold text-slate-500 uppercase">Billed To:</p>
-
-              <p className="font-bold text-sm mt-1">
-                {printedInvoice.customer.name}
-              </p>
-
-              <p className="text-slate-500">
-                {printedInvoice.customer.email} •{" "}
-                {printedInvoice.customer.phone}
-              </p>
-
-              <p className="text-slate-500">
-                {printedInvoice.customer.address}
-              </p>
-            </div>
-
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b text-slate-500 uppercase">
-                  <th className="text-left pb-2">Description</th>
-
-                  <th className="text-center pb-2">Qty</th>
-
-                  <th className="text-right pb-2">Price</th>
-
-                  <th className="text-right pb-2">Total</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {printedInvoice.items.map((item, index) => (
-                  <tr key={index} className="border-b">
-                    <td className="py-2">{item.description}</td>
-
-                    <td className="py-2 text-center">{item.qty}</td>
-
-                    <td className="py-2 text-right">
-                      ₹{item.price.toLocaleString("en-IN")}
-                    </td>
-
-                    <td className="py-2 text-right font-bold">
-                      ₹{(item.qty * item.price).toLocaleString("en-IN")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="flex justify-end">
-              <div className="w-60 space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-
-                  <span>
-                    ₹{printedInvoice.subTotal.toLocaleString("en-IN")}
-                  </span>
-                </div>
-
-                <div className="flex justify-between">
-                  <span>GST:</span>
-
-                  <span>
-                    ₹{printedInvoice.gstTotal.toLocaleString("en-IN")}
-                  </span>
-                </div>
-
-                <div className="flex justify-between font-black text-sm border-t pt-2">
-                  <span>Grand Total:</span>
-
-                  <span>
-                    ₹{printedInvoice.grandTotal.toLocaleString("en-IN")}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end border-t pt-4">
-              <Button type="button" onClick={() => window.print()}>
-                Print Invoice
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
+    </ListPage>
   );
 }
 
@@ -1863,7 +1290,7 @@ function FilterSelect({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="appearance-none w-full h-11 px-3.5 pr-9 rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#071929] text-xs text-slate-700 dark:text-white outline-none cursor-pointer"
+          className="h-[39px] w-full cursor-pointer appearance-none rounded-lg border border-[#d1d1d1] bg-white px-3.5 pr-9 text-[13px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
         >
           <option value="">{placeholder}</option>
 
@@ -1877,5 +1304,66 @@ function FilterSelect({
         <FiChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
       </div>
     </div>
+  );
+}
+
+/* ================================================================
+   SMALL PIECES
+================================================================ */
+
+/** Column label with the design's sort chevrons. */
+function SortLabel({ label }: { label: string }) {
+  return (
+    <span className="flex items-center gap-2 whitespace-nowrap">
+      {label}
+
+      <span className="flex flex-col leading-[6px] text-slate-300">
+        <span>⌃</span>
+        <span>⌄</span>
+      </span>
+    </span>
+  );
+}
+
+/** Outlined pill with a leading dot, as in the design. */
+function CustomerStatus({ status }: { status: Customer["status"] }) {
+  const active = status === "Active";
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${
+        active
+          ? "border-emerald-400 bg-emerald-50 text-emerald-600 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+          : "border-rose-400 bg-rose-50 text-rose-500 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-400"
+      }`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          active ? "bg-emerald-500" : "bg-rose-500"
+        }`}
+      />
+      {status}
+    </span>
+  );
+}
+
+function MenuItem({
+  icon,
+  onClick,
+  children,
+}: {
+  icon: React.ReactNode;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[12px] text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-[#0b2034]"
+    >
+      <span className="text-slate-500">{icon}</span>
+      {children}
+    </button>
   );
 }
