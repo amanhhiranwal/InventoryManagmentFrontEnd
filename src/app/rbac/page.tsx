@@ -11,6 +11,7 @@ import {
   assignPermissionToRoleApi,
   removePermissionFromRoleApi,
   getRolePermissionsApi,
+  updateRoleApi,
   Role,
   Permission,
 } from "@/features/rbac/api/rbac.api";
@@ -28,6 +29,7 @@ import {
   FiChevronRight,
   FiCheck,
   FiMinus,
+  FiEdit2,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 import Button from "@/components/ui/Button";
@@ -71,6 +73,40 @@ function CustomCheckbox({
   );
 }
 
+/** The FastAPI error text, falling back to the older message field. */
+function errorText(err: unknown, fallback: string) {
+  const data = (err as AxiosError<{ detail?: string; message?: string }>)
+    .response?.data;
+  return (typeof data?.detail === "string" && data.detail) || data?.message || fallback;
+}
+
+/** Actions inside a page that need their own tick, beyond opening it.
+    Keyed by the page's permission; the backend checks each key. */
+const PAGE_ACTIONS: Record<string, { key: string; title: string }[]> = {
+  "customer.read": [
+    { key: "customer.bulk_upload", title: "Bulk Upload from Excel" },
+  ],
+};
+
+/** The pages a menu group grants. A group with sub-pages grants those; a
+    standalone page (Dashboard, Customers...) grants itself. Each page is
+    followed by any actions that need their own tick. */
+function groupPages(group: DBMenuItem): DBMenuItem[] {
+  const pages =
+    group.children && group.children.length > 0 ? group.children : [group];
+
+  return pages.flatMap((page) => [
+    page,
+    ...(PAGE_ACTIONS[page.permission_key || ""] || []).map((action) => ({
+      ...page,
+      id: `${page.id}:${action.key}`,
+      title: action.title,
+      permission_key: action.key,
+      children: [],
+    })),
+  ]);
+}
+
 export default function RBACPage() {
   const { addToast } = useUIStore();
   const [roles, setRoles] = useState<Role[]>([]);
@@ -81,6 +117,9 @@ export default function RBACPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [roleForm, setRoleForm] = useState({ name: "", description: "" });
+  const [roleToEdit, setRoleToEdit] = useState<Role | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", description: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Selected role & permissions mapping state
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
@@ -95,7 +134,11 @@ export default function RBACPage() {
 
   const user = useAuthStore((state) => state.user);
   const superAdmin = user?.is_super_admin === true;
-  const canReadRBAC = hasPermission("role.read");
+  /* Anyone given Roles & Access can open it, read-only and limited to the
+     roles below their own; only the super admin changes anything. */
+  const canReadRBAC = superAdmin || hasPermission("role.read");
+  const canManageRoles = superAdmin;
+  const canToggleKey = (key?: string | null) => Boolean(key) && superAdmin;
 
   const fetchRolePermissions = useCallback(async (roleId: string) => {
     try {
@@ -126,6 +169,12 @@ export default function RBACPage() {
         getPermissionsApi(),
         getMenuTreeApi(),
       ]);
+
+      /* Top of the hierarchy first; roles not on any chart after them. */
+      rolesData.sort(
+        (a, b) =>
+          (a.level ?? 99) - (b.level ?? 99) || a.name.localeCompare(b.name),
+      );
       setRoles(rolesData);
       setPermissions(permsData);
       setDbMenuTree(menusData || []);
@@ -140,8 +189,7 @@ export default function RBACPage() {
       }
     } catch (err: unknown) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
-      addToast(axiosError.response?.data?.message || "Failed to fetch RBAC configuration.", "error");
+      addToast(errorText(err, "Failed to fetch RBAC configuration."), "error");
     } finally {
       setLoading(false);
     }
@@ -168,8 +216,7 @@ export default function RBACPage() {
       fetchData();
     } catch (err: unknown) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
-      addToast(axiosError.response?.data?.message || "Failed to create role.", "error");
+      addToast(errorText(err, "Failed to create role."), "error");
     } finally {
       setCreatingRole(false);
     }
@@ -189,10 +236,30 @@ export default function RBACPage() {
       fetchData();
     } catch (err: unknown) {
       console.error(err);
-      const axiosError = err as AxiosError<{ message?: string }>;
-      addToast(axiosError.response?.data?.message || "Failed to delete role.", "error");
+      addToast(errorText(err, "Failed to delete role."), "error");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleSaveRoleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roleToEdit || !editForm.name.trim()) {
+      addToast("Role name is required.", "warning");
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      await updateRoleApi(roleToEdit.id, editForm.name.trim(), editForm.description.trim());
+      addToast("Role updated.", "success");
+      setRoleToEdit(null);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      addToast(errorText(err, "Failed to update role."), "error");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -236,7 +303,7 @@ export default function RBACPage() {
       setSelectedRolePermissions(updatedPerms);
     } catch (err) {
       console.error(err);
-      addToast("Failed to update role permission.", "error");
+      addToast(errorText(err, "Failed to update role permission."), "error");
     } finally {
       setTogglingPermKey(null);
     }
@@ -245,11 +312,9 @@ export default function RBACPage() {
   // Group Checkbox toggle handler: Select all or Deselect all submenus under a group
   const handleToggleGroup = async (group: DBMenuItem) => {
     if (!selectedRoleId) return;
-    const children = group.children || [];
-    const allChildKeys = children
+    const allChildKeys = groupPages(group)
       .map((c) => c.permission_key)
-      .filter((k): k is string => Boolean(k))
-      .concat(group.permission_key ? [group.permission_key] : []);
+      .filter((k): k is string => canToggleKey(k));
     
     if (allChildKeys.length === 0) return;
 
@@ -286,7 +351,7 @@ export default function RBACPage() {
       );
     } catch (err) {
       console.error(err);
-      addToast("Failed to update group permissions.", "error");
+      addToast(errorText(err, "Failed to update group permissions."), "error");
     } finally {
       setTogglingPermKey(null);
     }
@@ -295,10 +360,9 @@ export default function RBACPage() {
   // Quick Select All / Deselect All for entire application
   const handleSelectAllAll = async (select: boolean) => {
     if (!selectedRoleId) return;
-    const allKeys = dbMenuTree.flatMap((g) => [
-      ...(g.permission_key ? [g.permission_key] : []),
-      ...(g.children || []).map((c) => c.permission_key).filter((k): k is string => Boolean(k))
-    ]);
+    const allKeys = dbMenuTree
+      .flatMap((g) => groupPages(g).map((c) => c.permission_key))
+      .filter((k): k is string => canToggleKey(k));
 
     try {
       setLoadingRolePerms(true);
@@ -322,7 +386,7 @@ export default function RBACPage() {
       addToast(select ? "Granted all menu permissions to role!" : "Revoked all menu permissions from role.", "success");
     } catch (err) {
       console.error(err);
-      addToast("Failed to bulk update permissions.", "error");
+      addToast(errorText(err, "Failed to bulk update permissions."), "error");
     } finally {
       setLoadingRolePerms(false);
     }
@@ -340,7 +404,7 @@ export default function RBACPage() {
         </div>
         <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">Access Denied</h2>
         <p className="text-slate-500 dark:text-slate-400 max-w-md text-sm">
-          You do not have the required permissions to read authorization policies (RBAC configurations).
+          Your role has not been given Roles &amp; Access.
         </p>
       </div>
     );
@@ -354,6 +418,12 @@ export default function RBACPage() {
         title="Role Permissions & Menu Matrix"
         description="Configure role-based sidebar menu permissions and security privileges across your organization."
       />
+
+      <p className="-mt-3 text-xs text-slate-500 dark:text-slate-400">
+        {superAdmin
+          ? "Tick the pages each role can open; they appear in the sidebar for everyone with that role. Roles given Masters, Roles & Access or Workflows see them read-only - only the super admin can change them. Who sees whose records follows the hierarchy on the Workflows page."
+          : "Read-only: you can see the pages given to the roles below yours. Only the super admin can change them."}
+      </p>
 
       {loading ? (
         <Card className="p-20 flex flex-col items-center justify-center gap-3">
@@ -404,6 +474,13 @@ export default function RBACPage() {
               )}
 
               <div className="divide-y divide-slate-100 dark:divide-[#0d2336] max-h-[500px] overflow-y-auto pr-1 space-y-1">
+                {roles.length === 0 && (
+                  <p className="py-8 text-center text-xs text-slate-400">
+                    {superAdmin
+                      ? "No roles yet. Add one above."
+                      : "There are no roles below yours in the hierarchy."}
+                  </p>
+                )}
                 {roles.map((role) => {
                   const isSelected = selectedRoleId === role.id;
                   return (
@@ -423,16 +500,51 @@ export default function RBACPage() {
                         <p className="text-xs text-slate-400 line-clamp-1 truncate">
                           {role.description || <span className="italic">No description</span>}
                         </p>
+                        <p className="flex flex-wrap items-center gap-1.5 pt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                          {role.level ? (
+                            <span className="rounded-full bg-[#233353]/10 px-1.5 py-0.5 font-semibold text-[#233353] dark:bg-sky-500/10 dark:text-sky-300">
+                              Level {role.level}
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 dark:bg-[#0d2336]">
+                              Not in hierarchy
+                            </span>
+                          )}
+                          {(role.parent_role_ids || []).length > 0 && (
+                            <span className="truncate">
+                              Reports to{" "}
+                              {(role.parent_role_ids || [])
+                                .map((id) => roles.find((r) => r.id === id)?.name)
+                                .filter(Boolean)
+                                .join(", ") || "a senior role"}
+                            </span>
+                          )}
+                          <span>
+                            {role.user_count ?? 0} user{role.user_count === 1 ? "" : "s"}
+                          </span>
+                        </p>
                       </div>
 
                       {superAdmin && (
+                        <div className="flex shrink-0 items-center opacity-0 transition-all group-hover:opacity-100 focus-within:opacity-100">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditForm({ name: role.name, description: role.description || "" });
+                            setRoleToEdit(role);
+                          }}
+                          className="text-slate-400 hover:text-[#233353] dark:hover:text-sky-300 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] transition-all cursor-pointer"
+                          title="Edit Role"
+                        >
+                          <FiEdit2 className="text-sm" />
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setRoleToDelete(role);
                           }}
                           disabled={deletingId === role.id}
-                          className="text-slate-400 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50 shrink-0"
+                          className="text-slate-400 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all cursor-pointer disabled:opacity-50 shrink-0"
                           title="Delete Role"
                         >
                           {deletingId === role.id ? (
@@ -441,6 +553,7 @@ export default function RBACPage() {
                             <FiTrash2 className="text-sm" />
                           )}
                         </button>
+                        </div>
                       )}
                     </div>
                   );
@@ -464,7 +577,7 @@ export default function RBACPage() {
                     </p>
                   </div>
 
-                  {selectedRoleId && (
+                  {selectedRoleId && canManageRoles && (
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -520,7 +633,7 @@ export default function RBACPage() {
                       );
                     }).map((group) => {
                       const isExpanded = expandedGroups[group.id] ?? true;
-                      const children = group.children || [];
+                      const children = groupPages(group);
 
                       // Check submenus assigned for this group
                       const childPermKeys = children
@@ -559,7 +672,10 @@ export default function RBACPage() {
                                 <CustomCheckbox
                                   checked={isAllChecked}
                                   indeterminate={isIndeterminate}
-                                  disabled={!superAdmin || isGroupToggling}
+                                  disabled={
+                                    isGroupToggling ||
+                                    !childPermKeys.some((key) => canToggleKey(key))
+                                  }
                                   onChange={() => handleToggleGroup(group)}
                                 />
                                 <span className="font-extrabold text-sm text-slate-900 dark:text-white font-sans">
@@ -570,7 +686,15 @@ export default function RBACPage() {
 
                             <div className="flex items-center gap-2">
                               <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-[#0d2336] px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-800">
-                                {assignedChildCount} / {childPermKeys.length} Submenus Enabled
+                                {children.length > 1
+                                  ? `${assignedChildCount} / ${childPermKeys.length} ${
+                                      group.children && group.children.length > 0
+                                        ? "Submenus"
+                                        : "Permissions"
+                                    } Enabled`
+                                  : assignedChildCount > 0
+                                    ? "Page Enabled"
+                                    : "Page Hidden"}
                               </span>
                             </div>
                           </div>
@@ -587,23 +711,24 @@ export default function RBACPage() {
                                   const isChildAssigned = child.permission_key
                                     ? selectedRolePermissions.some((p) => p.name === child.permission_key)
                                     : false;
+                                  const canToggleChild = canToggleKey(child.permission_key);
 
                                   return (
                                     <div
                                       key={child.id}
                                       onClick={() => {
-                                        if (superAdmin && child.permission_key && togglingPermKey !== child.permission_key) {
+                                        if (canToggleChild && child.permission_key && togglingPermKey !== child.permission_key) {
                                           handleTogglePermissionByKey(child.permission_key);
                                         }
                                       }}
                                       className={`flex items-center justify-between p-2.5 rounded-xl border border-slate-100 dark:border-[#0d2336] hover:bg-slate-50/50 dark:hover:bg-[#071929]/30 transition-all select-none ${
-                                        superAdmin && child.permission_key ? "cursor-pointer" : "cursor-not-allowed"
+                                        canToggleChild ? "cursor-pointer" : "cursor-not-allowed opacity-60"
                                       }`}
                                     >
                                       <div className="flex items-center gap-3">
                                         <CustomCheckbox
                                           checked={isChildAssigned}
-                                          disabled={!superAdmin || !child.permission_key || togglingPermKey === child.permission_key}
+                                          disabled={!canToggleChild || togglingPermKey === child.permission_key}
                                           onChange={() => child.permission_key && handleTogglePermissionByKey(child.permission_key)}
                                         />
                                         <div>
@@ -613,6 +738,7 @@ export default function RBACPage() {
                                           <p className="text-[10px] font-mono text-slate-400 mt-0.5">
                                             Route: {child.path || "N/A"} | Key: {child.permission_key || "None"}
                                           </p>
+
                                         </div>
                                       </div>
 
@@ -640,6 +766,33 @@ export default function RBACPage() {
           </div>
 
         </div>
+      )}
+
+      {/* Edit Role Modal */}
+      {roleToEdit && (
+        <Modal isOpen={!!roleToEdit} onClose={() => setRoleToEdit(null)} title="Edit Role">
+          <form onSubmit={handleSaveRoleEdit} className="space-y-4">
+            <Input
+              label="Role Name"
+              required
+              value={editForm.name}
+              onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
+            />
+            <Input
+              label="Role Description"
+              value={editForm.description}
+              onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
+            />
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-[#0d2336]">
+              <Button variant="outline" type="button" onClick={() => setRoleToEdit(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={savingEdit}>
+                Save Changes
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Delete Role Modal */}

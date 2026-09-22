@@ -9,6 +9,7 @@ import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import Switch from "@/components/ui/Switch";
 import { useUIStore } from "@/lib/store/ui.store";
+import { useAuthStore } from "@/features/auth/store/auth.store";
 import {
   FiPlus,
   FiTrash2,
@@ -47,6 +48,9 @@ interface ProductType {
 
 export default function ProductTypesPage() {
   const { addToast } = useUIStore();
+  /* Master data is maintained by the super admin; other roles given
+     this page see it read-only. */
+  const superAdmin = useAuthStore((state) => state.user?.is_super_admin === true);
   const [types, setTypes] = useState<ProductType[]>([]);
   const [categoryGroups, setCategoryGroups] = useState<CategoryGroupModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -275,13 +279,15 @@ export default function ProductTypesPage() {
           title="Product Types Master"
           description="Manage inventory classifications, product categories, and build dynamic forms specifications."
         />
-        <Button
-          onClick={() => setShowAddModal(true)}
-          icon={<FiPlus />}
-          className="shrink-0"
-        >
-          Add Product Type
-        </Button>
+        {superAdmin && (
+          <Button
+            onClick={() => setShowAddModal(true)}
+            icon={<FiPlus />}
+            className="shrink-0"
+          >
+            Add Product Type
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-3 max-w-md bg-white dark:bg-[#051422] rounded-xl border border-slate-200 dark:border-[#0d2336] px-3.5 py-2">
@@ -326,32 +332,34 @@ export default function ProductTypesPage() {
                   {t.description || <span className="italic">No description</span>}
                 </td>
                 <td className="py-4 px-5 text-right">
-                  <div className="flex justify-end gap-1.5">
-                    <button
-                      onClick={() => handleOpenBuilder(t)}
-                      className="p-1.5 text-slate-400 hover:text-primary rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
-                      title="Build Dynamic Specifications Form"
-                    >
-                      <FiSliders className="text-sm" />
-                    </button>
-                    <button
-                      onClick={() => handleOpenEditType(t)}
-                      className="p-1.5 text-slate-400 hover:text-primary rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
-                      title="Edit Product Type"
-                    >
-                      <FiEdit2 className="text-sm" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setTypeToDelete(t);
-                        setShowDeleteModal(true);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
-                      title="Delete Product Type"
-                    >
-                      <FiTrash2 className="text-sm" />
-                    </button>
-                  </div>
+                  {superAdmin && (
+                    <div className="flex justify-end gap-1.5">
+                      <button
+                        onClick={() => handleOpenBuilder(t)}
+                        className="p-1.5 text-slate-400 hover:text-primary rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
+                        title="Build Dynamic Specifications Form"
+                      >
+                        <FiSliders className="text-sm" />
+                      </button>
+                      <button
+                        onClick={() => handleOpenEditType(t)}
+                        className="p-1.5 text-slate-400 hover:text-primary rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
+                        title="Edit Product Type"
+                      >
+                        <FiEdit2 className="text-sm" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setTypeToDelete(t);
+                          setShowDeleteModal(true);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
+                        title="Delete Product Type"
+                      >
+                        <FiTrash2 className="text-sm" />
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

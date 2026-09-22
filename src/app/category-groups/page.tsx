@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useUIStore } from "@/lib/store/ui.store";
+import { useAuthStore } from "@/features/auth/store/auth.store";
 import { FiPlus, FiTrash2, FiSearch, FiTag } from "react-icons/fi";
 import {
   getCategoryGroupsApi,
@@ -19,6 +20,9 @@ import { CgSpinner } from "react-icons/cg";
 
 export default function CategoryGroupsPage() {
   const { addToast } = useUIStore();
+  /* Master data is maintained by the super admin; other roles given
+     this page see it read-only. */
+  const superAdmin = useAuthStore((state) => state.user?.is_super_admin === true);
   const [groups, setGroups] = useState<CategoryGroupModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -105,13 +109,15 @@ export default function CategoryGroupsPage() {
           title="Category Groups Master"
           description="Manage main category groupings for products."
         />
-        <Button
-          onClick={() => setShowAddModal(true)}
-          icon={<FiPlus />}
-          className="shrink-0"
-        >
-          Add Category Group
-        </Button>
+        {superAdmin && (
+          <Button
+            onClick={() => setShowAddModal(true)}
+            icon={<FiPlus />}
+            className="shrink-0"
+          >
+            Add Category Group
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-3 max-w-md bg-white dark:bg-[#051422] rounded-xl border border-slate-200 dark:border-[#0d2336] px-3.5 py-2">
@@ -151,16 +157,18 @@ export default function CategoryGroupsPage() {
                 </td>
                 <td className="py-4 px-5 text-right">
                   <div className="flex justify-end gap-1.5">
-                    <button
-                      onClick={() => {
-                        setGroupToDelete(g);
-                        setShowDeleteModal(true);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
-                      title="Delete Category Group"
-                    >
-                      <FiTrash2 className="text-sm" />
-                    </button>
+                    {superAdmin && (
+                      <button
+                        onClick={() => {
+                          setGroupToDelete(g);
+                          setShowDeleteModal(true);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
+                        title="Delete Category Group"
+                      >
+                        <FiTrash2 className="text-sm" />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

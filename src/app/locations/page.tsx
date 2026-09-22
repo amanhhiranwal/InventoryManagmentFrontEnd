@@ -62,9 +62,11 @@ export default function LocationsPage() {
 
   const user = useAuthStore((state) => state.user);
   const superAdmin = user?.is_super_admin === true;
-  const canViewLocations = hasPermission("location.view");
-  const canUpdateLocation = hasPermission("location.update");
-  const canDeleteLocation = hasPermission("location.delete");
+  /* The Roles & Access matrix grants "location.read"; changes are for the
+     super admin only, as on the backend. */
+  const canViewLocations = hasPermission("location.read") || hasPermission("location.view");
+  const canUpdateLocation = superAdmin;
+  const canDeleteLocation = superAdmin;
   const showAddLocation = superAdmin;
 
   const fetchLocationsAndCompanies = useCallback(async () => {
