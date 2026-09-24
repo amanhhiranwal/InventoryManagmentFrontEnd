@@ -323,7 +323,13 @@ export default function UserListPage() {
           onPageChange={setCurrentPage}
         >
           {filteredUsers.map((u) => {
-            const userRoles = roles.filter((r) => u.role_ids?.includes(r.id));
+            /* The roles master is only loaded for someone allowed to read
+               it. Without it, fall back to the names the user record
+               carries, so the column reads "Area Manager" rather than
+               claiming they have no role at all. */
+            const userRoles = roles.length
+              ? roles.filter((r) => u.role_ids?.includes(r.id))
+              : (u.role_names || []).map((name, i) => ({ id: `${u.id}-${i}`, name }));
             const userCompanies = companies.filter((c) => u.company_ids?.includes(c.id));
 
             return (
