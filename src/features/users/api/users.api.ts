@@ -9,6 +9,8 @@ export interface User {
   employee_id?: string;
   role_id?: string;
   role_ids?: string[];
+  /** Role names in the same order as role_ids, for labels. */
+  role_names?: string[];
   company_ids?: string[];
   is_super_admin: boolean;
   /** The manager this user reports to. */

@@ -17,9 +17,11 @@ import {
   updateInventoryItemApi,
   getTemplateApi,
   getProductTypesApi,
+  getInventoryCompaniesApi,
   InventoryItem,
   InventoryTemplate,
   ProductTypeModel,
+  ScopeCompany,
 } from "@/features/inventory/api/inventory.api";
 import {
   FiPlus,
@@ -42,6 +44,16 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilterCategory, setSelectedFilterCategory] = useState<string>("");
+
+  /* Products belong to the company that stocks them, so two companies can
+     carry the same product without seeing each other's. These are the
+     companies this user may file a product under: the ones on their
+     profile, or every company for a super admin. */
+  const [scopeCompanies, setScopeCompanies] = useState<ScopeCompany[]>([]);
+  const [anyCompany, setAnyCompany] = useState(false);
+  const [selectedFilterCompany, setSelectedFilterCompany] = useState<string>("");
+  const [companyId, setCompanyId] = useState("");
+  const [editCompanyId, setEditCompanyId] = useState("");
 
   // Masters units list
   const [unitsList, setUnitsList] = useState<string[]>([]);
@@ -101,6 +113,7 @@ export default function InventoryPage() {
       const data = await getInventoryItemsApi({
         product_type_code: selectedFilterCategory || undefined,
         search: searchQuery || undefined,
+        company_id: selectedFilterCompany || undefined,
       });
       setItems(data);
     } catch (err) {
@@ -109,7 +122,7 @@ export default function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedFilterCategory, searchQuery, addToast]);
+  }, [selectedFilterCategory, searchQuery, selectedFilterCompany, addToast]);
 
   const fetchUnits = useCallback(async () => {
     try {
@@ -124,6 +137,22 @@ export default function InventoryPage() {
       }
     } catch (err) {
       console.error("Failed to load units:", err);
+    }
+  }, []);
+
+  const fetchCompanies = useCallback(async () => {
+    try {
+      const { companies, unrestricted } = await getInventoryCompaniesApi();
+      setScopeCompanies(companies);
+      setAnyCompany(unrestricted);
+
+      // With a single company there is nothing to choose, so the form
+      // fills it in rather than asking every time.
+      if (companies.length === 1 && !unrestricted) {
+        setCompanyId(companies[0].id);
+      }
+    } catch (err) {
+      console.error("Failed to load companies:", err);
     }
   }, []);
 
@@ -143,7 +172,8 @@ export default function InventoryPage() {
   useEffect(() => {
     fetchProductTypes();
     fetchUnits();
-  }, [fetchProductTypes, fetchUnits]);
+    fetchCompanies();
+  }, [fetchProductTypes, fetchUnits, fetchCompanies]);
 
   useEffect(() => {
     fetchItems();
@@ -219,6 +249,7 @@ export default function InventoryPage() {
     setEditSerialNumber(item.serial_number);
     setEditSelectedTypeCode(item.product_type_code);
     setEditImageBase64(item.image_base64 || null);
+    setEditCompanyId(item.company_id || "");
 
     // Extract standard attributes
     setEditRate(item.attributes?.rate?.toString() || "");
@@ -277,6 +308,11 @@ export default function InventoryPage() {
       return;
     }
 
+    if (!anyCompany && scopeCompanies.length > 1 && !companyId) {
+      addToast("Choose which company stocks this product.", "warning");
+      return;
+    }
+
     const typeDetails = productTypes.find((t) => t.code === selectedTypeCode);
     if (!typeDetails) return;
 
@@ -298,7 +334,8 @@ export default function InventoryPage() {
         product_type_code: selectedTypeCode,
         category: typeDetails.category,
         attributes: mergedAttributes,
-        image_base64: imageBase64 || undefined
+        image_base64: imageBase64 || undefined,
+        company_id: companyId || null,
       });
 
       addToast("Inventory item added successfully!", "success");
@@ -348,6 +385,11 @@ export default function InventoryPage() {
       return;
     }
 
+    if (!anyCompany && scopeCompanies.length > 1 && !editCompanyId) {
+      addToast("Choose which company stocks this product.", "warning");
+      return;
+    }
+
     const typeDetails = productTypes.find((t) => t.code === editSelectedTypeCode);
     if (!typeDetails) return;
 
@@ -369,7 +411,8 @@ export default function InventoryPage() {
         product_type_code: editSelectedTypeCode,
         category: typeDetails.category,
         attributes: mergedEditAttributes,
-        image_base64: editImageBase64 || undefined
+        image_base64: editImageBase64 || undefined,
+        company_id: editCompanyId || null,
       });
 
       addToast("Inventory item updated successfully!", "success");
@@ -451,6 +494,25 @@ export default function InventoryPage() {
           />
         </div>
 
+        {/* Company filter - only worth showing when there is a choice. */}
+        {scopeCompanies.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Company:</span>
+            <select
+              value={selectedFilterCompany}
+              onChange={(e) => setSelectedFilterCompany(e.target.value)}
+              className="rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
+            >
+              <option value="">{anyCompany ? "All companies" : "All my companies"}</option>
+              {scopeCompanies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.company_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Category Filters row */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">Filter Category:</span>
@@ -487,7 +549,7 @@ export default function InventoryPage() {
             <span className="text-xs">Loading inventory items...</span>
           </div>
         ) : items.length > 0 ? (
-          <Table headers={["Product Preview", "Item Name", "Serial Number", "Category Group", "Stock Status *", "Wholesale Rate *", "Actions"]}>
+          <Table headers={["Product Preview", "Item Name", "Serial Number", "Category Group", "Company", "Stock Status *", "Wholesale Rate *", "Actions"]}>
             {items.map((item) => {
               const typeName = productTypes.find((t) => t.code === item.product_type_code)?.name || item.product_type_code;
               const rateVal = item.attributes?.rate ?? 0;
@@ -529,6 +591,15 @@ export default function InventoryPage() {
                   </td>
                   <td className="py-4 px-5 text-xs text-slate-500">
                     {item.category}
+                  </td>
+                  <td className="py-4 px-5 text-xs">
+                    {item.company_name ? (
+                      <span className="rounded-md bg-slate-100 dark:bg-[#0d2336] px-2 py-0.5 font-semibold text-slate-600 dark:text-slate-300">
+                        {item.company_name}
+                      </span>
+                    ) : (
+                      <span className="italic text-slate-400">All companies</span>
+                    )}
                   </td>
                   <td className="py-4 px-5 text-xs font-semibold text-slate-700 dark:text-slate-355 font-mono">
                     {stockVal.toLocaleString('en-IN')} {unitVal}
@@ -822,6 +893,34 @@ export default function InventoryPage() {
                   ))}
                 </select>
               </div>
+
+              {/* Which company stocks this product. The same product can be
+                  added again under another company, with its own stock and
+                  rate, and neither side sees the other's. */}
+              {(scopeCompanies.length > 1 || anyCompany) && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Company {anyCompany ? "" : "*"}
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
+                    value={companyId}
+                    onChange={(e) => setCompanyId(e.target.value)}
+                  >
+                    <option value="">
+                      {anyCompany ? "All companies (shared)" : "Select a company..."}
+                    </option>
+                    {scopeCompanies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.company_name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400">
+                    Only people assigned to this company will see the product.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Right Column: Parameters and specifications */}
@@ -1060,6 +1159,28 @@ export default function InventoryPage() {
                     ))}
                   </select>
                 </div>
+
+                {(scopeCompanies.length > 1 || anyCompany) && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Company {anyCompany ? "" : "*"}
+                    </label>
+                    <select
+                      className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
+                      value={editCompanyId}
+                      onChange={(e) => setEditCompanyId(e.target.value)}
+                    >
+                      <option value="">
+                        {anyCompany ? "All companies (shared)" : "Select a company..."}
+                      </option>
+                      {scopeCompanies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.company_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Right Column: Parameters and specifications */}

@@ -2514,7 +2514,7 @@ export default function OrdersListPage() {
                       />
 
                       <OrderSummaryRow
-                        label="Lumpsum (Installation)"
+                        label="Installation"
                         value={`+${money(installationLumpsum)}`}
                         edit={{
                           amount: installationLumpsum,

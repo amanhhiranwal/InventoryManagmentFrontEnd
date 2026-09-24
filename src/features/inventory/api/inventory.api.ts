@@ -21,7 +21,28 @@ export interface InventoryItem {
   category: string;
   attributes: Record<string, any>;
   image_base64?: string;
+  /** The company that stocks this product. Null means every company. */
+  company_id?: string | null;
+  company_name?: string | null;
 }
+
+/** A company a product may be filed under - those on the user's profile,
+    or every company for a super admin. */
+export interface ScopeCompany {
+  id: string;
+  company_name: string;
+}
+
+export const getInventoryCompaniesApi = async (): Promise<{
+  companies: ScopeCompany[];
+  unrestricted: boolean;
+}> => {
+  const { data } = await api.get("/api/v1/inventory/companies");
+  return {
+    companies: Array.isArray(data?.data) ? data.data : [],
+    unrestricted: data?.unrestricted === true,
+  };
+};
 
 export const getTemplateApi = async (productTypeCode: string): Promise<InventoryTemplate> => {
   const { data } = await api.get(`/api/v1/inventory/templates/${productTypeCode}`);
@@ -36,7 +57,7 @@ export const saveTemplateApi = async (productTypeCode: string, fields: Inventory
   return data.data || data;
 };
 
-export const getInventoryItemsApi = async (params?: { product_type_code?: string; search?: string }): Promise<InventoryItem[]> => {
+export const getInventoryItemsApi = async (params?: { product_type_code?: string; search?: string; company_id?: string }): Promise<InventoryItem[]> => {
   const { data } = await api.get("/api/v1/inventory/items", { params });
   return Array.isArray(data) ? data : data.data || [];
 };
@@ -48,6 +69,7 @@ export const createInventoryItemApi = async (payload: {
   category: string;
   attributes: Record<string, any>;
   image_base64?: string;
+  company_id?: string | null;
 }): Promise<InventoryItem> => {
   const { data } = await api.post("/api/v1/inventory/items", payload);
   return data.data || data;
@@ -141,6 +163,7 @@ export const updateInventoryItemApi = async (itemId: string, payload: {
   category: string;
   attributes: Record<string, any>;
   image_base64?: string;
+  company_id?: string | null;
 }): Promise<InventoryItem> => {
   const { data } = await api.put(`/api/v1/inventory/items/${itemId}`, payload);
   return data.data || data;

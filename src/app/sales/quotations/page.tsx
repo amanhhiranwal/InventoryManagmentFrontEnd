@@ -1756,7 +1756,7 @@ export default function QuotationPage() {
                 />
 
                 <SummaryRow
-                  label="Lumpsum (Installation)"
+                  label="Installation"
                   value={`+${money(totals.installation)}`}
                   edit={{ amount: installation, onChange: setInstallation }}
                 />

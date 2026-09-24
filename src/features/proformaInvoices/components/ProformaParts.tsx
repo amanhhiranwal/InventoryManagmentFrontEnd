@@ -612,7 +612,7 @@ export function TotalsBlock({
         />
 
         <TotalsRow
-          label="Lumpsum (Installation)"
+          label="Installation"
           value={`+${money(figures.lumpsum)}`}
           edit={editable.lumpsum ? figures.lumpsum : undefined}
           onCommit={(next) => onEdit?.("lumpsum", next)}

@@ -16,19 +16,31 @@ import Modal from "@/components/ui/Modal";
 import PageHeader from "@/components/ui/PageHeader";
 import Table from "@/components/ui/Table";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
+import { eligibleManagers, userLabel } from "@/features/users/utils/hierarchy";
 
 /** The manager a user reports to. With the role hierarchy on the Workflows
     page it decides whose records each manager sees: a Zonal Head sees only
-    the Area Managers who report to them. */
+    the Area Managers who report to them.
+
+    Only people above the chosen role are offered, so an Area Manager can be
+    put under a Zonal Head but never under another Area Manager. */
 function ReportsToSelect({
   value,
   onChange,
   users,
+  roles,
+  roleIds,
+  excludeUserId,
 }: {
   value: string;
   onChange: (id: string) => void;
   users: User[];
+  roles: Role[];
+  roleIds: string[];
+  excludeUserId?: string;
 }) {
+  const options = eligibleManagers(users, roleIds, roles, excludeUserId);
+
   return (
     <div className="space-y-1.5">
       <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -40,14 +52,18 @@ function ReportsToSelect({
         className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none transition-all focus:border-primary"
       >
         <option value="">No manager</option>
-        {users.map((u) => (
+        {options.map((u) => (
           <option key={u.id} value={u.id}>
-            {`${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email}
+            {userLabel(u, roles)}
           </option>
         ))}
       </select>
       <p className="text-[11px] text-slate-400">
-        Must hold a role above this user&apos;s in the hierarchy.
+        {roleIds.length === 0
+          ? "Pick a role first to see who this user can report to."
+          : options.length === 0
+            ? "Nobody holds a role above this one yet."
+            : "Their manager sees every lead, opportunity and order this user works on."}
       </p>
     </div>
   );
@@ -482,6 +498,8 @@ export default function UserListPage() {
             value={formData.reports_to_id}
             onChange={(id) => setFormData({ ...formData, reports_to_id: id })}
             users={managerOptions}
+            roles={roles}
+            roleIds={formData.role_ids}
           />
 
           <SearchableMultiSelect
@@ -550,7 +568,10 @@ export default function UserListPage() {
             <ReportsToSelect
               value={editReportsToId}
               onChange={setEditReportsToId}
-              users={managerOptions.filter((m) => m.id !== editUser.id)}
+              users={managerOptions}
+              roles={roles}
+              roleIds={editRoleIds}
+              excludeUserId={editUser.id}
             />
 
             <SearchableMultiSelect
