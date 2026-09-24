@@ -179,7 +179,7 @@ const CUSTOMER_TYPES = [
   "Distributor",
   "OEM",
   "End Customer",
-  "Institution",
+  "Dealer",
   "Corporate",
   "Other",
 ];
@@ -1550,12 +1550,17 @@ export default function OrdersListPage() {
           );
 
       if (created) {
+        /* The number is assigned by the backend, and the form closes on
+           save - so say which order was just created rather than leaving
+           the user to go and find it. */
+        const reference = created.order_number || `SO-${created.id}`;
+
         addToast(
           editingOrderId
-            ? "Sales order updated."
+            ? `Sales order ${reference} updated.`
             : asDraft
-              ? "Sales order saved as draft."
-              : "Sales order created successfully.",
+              ? `Sales order ${reference} saved as draft.`
+              : `Sales order ${reference} created.`,
           "success",
         );
 
@@ -2600,9 +2605,25 @@ export default function OrdersListPage() {
                 </div>
 
                 <div className="rounded-xl bg-slate-50 p-4 dark:bg-[#0b2034]">
-                  <p className="mb-3 text-[11px] font-semibold text-slate-500">
-                    Pre-filled Commercial Conditions
-                  </p>
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-[11px] font-semibold text-slate-500">
+                      Pre-filled Commercial Conditions
+                    </p>
+
+                    {/* Payment terms differ per order - a staged payment, a
+                        retention, a different advance - so a condition can
+                        be added as well as reworded or dropped. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCommercialTerms((current) => [...current, ""])
+                      }
+                      className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
+                    >
+                      <FiPlus size={11} />
+                      Add Term
+                    </button>
+                  </div>
 
                   {/* Plain bullets, as the design has them. Each is still
                       click-to-edit - the borderless field only shows its
@@ -2611,7 +2632,7 @@ export default function OrdersListPage() {
                       the design does not show. */}
                   <div className="space-y-2">
                     {commercialTerms.map((term, index) => (
-                      <div key={index} className="flex items-start gap-2">
+                      <div key={index} className="group flex items-start gap-2">
                         <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#24395f]" />
 
                         <textarea
@@ -2635,10 +2656,30 @@ export default function OrdersListPage() {
                               node.style.height = `${node.scrollHeight}px`;
                             }
                           }}
+                          placeholder="Describe the condition..."
                           className="field-compact w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-[11px] leading-5 text-slate-600 outline-none hover:border-slate-200 focus:border-slate-300 focus:bg-white dark:text-slate-300 dark:hover:border-[#17304a] dark:focus:bg-[#051422]"
                         />
+
+                        <button
+                          type="button"
+                          aria-label={`Remove condition ${index + 1}`}
+                          onClick={() =>
+                            setCommercialTerms((current) =>
+                              current.filter((_, i) => i !== index),
+                            )
+                          }
+                          className="mt-0.5 shrink-0 rounded-md p-1 text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-rose-500/10"
+                        >
+                          <FiTrash2 size={12} />
+                        </button>
                       </div>
                     ))}
+
+                    {commercialTerms.length === 0 && (
+                      <p className="py-2 text-[10px] italic text-slate-400">
+                        No conditions on this order. Add Term writes one.
+                      </p>
+                    )}
                   </div>
                 </div>
 

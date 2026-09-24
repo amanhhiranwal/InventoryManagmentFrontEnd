@@ -37,9 +37,17 @@ const STATUS_TONE: Record<string, string> = {
   NEGOTIATION: AMBER,
   WON: GREEN,
 
-  // Sales order. DRAFT is shared with Quotation.
+  // Sales order. DRAFT is shared with Quotation, and PENDING_APPROVAL
+  // with it too - both wait on the same discount chain.
   DRAFT: NEUTRAL,
+  PENDING_APPROVAL: AMBER,
   CONFIRMED: BLUE,
+  PAYMENT_VERIFIED: BLUE,
+  PROCUREMENT: INDIGO,
+  READY: INDIGO,
+  DISPATCHED: INDIGO,
+  DELIVERED: GREEN,
+  INSTALLED: GREEN,
   ON_HOLD: ROSE,
   RELEASED: INDIGO,
   COMPLETED: GREEN,
@@ -71,7 +79,14 @@ const STATUS_LABEL: Record<string, string> = {
   WON: "Closed Won",
 
   DRAFT: "Draft",
-  CONFIRMED: "Confirmed",
+  PENDING_APPROVAL: "Pending Approval",
+  CONFIRMED: "Approved",
+  PAYMENT_VERIFIED: "Payment Verified",
+  PROCUREMENT: "In Procurement",
+  READY: "Ready To Dispatch",
+  DISPATCHED: "Dispatched",
+  DELIVERED: "Delivered",
+  INSTALLED: "Installed",
   ON_HOLD: "On Hold",
   RELEASED: "Released",
   COMPLETED: "Completed",

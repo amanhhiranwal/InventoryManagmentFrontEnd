@@ -459,13 +459,42 @@ export function ProductsTable({
   lines,
   variant = "form",
   onRemove,
+  onEdit,
 }: {
   lines: EditableLine[];
   /** "document" gives the navy header the printed invoice uses. */
   variant?: "form" | "document";
   onRemove?: (index: number) => void;
+  /** Given, the quantity, discount, tax and price become editable. Only a
+      draft passes it: once the invoice is generated the lines are fixed. */
+  onEdit?: (index: number, patch: Partial<EditableLine>) => void;
 }) {
   const documentStyle = variant === "document";
+
+  const cellInput =
+    "h-7 w-full rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none transition focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
+
+  /** A number cell that leaves the field alone while it is being typed in. */
+  const numberCell = (
+    index: number,
+    field: "quantity" | "discount" | "tax" | "price",
+    value: number,
+    suffix?: string,
+  ) => (
+    <div className="flex items-center gap-1">
+      <input
+        type="number"
+        min={0}
+        step={field === "quantity" ? 1 : "any"}
+        value={value}
+        onChange={(event) =>
+          onEdit?.(index, { [field]: Number(event.target.value) || 0 })
+        }
+        className={cellInput}
+      />
+      {suffix && <span className="text-[10px] text-slate-400">{suffix}</span>}
+    </div>
+  );
 
   const th = `px-3 py-3 text-[11px] font-normal ${
     documentStyle ? "text-white" : "text-slate-500"
@@ -525,16 +554,20 @@ export function ProductsTable({
                 </td>
                 <td className="px-3 py-3 text-[10px] text-slate-500">{line.name}</td>
                 <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-200">
-                  {line.quantity}
+                  {onEdit ? numberCell(index, "quantity", line.quantity) : line.quantity}
                 </td>
                 <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-200">
-                  {line.discount} %
+                  {onEdit
+                    ? numberCell(index, "discount", line.discount, "%")
+                    : `${line.discount} %`}
                 </td>
                 <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-200">
-                  {line.tax} %
+                  {onEdit ? numberCell(index, "tax", line.tax, "%") : `${line.tax} %`}
                 </td>
                 <td className="px-3 py-3 text-right text-[11px] text-slate-700 dark:text-slate-200">
-                  {plainAmount(line.price)}
+                  {onEdit
+                    ? numberCell(index, "price", line.price)
+                    : plainAmount(line.price)}
                 </td>
                 {onRemove && (
                   <td className="px-3 py-3 text-right">

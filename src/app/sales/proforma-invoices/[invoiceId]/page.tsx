@@ -278,7 +278,15 @@ function ProformaInvoiceDetail() {
     );
   }
 
+  /* What can still be changed in place. Draft and Generated both can:
+     an invoice waiting on approval is still ours to correct. Sent is
+     fixed. */
   const isDraft = invoice.status === "DRAFT";
+
+  /* What can still be changed in place. A generated invoice can too: one
+     waiting on approval is still ours to correct, and freezing it meant
+     cancelling and rebuilding over a wrong quantity. Sent is fixed. */
+  const isEditable = isDraft || invoice.status === "GENERATED";
   const contact = (invoice.customer_information?.primary_contact || {}) as Record<string, string>;
   const order = invoice.sales_order;
 
@@ -413,7 +421,7 @@ function ProformaInvoiceDetail() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {isDraft && (
+            {isEditable && (
               <button
                 type="button"
                 onClick={() => router.push(`/sales/proforma-invoices/new?edit=${invoice.id}`)}
@@ -489,7 +497,7 @@ function ProformaInvoiceDetail() {
               icon={<LuMapPin size={17} />}
               title="Location Information"
               action={
-                isDraft && addressDirty && (
+                isEditable && addressDirty && (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -513,28 +521,28 @@ function ProformaInvoiceDetail() {
 
             <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
               {/* Addresses are fixed once the invoice is generated, so past
-                  Draft they are shown as the saved values, not inputs that
-                  could not be saved. */}
+                  editable they are shown as the saved values, not inputs
+                  that could not be saved. */}
               <AddressFields
                 title="Billing Address"
                 address={billing}
                 onChange={setBilling}
-                readOnly={!isDraft}
+                readOnly={!isEditable}
               />
               <AddressFields
                 title="Shipping Address"
                 address={sameAsBilling ? billing : shipping}
                 onChange={setShipping}
-                disabled={isDraft && sameAsBilling}
-                readOnly={!isDraft}
+                disabled={isEditable && sameAsBilling}
+                readOnly={!isEditable}
                 header={
                   <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
                     <input
                       type="checkbox"
-                      disabled={!isDraft}
+                      disabled={!isEditable}
                       checked={
                         sameAsBilling ||
-                        (!isDraft &&
+                        (!isEditable &&
                           JSON.stringify(invoice.billing_address) ===
                             JSON.stringify(invoice.shipping_address))
                       }

@@ -34,6 +34,13 @@ import AmountInput, {
 } from "@/components/crm/AmountInput";
 import RichTextEditor, { textToHtml } from "@/components/crm/RichTextEditor";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import {
+  PRICE_TYPE,
+  PRICE_TYPE_LABEL,
+  type PriceType,
+  previewApprovalApi,
+  requestApprovalApi,
+} from "@/features/approvals/api/approvals.api";
 import FormPageHeader, {
   CancelButton,
   DraftButton,
@@ -52,6 +59,7 @@ import {
   getQuotationSenderApi,
   getQuotationsApi,
   sendQuotationApi,
+  downloadQuotationPdfApi,
   updateQuotationApi,
   updateQuotationStatusApi,
   nextQuotationStatuses,
@@ -320,8 +328,12 @@ function computeTotals(
   const orcAmount = resolveAmount(orcInput, orcMode, subtotal);
   const orcPercent = subtotal ? (orcAmount / subtotal) * 100 : 0;
 
-  const taxableAmount =
-    subtotal - discountAmount + orcAmount + freight + installation;
+  /* The client pays the discounted price, plus delivery and installation.
+     The discount is applied but never itemised on a quotation, and the ORC
+     is left out altogether - it is a commission the company pays out, not
+     something the client is charged. Both are itemised on the sales order.
+     Mirrors compute_totals on the backend. */
+  const taxableAmount = subtotal - discountAmount + freight + installation;
 
   const gstAmount = (taxableAmount * gstPercent) / 100;
   const totalPayable = taxableAmount + gstAmount;
@@ -360,6 +372,23 @@ function gstClause(quotation: QuotationModel) {
   return amount > 0
     ? ` (inclusive of ${money(amount)} GST at ${rate})`
     : ` (inclusive of ${rate} GST)`;
+}
+
+/** The payment split in words, as it reads on the PDF and in the email. */
+function paymentTerms(quotation: QuotationModel): string[] {
+  const advance = Number(quotation.advance_percent || 0);
+  const total = Number(quotation.total_payable || 0);
+  const advanceAmount = Number(
+    quotation.advance_amount || (total * advance) / 100,
+  );
+  const onDelivery = Number(
+    quotation.on_delivery_amount || total - advanceAmount,
+  );
+
+  return [
+    `${advance}% advance with the purchase order — ${money(advanceAmount)}`,
+    `${100 - advance}% against delivery — ${money(onDelivery)}`,
+  ];
 }
 
 function splitAddresses(raw: string) {
@@ -432,6 +461,15 @@ export default function QuotationPage() {
 
   /* Discount stays null until the user overrides it, so an untouched form
      keeps deriving the total from the per-line discounts. */
+  /* Discount and ORC never reach the client's quotation, but they are
+     what the approval chain is about: who has to sign depends on how much
+     margin is being given away, and on whether this is an end customer
+     price or a dealer transfer price. */
+  const [priceType, setPriceType] = useState<PriceType>(PRICE_TYPE.ECP);
+  const [approvalChain, setApprovalChain] = useState<string[]>([]);
+  const [approvalReason, setApprovalReason] = useState("");
+  const [requestingApproval, setRequestingApproval] = useState(false);
+
   const [discountMode, setDiscountMode] = useState<AmountMode>("AMOUNT");
   const [discountInput, setDiscountInput] = useState<number | null>(null);
 
@@ -685,6 +723,81 @@ export default function QuotationPage() {
       advancePercent,
     ],
   );
+
+  /* The discount as a share of the lines, which is what the bands are
+     measured against. */
+  const discountPercent = totals.subtotal
+    ? (totals.discountAmount / totals.subtotal) * 100
+    : 0;
+
+  /* Asked of the server rather than worked out here, so the bands live in
+     one place and a change to them does not need a frontend release. */
+  useEffect(() => {
+    let cancelled = false;
+
+    previewApprovalApi(priceType, Number(discountPercent.toFixed(2)))
+      .then((preview) => {
+        if (cancelled) return;
+        setApprovalChain(preview.chain);
+        setApprovalReason(preview.reason);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setApprovalChain([]);
+          setApprovalReason("");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [priceType, discountPercent]);
+
+  /** Saves the quotation, then sends the discount up for approval. */
+  const sendForApproval = async () => {
+    if (!validate()) return;
+
+    setRequestingApproval(true);
+
+    try {
+      const saved = editingId
+        ? await updateQuotationApi(editingId, toPayload(QUOTATION_STATUS.DRAFT))
+        : await createQuotationApi(toPayload(QUOTATION_STATUS.DRAFT));
+
+      const approval = await requestApprovalApi({
+        document_type: "QUOTATION",
+        document_id: saved.id,
+        document_number: saved.quote_number,
+        price_type: priceType,
+        discount_percent: Number(discountPercent.toFixed(2)),
+        discount_amount: totals.discountAmount,
+        orc_percent: totals.orcPercent,
+        orc_amount: totals.orcAmount,
+        document_value: totals.totalPayable,
+      });
+
+      addToast(
+        approval
+          ? `${saved.quote_number} sent to the ${approval.waiting_on} for approval.`
+          : `${saved.quote_number} saved. No discount, so it needs no approval.`,
+        "success",
+      );
+
+      await fetchQuotations();
+      setPageMode("list");
+      setEditingId(null);
+      resetForm();
+    } catch (error) {
+      const detail =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "That could not be sent for approval.";
+
+      console.error(error);
+      addToast(detail, "error");
+    } finally {
+      setRequestingApproval(false);
+    }
+  };
 
   const userName = useCallback(
     (id?: string | null) => users.find((user) => user.id === id)?.name || "Unassigned",
@@ -1093,6 +1206,46 @@ export default function QuotationPage() {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
           ?.detail || "Failed to save the quotation.";
+
+      console.error(error);
+      addToast(detail, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* The PDF is built on the server from the saved record, so a quotation
+     being written for the first time is saved as a draft first - otherwise
+     there is nothing to render. */
+  const saveAndDownload = async () => {
+    if (!validate()) return;
+
+    setSaving(true);
+
+    try {
+      /* As elsewhere, an edit goes through update so a quotation already
+         sent does not drop back to draft. */
+      const saved = editingId
+        ? await updateQuotationApi(editingId, toPayload(QUOTATION_STATUS.DRAFT))
+        : await createQuotationApi(toPayload(QUOTATION_STATUS.DRAFT));
+
+      await downloadQuotationPdfApi(
+        saved.id,
+        `${saved.quote_number || "Quotation"}.pdf`,
+      );
+
+      addToast(`${saved.quote_number} downloaded.`, "success");
+
+      await fetchQuotations();
+
+      if (!editingId) {
+        setPageMode("list");
+        resetForm();
+      }
+    } catch (error) {
+      const detail =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "The quotation PDF could not be generated.";
 
       console.error(error);
       addToast(detail, "error");
@@ -1903,6 +2056,93 @@ export default function QuotationPage() {
                   </p>
                 </div>
 
+                {/* Margin given away, and who has to sign for it. None of
+                    this reaches the client's quotation - it drives the
+                    approval and carries onto the sales order. */}
+                <div className="mt-5 rounded-xl border border-slate-200 p-3.5 dark:border-[#17304a]">
+                  <p className="mb-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                    Pricing &amp; Approval
+                  </p>
+
+                  <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
+                    Price Type
+                  </label>
+
+                  <select
+                    value={priceType}
+                    onChange={(event) =>
+                      setPriceType(event.target.value as PriceType)
+                    }
+                    className="mb-3 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                  >
+                    <option value={PRICE_TYPE.ECP}>
+                      {PRICE_TYPE_LABEL.ECP}
+                    </option>
+                    <option value={PRICE_TYPE.DP}>
+                      {PRICE_TYPE_LABEL.DP}
+                    </option>
+                  </select>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-500">
+                        Discount given
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                        {discountPercent.toFixed(1)}% ({money(totals.discountAmount)})
+                      </span>
+                    </div>
+
+                    {totals.orcAmount > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-slate-500">ORC</span>
+                        <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                          {totals.orcPercent.toFixed(1)}% ({money(totals.orcAmount)})
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {approvalReason && (
+                    <p className="mt-2.5 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                      {approvalReason}
+                    </p>
+                  )}
+
+                  {approvalChain.length > 0 && (
+                    <>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1">
+                        {approvalChain.map((role, index) => (
+                          <span key={role} className="flex items-center gap-1">
+                            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                              {role}
+                            </span>
+                            {index < approvalChain.length - 1 && (
+                              <span className="text-[9px] text-slate-300">›</span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={sendForApproval}
+                        disabled={requestingApproval || saving}
+                        className="mt-3 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-amber-600 text-[11px] font-semibold text-white transition hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {requestingApproval ? (
+                          <CgSpinner className="animate-spin" size={13} />
+                        ) : (
+                          <FiShield size={12} />
+                        )}
+                        {requestingApproval
+                          ? "Sending..."
+                          : `Send To ${approvalChain[0]} For Approval`}
+                      </button>
+                    </>
+                  )}
+                </div>
+
                 <p className="mt-5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                   Payment Terms:
                 </p>
@@ -1959,8 +2199,9 @@ export default function QuotationPage() {
                 <div className="mt-5 grid grid-cols-2 gap-2.5">
                   <button
                     type="button"
-                    onClick={() => window.print()}
-                    className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                    onClick={saveAndDownload}
+                    disabled={saving}
+                    className="flex h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
                   >
                     <FiDownload size={13} />
                     Download PDF
@@ -3185,10 +3426,26 @@ function SendQuotationModal({
          rather than asserting a hardcoded 18%. */
       `• Total Value: ${money(quotation.total_payable)}${gstClause(quotation)}`,
       "",
-      "Kindly review the attached quotation and let us know if you require any adjustments or technical clarifications.",
+      "Payment Terms:",
+      ...paymentTerms(quotation).map((line) => `• ${line}`),
+      "",
+      quotation.validation_date
+        ? `This offer is valid until ${new Date(
+            quotation.validation_date,
+          ).toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })}.`
+        : "",
+      "",
+      "The full proposal is attached as a PDF. Please let us know if you require any adjustments or technical clarifications.",
       "",
       "Warm regards,",
-    ];
+    ].filter((line, index, all) =>
+      // Collapse the blank left behind when there is no validity date.
+      line !== "" || all[index - 1] !== "",
+    );
 
     return lines.join("\n");
   }, [quotation]);
@@ -3403,10 +3660,57 @@ function SendQuotationModal({
           {/* SIDE PANELS */}
 
           <div className="space-y-5">
+            {/* What the client is agreeing to pay and by when - the terms
+                that go out on the PDF, shown here so the sender can see
+                them without opening the attachment. */}
+            <div className="rounded-xl border border-slate-200 p-4 dark:border-[#17304a]">
+              <p className="mb-3 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                Payment Terms
+              </p>
+
+              <div className="space-y-2">
+                {paymentTerms(quotation).map((line) => (
+                  <p
+                    key={line}
+                    className="text-[10px] leading-relaxed text-slate-600 dark:text-slate-300"
+                  >
+                    {line}
+                  </p>
+                ))}
+
+                <div className="flex items-center justify-between border-t border-slate-100 pt-2 dark:border-[#17304a]">
+                  <span className="text-[10px] font-semibold text-slate-500">
+                    Total Payable
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-800 dark:text-white">
+                    {money(quotation.total_payable)}
+                  </span>
+                </div>
+
+                {quotation.validation_date && (
+                  <p className="text-[10px] text-slate-400">
+                    Valid until{" "}
+                    {new Date(quotation.validation_date).toLocaleDateString(
+                      "en-IN",
+                      { day: "2-digit", month: "short", year: "numeric" },
+                    )}
+                  </p>
+                )}
+              </div>
+            </div>
+
             <div className="rounded-xl border border-slate-200 p-4 dark:border-[#17304a]">
               <p className="mb-3 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
                 Attached Documents &amp; Annexures
               </p>
+
+              {/* The proposal itself always travels with the message. */}
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-[#0b2034]">
+                <FiFileText size={12} className="shrink-0 text-rose-500" />
+                <span className="flex-1 truncate text-[10px] font-medium text-slate-700 dark:text-slate-200">
+                  {quotation.quote_number || "Quotation"} proposal (PDF)
+                </span>
+              </div>
 
               {(quotation.attachments || []).length + extraFiles.length === 0 && (
                 <p className="text-[10px] text-slate-400">

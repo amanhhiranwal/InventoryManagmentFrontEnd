@@ -8,6 +8,7 @@ import api from "@/lib/axios";
 
 export const QUOTATION_STATUS = {
   DRAFT: "DRAFT",
+  PENDING_APPROVAL: "PENDING_APPROVAL",
   SENT: "SENT",
   ACCEPTED: "ACCEPTED",
   REJECTED: "REJECTED",
@@ -19,6 +20,7 @@ export type QuotationStatus =
 
 export const QUOTATION_STATUSES: QuotationStatus[] = [
   QUOTATION_STATUS.DRAFT,
+  QUOTATION_STATUS.PENDING_APPROVAL,
   QUOTATION_STATUS.SENT,
   QUOTATION_STATUS.ACCEPTED,
   QUOTATION_STATUS.REJECTED,
@@ -27,6 +29,7 @@ export const QUOTATION_STATUSES: QuotationStatus[] = [
 
 export const QUOTATION_STATUS_LABEL: Record<QuotationStatus, string> = {
   DRAFT: "Draft",
+  PENDING_APPROVAL: "Pending Approval",
   SENT: "Sent",
   ACCEPTED: "Accepted",
   REJECTED: "Rejected",
@@ -36,7 +39,8 @@ export const QUOTATION_STATUS_LABEL: Record<QuotationStatus, string> = {
 /** Mirrors QUOTATION_TRANSITIONS on the backend. */
 export const QUOTATION_TRANSITIONS: Record<QuotationStatus, QuotationStatus[]> =
   {
-    DRAFT: ["SENT", "EXPIRED"],
+    DRAFT: ["PENDING_APPROVAL", "SENT", "EXPIRED"],
+    PENDING_APPROVAL: ["SENT", "DRAFT", "EXPIRED"],
     SENT: ["ACCEPTED", "REJECTED", "EXPIRED"],
     ACCEPTED: [],
     REJECTED: [],
@@ -290,6 +294,45 @@ export const sendQuotationApi = async (
     payload,
   );
   return data.data || data;
+};
+
+/** The company details the proposal is built from - the preview and the
+    PDF read these same values so they cannot drift apart. */
+export interface QuotationBrand {
+  name: string;
+  address: string[];
+  gstin?: string | null;
+  website?: string | null;
+  signatory?: string | null;
+  signatory_title?: string | null;
+  offerings: string[];
+  about: string;
+}
+
+export const getQuotationBrandApi = async (): Promise<QuotationBrand> => {
+  const { data } = await api.get("/api/v1/quotations/brand");
+  return data.data;
+};
+
+/** Downloads the proposal PDF - the same document the client is emailed. */
+export const downloadQuotationPdfApi = async (
+  quotationId: number | string,
+  filename: string,
+): Promise<void> => {
+  const { data } = await api.get(`/api/v1/quotations/${quotationId}/pdf`, {
+    responseType: "blob",
+  });
+
+  const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(url);
 };
 
 /* =========================================================

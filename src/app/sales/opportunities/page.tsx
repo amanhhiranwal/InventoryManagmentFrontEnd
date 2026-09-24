@@ -122,7 +122,7 @@ type CustomerType =
   | "Distributor"
   | "OEM"
   | "End Customer"
-  | "Institution"
+  | "Dealer"
   | "Corporate"
   | "Other";
 
@@ -242,7 +242,7 @@ const CUSTOMER_TYPES: CustomerType[] = [
   "Distributor",
   "OEM",
   "End Customer",
-  "Institution",
+  "Dealer",
   "Corporate",
   "Other",
 ];
@@ -415,7 +415,7 @@ function normalizeCustomerType(value: any): CustomerType {
 
   if (type === "oem") return "OEM";
   if (type === "end customer") return "End Customer";
-  if (type === "institution") return "Institution";
+  if (type === "dealer") return "Dealer";
   if (type === "corporate") return "Corporate";
   if (type === "other") return "Other";
 

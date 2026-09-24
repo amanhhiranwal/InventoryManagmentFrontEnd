@@ -14,7 +14,13 @@ import { useParams, useRouter } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
 import { StatusPill } from "@/components/crm/Pill";
 import {
+  PRICE_TYPE,
+  requestApprovalApi,
+} from "@/features/approvals/api/approvals.api";
+import {
+  SALES_ORDER_PIPELINE,
   SALES_ORDER_STATUS,
+  type SalesOrderStatus,
   SalesOrderModel,
   SalesOrderActivity,
   getSalesOrderActivitiesApi,
@@ -129,6 +135,67 @@ function lineTotals(item: Record<string, any>) {
 /* =========================================================
    PAGE
 ========================================================= */
+
+/* What happens to an order after it is approved, in the order it happens.
+   Payment is verified by accounts, inventory procures or picks the stock,
+   it goes out, arrives, is installed, and the deal is won. */
+const FULFILMENT_STEPS: {
+  status: SalesOrderStatus;
+  title: string;
+  done: string;
+  doing: string;
+  todo: string;
+}[] = [
+  {
+    status: SALES_ORDER_STATUS.PAYMENT_VERIFIED,
+    title: "Payment Verified",
+    done: "Accounts have confirmed the advance",
+    doing: "With accounts",
+    todo: "Awaiting accounts",
+  },
+  {
+    status: SALES_ORDER_STATUS.PROCUREMENT,
+    title: "Procurement",
+    done: "Stock secured",
+    doing: "With inventory",
+    todo: "Not started",
+  },
+  {
+    status: SALES_ORDER_STATUS.READY,
+    title: "Ready To Dispatch",
+    done: "Picked and packed",
+    doing: "Ready to go out",
+    todo: "Not ready",
+  },
+  {
+    status: SALES_ORDER_STATUS.DISPATCHED,
+    title: "Dispatched",
+    done: "Left the warehouse",
+    doing: "In transit",
+    todo: "Not dispatched",
+  },
+  {
+    status: SALES_ORDER_STATUS.DELIVERED,
+    title: "Delivered",
+    done: "Received by the customer",
+    doing: "Delivered",
+    todo: "Not delivered",
+  },
+  {
+    status: SALES_ORDER_STATUS.INSTALLED,
+    title: "Installation",
+    done: "Installed and handed over",
+    doing: "Being installed",
+    todo: "Not installed",
+  },
+  {
+    status: SALES_ORDER_STATUS.COMPLETED,
+    title: "Order Won",
+    done: "Closed won",
+    doing: "Closed won",
+    todo: "Not yet won",
+  },
+];
 
 export default function SalesOrderDetailPage() {
   const params = useParams<{ orderId: string }>();
@@ -290,21 +357,47 @@ export default function SalesOrderDetailPage() {
     );
   };
 
+  /* Sends the order up the discount chain. Where there is no discount to
+     approve it is confirmed outright - nothing to sign for. */
   const sendForApproval = async () => {
     if (!order) return;
 
     setSending(true);
 
     try {
-      const result = await logSalesOrderActivityApi(order.id, {
-        status: SALES_ORDER_STATUS.CONFIRMED,
-        remarks: "Sent for approval from the order detail page.",
+      const subtotal = Number(order.total_amount || 0);
+      const discountPercent = subtotal
+        ? (Number(order.discount_amount || 0) / subtotal) * 100
+        : 0;
+
+      const approval = await requestApprovalApi({
+        document_type: "SALES_ORDER",
+        document_id: order.id,
+        document_number: order.order_number,
+        price_type: PRICE_TYPE.ECP,
+        discount_percent: Number(discountPercent.toFixed(2)),
+        discount_amount: order.discount_amount,
+        orc_percent: order.orc_percent,
+        orc_amount: order.orc_amount,
+        document_value: order.grand_total,
       });
 
-      setOrder(result.order);
+      if (approval) {
+        addToast(
+          `Sent to the ${approval.waiting_on} for approval.`,
+          "success",
+        );
+      } else {
+        const result = await logSalesOrderActivityApi(order.id, {
+          status: SALES_ORDER_STATUS.CONFIRMED,
+          remarks: "No discount to approve, so the order was confirmed.",
+        });
 
-      addToast("Sales order sent for approval.", "success");
+        setOrder(result.order);
+        addToast("No discount to approve. Sales order confirmed.", "success");
+      }
 
+      await loadOrder();
       await loadActivities();
     } catch (error: any) {
       console.error(error);
@@ -750,7 +843,7 @@ export default function SalesOrderDetailPage() {
                 />
 
                 <SummaryLine
-                  label="Lumpsum (Installation):"
+                  label="Installation:"
                   value={`+${money(order.installation_lumpsum)}`}
                 />
 
@@ -777,11 +870,23 @@ export default function SalesOrderDetailPage() {
                 </div>
 
                 {/* What has actually come in against the order, and what is
-                    still owed. Both are stored on the order. */}
-                <SummaryLine
+                    still owed. Money keeps arriving long after the order is
+                    approved, so this stays editable at every status - the
+                    alternative was reopening the whole order form to type
+                    one figure. */}
+                <EditableAmountLine
                   label="Amount Paid:"
-                  value={`-${money(order.advance_received)}`}
-                  tone="rose"
+                  amount={Number(order.advance_received || 0)}
+                  max={Number(order.grand_total || 0)}
+                  disabled={
+                    sending || order.status === SALES_ORDER_STATUS.CANCELLED
+                  }
+                  onSave={(value) =>
+                    patchOrder(
+                      { advance_received: value },
+                      `Advance received updated to ${money(value)}.`,
+                    )
+                  }
                 />
 
                 <div className="flex items-center justify-between">
@@ -949,24 +1054,34 @@ export default function SalesOrderDetailPage() {
                 }
               />
 
-              <ProcessStep
-                state={
-                  order.status === SALES_ORDER_STATUS.COMPLETED
-                    ? "done"
-                    : order.status === SALES_ORDER_STATUS.RELEASED
-                      ? "current"
-                      : "todo"
-                }
-                title="Fulfillment"
-                caption={
-                  order.status === SALES_ORDER_STATUS.COMPLETED
-                    ? "Completed"
-                    : order.status === SALES_ORDER_STATUS.RELEASED
-                      ? "Released for dispatch"
-                      : "Not Released"
-                }
-                last
-              />
+              {/* The fulfilment chain the order actually walks: approved,
+                  paid, procured, ready, out, delivered, installed, won. The
+                  step reached is worked out from the order's own position in
+                  the pipeline rather than named one status at a time. */}
+              {FULFILMENT_STEPS.map((step, index) => {
+                const reached = SALES_ORDER_PIPELINE.indexOf(
+                  order.status as SalesOrderStatus,
+                );
+                const mine = SALES_ORDER_PIPELINE.indexOf(step.status);
+
+                return (
+                  <ProcessStep
+                    key={step.status}
+                    state={
+                      reached > mine ? "done" : reached === mine ? "current" : "todo"
+                    }
+                    title={step.title}
+                    caption={
+                      reached > mine
+                        ? step.done
+                        : reached === mine
+                          ? step.doing
+                          : step.todo
+                    }
+                    last={index === FULFILMENT_STEPS.length - 1}
+                  />
+                );
+              })}
             </div>
           </Card>
 
@@ -1488,6 +1603,80 @@ function LinkedDocument({
         View
         <FiChevronRight size={11} />
       </button>
+    </div>
+  );
+}
+
+/** An amount on the summary that can be corrected in place.
+
+    Click the figure, type, Enter to save or Escape to abandon. Used for
+    the advance received, which goes on changing after the order has been
+    approved and has nothing to do with the order's terms. */
+function EditableAmountLine({
+  label,
+  amount,
+  max,
+  disabled,
+  onSave,
+}: {
+  label: string;
+  amount: number;
+  max: number;
+  disabled?: boolean;
+  onSave: (value: number) => Promise<boolean> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(amount));
+
+  useEffect(() => {
+    if (!editing) setDraft(String(amount));
+  }, [amount, editing]);
+
+  const commit = async () => {
+    const value = Math.max(0, Math.min(Number(draft) || 0, max));
+
+    setEditing(false);
+
+    if (value !== amount) await onSave(value);
+  };
+
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[11px] text-slate-500">{label}</span>
+
+      {editing ? (
+        <input
+          autoFocus
+          type="number"
+          min={0}
+          max={max}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void commit();
+            }
+            if (event.key === "Escape") {
+              setDraft(String(amount));
+              setEditing(false);
+            }
+          }}
+          className="h-7 w-28 rounded-md border border-slate-300 bg-white px-2 text-right text-[11px] font-semibold text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+        />
+      ) : (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setEditing(true)}
+          title="Update the advance received"
+          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-rose-500 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-rose-500/10"
+        >
+          -{money(amount)}
+          <FiEdit2 size={10} className="opacity-60" />
+        </button>
+      )}
     </div>
   );
 }
