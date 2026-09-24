@@ -35,6 +35,7 @@ import AmountInput, {
   type AmountMode,
 } from "@/components/crm/AmountInput";
 import RichTextEditor, { textToHtml } from "@/components/crm/RichTextEditor";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import FormPageHeader, {
   CancelButton,
   DraftButton,
@@ -834,6 +835,23 @@ export default function QuotationPage() {
     router.replace("/sales/quotations");
   }, [editParam, openForEdit, router]);
 
+  /* The opportunity drawer's Create Quotation button arrives here with
+     ?opportunity=<id>: open the blank form and fill it from that
+     opportunity, so the quotation starts where the deal left off. */
+  const opportunityParam = searchParams.get("opportunity");
+
+  useEffect(() => {
+    if (!opportunityParam || !opportunities.length) return;
+
+    openCreate();
+    applyOpportunity(opportunityParam);
+
+    router.replace("/sales/quotations");
+    // openCreate and applyOpportunity are redefined every render; the
+    // parameter and the loaded list are what should retrigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opportunityParam, opportunities, router]);
+
   useEffect(() => {
     if (!sendParam || !quotations.length) return;
 
@@ -879,6 +897,47 @@ export default function QuotationPage() {
       country: opportunity.shipping_country || "",
       zipCode: opportunity.shipping_zip_code || "",
     });
+
+    /* The lines the opportunity was built from come across too, so the
+       quotation starts from what was actually discussed instead of an
+       empty table. They stay editable, and Add Product still works. */
+    const carried = (opportunity.product_items || []).map((row, index) => {
+      const item = row as Record<string, unknown>;
+      const num = (...keys: string[]) => {
+        for (const key of keys) {
+          const value = Number(item[key]);
+          if (Number.isFinite(value) && value !== 0) return value;
+        }
+        return 0;
+      };
+      const text = (...keys: string[]) => {
+        for (const key of keys) {
+          if (item[key]) return String(item[key]);
+        }
+        return "";
+      };
+
+      return {
+        key: `opp-${opportunity.id}-${index}`,
+        productId: text("product_id", "sku") || String(index),
+        product: text("product", "name"),
+        model: text("model"),
+        sku: text("sku"),
+        quantity: num("quantity", "qty") || 1,
+        unitPrice: num("unit_price", "unitPrice", "price"),
+        discount: num("discount"),
+        tax: num("tax", "tax_rate"),
+      };
+    });
+
+    setItems(carried);
+
+    if (carried.length) {
+      addToast(
+        `${carried.length} product line(s) carried over from the opportunity.`,
+        "success",
+      );
+    }
   };
 
   useEffect(() => {
@@ -1383,21 +1442,32 @@ export default function QuotationPage() {
                   picker is inline rather than a full-height field. */}
               <div className="mb-5 grid grid-cols-1 gap-5 md:grid-cols-2">
                 <InlineFact label="Opportunity ID:">
-                  <select
+                  {/* Typed rather than scrolled: the list grows with every
+                      deal, and by the hundredth you are hunting by eye. */}
+                  <SearchableSelect
                     value={opportunityId ? String(opportunityId) : ""}
-                    onChange={(event) => applyOpportunity(event.target.value)}
-                    className="field-compact cursor-pointer rounded-md border border-transparent bg-transparent py-0.5 text-[12px] font-bold text-slate-800 outline-none transition hover:border-slate-200 focus:border-[#233353] dark:text-white"
-                  >
-                    <option value="">Select opportunity</option>
-
-                    {opportunities.map((opportunity) => (
-                      <option key={opportunity.id} value={String(opportunity.id)}>
-                        #{opportunity.id} — {opportunity.contact_name ||
-                          opportunity.organization_name ||
-                          opportunity.title}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={applyOpportunity}
+                    placeholder="Select opportunity"
+                    emptyLabel="No opportunity matches that."
+                    buttonClassName="field-compact cursor-pointer rounded-md border border-transparent bg-transparent py-0.5 text-[12px] font-bold text-slate-800 transition hover:border-slate-200 focus:border-[#233353] dark:text-white"
+                    options={opportunities.map((opportunity) => ({
+                      id: String(opportunity.id),
+                      name: `#${opportunity.id} — ${
+                        opportunity.contact_name ||
+                        opportunity.organization_name ||
+                        opportunity.title
+                      }`,
+                      hint: opportunity.organization_name || undefined,
+                      keywords: [
+                        opportunity.title,
+                        opportunity.contact_name,
+                        opportunity.organization_name,
+                        opportunity.email,
+                      ]
+                        .filter(Boolean)
+                        .join(" "),
+                    }))}
+                  />
                 </InlineFact>
 
                 <InlineFact label="Opportunity Name:">
