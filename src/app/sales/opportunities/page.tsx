@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 
@@ -2587,6 +2587,7 @@ function LeadDetailsDrawer({
     payload: LogOpportunityActivityPayload,
   ) => Promise<boolean>;
 }) {
+  const router = useRouter();
   const [showActivityForm, setShowActivityForm] = useState(false);
 
   /* A different opportunity in the same drawer starts with a closed form, so
@@ -2618,11 +2619,17 @@ function LeadDetailsDrawer({
               <h2 className="text-[16px] font-semibold">Lead Details</h2>
             </div>
 
+            {/* A quotation is the next step out of an opportunity - the
+                sales order follows from the quotation, not from here - and
+                the new quotation opens already filled in from this deal. */}
             <button
               type="button"
+              onClick={() =>
+                router.push(`/sales/quotations?opportunity=${opportunity.id}`)
+              }
               className="rounded-lg bg-[#233353] px-4 py-2 text-[11px] font-semibold text-white"
             >
-              Create Sales Order
+              Create Quotation
             </button>
           </div>
 

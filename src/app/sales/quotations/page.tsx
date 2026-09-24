@@ -6,8 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
-  type DragEvent,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -91,7 +89,6 @@ import {
   FiSend,
   FiEdit2,
   FiGrid,
-  FiUploadCloud,
   FiBookmark,
   FiMinus,
   FiUser,
@@ -213,8 +210,6 @@ type SendOptionKey =
   | "notify_lead_owner";
 
 const ROWS_PER_PAGE = 10;
-
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 /* ============================================================================
    HELPERS
@@ -448,8 +443,6 @@ export default function QuotationPage() {
   const [advancePercent] = useState(30);
 
   const [attachments, setAttachments] = useState<AttachmentState[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [terms, setTerms] = useState<TermState[]>(DEFAULT_TERMS);
   const [remarks, setRemarks] = useState("");
@@ -835,23 +828,6 @@ export default function QuotationPage() {
     router.replace("/sales/quotations");
   }, [editParam, openForEdit, router]);
 
-  /* The opportunity drawer's Create Quotation button arrives here with
-     ?opportunity=<id>: open the blank form and fill it from that
-     opportunity, so the quotation starts where the deal left off. */
-  const opportunityParam = searchParams.get("opportunity");
-
-  useEffect(() => {
-    if (!opportunityParam || !opportunities.length) return;
-
-    openCreate();
-    applyOpportunity(opportunityParam);
-
-    router.replace("/sales/quotations");
-    // openCreate and applyOpportunity are redefined every render; the
-    // parameter and the loaded list are what should retrigger this.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opportunityParam, opportunities, router]);
-
   useEffect(() => {
     if (!sendParam || !quotations.length) return;
 
@@ -944,35 +920,29 @@ export default function QuotationPage() {
     if (sameAsBilling) setShipping(billing);
   }, [sameAsBilling, billing]);
 
-  const addFiles = (files: FileList | File[]) => {
-    const accepted: AttachmentState[] = [];
+  /* The opportunity drawer's Create Quotation button arrives here with
+     ?opportunity=<id>: open the blank form and fill it from that
+     opportunity, so the quotation starts where the deal left off. */
+  const opportunityParam = searchParams.get("opportunity");
 
-    for (const file of Array.from(files)) {
-      if (file.size > MAX_ATTACHMENT_BYTES) {
-        addToast(`${file.name} is larger than 10MB and was skipped.`, "warning");
-        continue;
-      }
+  /* Applied once per arrival: the effect re-runs whenever the loaded list
+     changes identity, and prefilling twice would toast twice. */
+  const prefilledFrom = useRef<string | null>(null);
 
-      accepted.push({ name: file.name, size: file.size, type: file.type });
-    }
+  useEffect(() => {
+    if (!opportunityParam || !opportunities.length) return;
+    if (prefilledFrom.current === opportunityParam) return;
 
-    if (accepted.length) {
-      setAttachments((current) => [...current, ...accepted]);
-      addToast(`${accepted.length} document(s) attached.`, "success");
-    }
-  };
+    prefilledFrom.current = opportunityParam;
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
+    openCreate();
+    applyOpportunity(opportunityParam);
 
-    if (event.dataTransfer.files?.length) addFiles(event.dataTransfer.files);
-  };
-
-  const handleFileInput = (event: ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files?.length) addFiles(event.target.files);
-    event.target.value = "";
-  };
+    router.replace("/sales/quotations");
+    // openCreate and applyOpportunity are redefined every render; the
+    // parameter and the loaded list are what should retrigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opportunityParam, opportunities, router]);
 
   const toPayload = (status: QuotationStatus) => ({
     opportunity_id: opportunityId,
@@ -1861,75 +1831,6 @@ export default function QuotationPage() {
               </div>
             </FormSectionBlock>
 
-            {/* ATTACHMENTS */}
-
-            <FormSectionBlock
-              icon={<FiFileText size={16} />}
-              title="Attached Documents & Annexures"
-            >
-              <div
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-12 transition ${
-                  isDragging
-                    ? "border-[#233353] bg-slate-50 dark:bg-[#0b2034]"
-                    : "border-slate-300 dark:border-[#17304a]"
-                }`}
-              >
-                <FiUploadCloud size={22} className="text-slate-400" />
-
-                <p className="text-xs font-medium text-slate-500">
-                  Drop files or click to upload
-                </p>
-
-                <p className="text-[10px] text-slate-400">
-                  PDF, DOC, XLS up to 10MB
-                </p>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  hidden
-                  onChange={handleFileInput}
-                />
-              </div>
-
-              {attachments.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {attachments.map((file, index) => (
-                    <span
-                      key={`${file.name}-${index}`}
-                      className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] font-medium text-slate-700 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
-                    >
-                      <FiFileText size={12} className={fileTone(file.name)} />
-
-                      {file.name}
-
-                      <button
-                        type="button"
-                        aria-label={`Remove ${file.name}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setAttachments((current) =>
-                            current.filter((_, i) => i !== index),
-                          );
-                        }}
-                        className="text-slate-400 transition hover:text-rose-500"
-                      >
-                        <FiX size={12} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </FormSectionBlock>
-
             {/* TERMS */}
 
             <FormSectionBlock
@@ -1975,9 +1876,6 @@ export default function QuotationPage() {
                   label="Commercial Remarks & Special Project Scope"
                   value={remarks}
                   onChange={(html) => setRemarks(html)}
-                  /* The paperclip adds to the same annexure list as the
-                     drop zone above, rather than being a second store. */
-                  onAttach={addFiles}
                   ariaLabel="Commercial remarks"
                   minHeight={110}
                   placeholder="1. Scope excludes civil foundations..."
