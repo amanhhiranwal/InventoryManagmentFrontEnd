@@ -2508,6 +2508,60 @@ function ActionMenu({
   );
 }
 
+/** The stage picker on the opportunity detail drawer.
+
+    Only stages ahead of the current one are offered, plus Closed Won and
+    Dead: moving a deal backwards would leave its history meaningless. The
+    backend enforces the same rule. */
+function StageSelect({
+  opportunity,
+  saving,
+  onMove,
+}: {
+  opportunity: Opportunity;
+  saving: boolean;
+  onMove: (status: CanonicalOpportunityStatus) => Promise<boolean>;
+}) {
+  const current = STAGE_TO_STATUS[opportunity.stage];
+  const ahead = OPPORTUNITY_TRANSITIONS[current] || [];
+
+  if (!ahead.length) return null;
+
+  return (
+    <div className="flex items-center gap-2 border-t border-slate-200 px-5 py-2.5 dark:border-[#17304a]">
+      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+        Move to stage
+      </span>
+
+      <div className="relative flex-1">
+        <select
+          value=""
+          disabled={saving}
+          onChange={(event) => {
+            const next = event.target.value as CanonicalOpportunityStatus;
+            if (next) void onMove(next);
+            event.target.value = "";
+          }}
+          className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-8 text-[11px] text-slate-700 outline-none focus:border-[#233353] disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+        >
+          <option value="">Currently {opportunity.stage}</option>
+
+          {ahead.map((status) => (
+            <option key={status} value={status}>
+              {statusToStage(status)}
+            </option>
+          ))}
+        </select>
+
+        <FiChevronDown
+          size={12}
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+        />
+      </div>
+    </div>
+  );
+}
+
 /* ================================================================
    LEAD DETAILS DRAWER
 ================================================================ */
@@ -2618,6 +2672,20 @@ function LeadDetailsDrawer({
               });
             })()}
           </div>
+
+          {/* Jump straight to a stage. A deal rarely walks the pipeline a
+              step at a time - a customer who has already seen the product
+              goes to Proposal - so any stage ahead can be picked. */}
+          <StageSelect
+            opportunity={opportunity}
+            saving={saving}
+            onMove={(status) =>
+              onLogActivity({
+                status,
+                remarks: `Stage moved to ${statusToStage(status)}.`,
+              })
+            }
+          />
         </div>
 
         {/* Customer */}
