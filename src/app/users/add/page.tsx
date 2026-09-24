@@ -13,6 +13,7 @@ import { FiArrowLeft, FiUser, FiBriefcase, FiShield } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 import Link from "next/link";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
+import { eligibleManagers, userLabel } from "@/features/users/utils/hierarchy";
 
 export default function AddUserPage() {
   const router = useRouter();
@@ -322,7 +323,7 @@ export default function AddUserPage() {
 
           <SearchableMultiSelect
             label="Assigned Security Roles (Determines Menu Permissions & Reporting Hierarchy)"
-            placeholder={loadingSetup ? "Loading available security roles..." : "Select roles (e.g. Area Head)..."}
+            placeholder={loadingSetup ? "Loading available security roles..." : "Select roles (e.g. Area Manager)..."}
             options={roles.map((r) => ({ id: r.id, name: r.name }))}
             selectedIds={formData.role_ids}
             onChange={(ids) => setFormData({ ...formData, role_ids: ids })}
@@ -342,9 +343,9 @@ export default function AddUserPage() {
                 onChange={handleChange}
               >
                 <option value="">No manager</option>
-                {managers.map((m) => (
+                {eligibleManagers(managers, formData.role_ids, roles).map((m) => (
                   <option key={m.id} value={m.id}>
-                    {`${m.first_name || ""} ${m.last_name || ""}`.trim() || m.email}
+                    {userLabel(m, roles)}
                   </option>
                 ))}
               </select>
@@ -353,7 +354,9 @@ export default function AddUserPage() {
               </span>
             </div>
             <p className="text-[11px] text-slate-400">
-              Must hold a role above this user&apos;s in the hierarchy.
+              {formData.role_ids.length === 0
+                ? "Pick a role first to see who this user can report to."
+                : "Their manager sees every lead, opportunity and order this user works on."}
             </p>
           </div>
         </div>

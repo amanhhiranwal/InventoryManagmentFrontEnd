@@ -19,8 +19,6 @@ import {
   FiFileText,
   FiUploadCloud,
   FiArrowLeft,
-  FiCheckCircle,
-  FiPaperclip
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 
@@ -59,9 +57,8 @@ export default function CreateLeadPage() {
   const [assignedToId, setAssignedToId] = useState("");
   const [leadSources, setLeadSources] = useState<{ id: string; name: string }[]>([]);
 
-  // Requirements & Files
+  // Requirements
   const [remarks, setRemarks] = useState("");
-  const [attachments, setAttachments] = useState<File[]>([]);
 
   const fetchCustomerTypes = useCallback(async () => {
     try {
@@ -119,14 +116,6 @@ export default function CreateLeadPage() {
     if (type === "pan") setPanDoc(file.name);
     if (type === "coi") setCoiDoc(file.name);
     addToast(`${file.name} attached for ${type.toUpperCase()}`, "success");
-  };
-
-  const handleAttachmentsDrop = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      setAttachments((prev) => [...prev, ...files]);
-      addToast(`${files.length} file(s) attached.`, "success");
-    }
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -489,12 +478,12 @@ export default function CreateLeadPage() {
             </div>
           </div>
 
-          {/* Card 2: Requirements & Files */}
+          {/* Card 2: Requirements */}
           <div className="bg-white dark:bg-[#051422] rounded-2xl border border-slate-200/80 dark:border-[#0d2336] p-6 shadow-sm space-y-5">
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-[#0d2336]/60">
               <FiFileText className="text-slate-600 dark:text-slate-400 text-lg" />
               <h3 className="text-sm font-bold text-slate-800 dark:text-white">
-                Requirements & Files
+                Requirements
               </h3>
             </div>
 
@@ -510,33 +499,6 @@ export default function CreateLeadPage() {
                   onChange={(e) => setRemarks(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/70 dark:bg-[#071929] p-3 text-xs text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                  Attachments
-                </label>
-                <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 dark:border-[#0d2336] rounded-2xl bg-slate-50/50 dark:bg-[#071929]/50 hover:bg-slate-100/50 cursor-pointer transition-all text-center">
-                  <FiPaperclip className="text-2xl text-slate-400 mb-2" />
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                    Drop files or click to upload
-                  </span>
-                  <span className="text-[10px] text-slate-400 mt-1">
-                    PDF, DOC, XLS up to 10MB
-                  </span>
-                  <input type="file" multiple className="hidden" onChange={handleAttachmentsDrop} />
-                </label>
-
-                {attachments.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {attachments.map((f, i) => (
-                      <div key={i} className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                        <FiCheckCircle className="text-emerald-500 text-xs" />
-                        <span>{f.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           </div>

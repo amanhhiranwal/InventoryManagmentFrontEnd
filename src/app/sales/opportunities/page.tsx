@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 
@@ -122,7 +122,7 @@ type CustomerType =
   | "Distributor"
   | "OEM"
   | "End Customer"
-  | "Institution"
+  | "Dealer"
   | "Corporate"
   | "Other";
 
@@ -217,8 +217,6 @@ interface Opportunity {
   productItems?: ProductItem[];
   opportunityName?: string;
   lineItems?: OpportunityLineItem[];
-  /** Requirements & Files uploads, recorded by name/size/type on save. */
-  attachments?: File[];
 
   /** The API record this was mapped from, kept so Edit can reopen the full
       New Opportunity form with every field - shipping address, product
@@ -244,7 +242,7 @@ const CUSTOMER_TYPES: CustomerType[] = [
   "Distributor",
   "OEM",
   "End Customer",
-  "Institution",
+  "Dealer",
   "Corporate",
   "Other",
 ];
@@ -417,7 +415,7 @@ function normalizeCustomerType(value: any): CustomerType {
 
   if (type === "oem") return "OEM";
   if (type === "end customer") return "End Customer";
-  if (type === "institution") return "Institution";
+  if (type === "dealer") return "Dealer";
   if (type === "corporate") return "Corporate";
   if (type === "other") return "Other";
 
@@ -990,11 +988,6 @@ function OpportunitiesPageInner() {
         /* Assigned to was a single hardcoded option and was never sent, so
            every opportunity was created unassigned. */
         assigned_to_id: payload.ownerId || undefined,
-        attachments: (payload.attachments || []).map((file: File) => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        })),
 
         product_items: (payload.lineItems || []).map(
           (item: OpportunityLineItem) => ({
@@ -2515,6 +2508,60 @@ function ActionMenu({
   );
 }
 
+/** The stage picker on the opportunity detail drawer.
+
+    Only stages ahead of the current one are offered, plus Closed Won and
+    Dead: moving a deal backwards would leave its history meaningless. The
+    backend enforces the same rule. */
+function StageSelect({
+  opportunity,
+  saving,
+  onMove,
+}: {
+  opportunity: Opportunity;
+  saving: boolean;
+  onMove: (status: CanonicalOpportunityStatus) => Promise<boolean>;
+}) {
+  const current = STAGE_TO_STATUS[opportunity.stage];
+  const ahead = OPPORTUNITY_TRANSITIONS[current] || [];
+
+  if (!ahead.length) return null;
+
+  return (
+    <div className="flex items-center gap-2 border-t border-slate-200 px-5 py-2.5 dark:border-[#17304a]">
+      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+        Move to stage
+      </span>
+
+      <div className="relative flex-1">
+        <select
+          value=""
+          disabled={saving}
+          onChange={(event) => {
+            const next = event.target.value as CanonicalOpportunityStatus;
+            if (next) void onMove(next);
+            event.target.value = "";
+          }}
+          className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-8 text-[11px] text-slate-700 outline-none focus:border-[#233353] disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+        >
+          <option value="">Currently {opportunity.stage}</option>
+
+          {ahead.map((status) => (
+            <option key={status} value={status}>
+              {statusToStage(status)}
+            </option>
+          ))}
+        </select>
+
+        <FiChevronDown
+          size={12}
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+        />
+      </div>
+    </div>
+  );
+}
+
 /* ================================================================
    LEAD DETAILS DRAWER
 ================================================================ */
@@ -2540,6 +2587,7 @@ function LeadDetailsDrawer({
     payload: LogOpportunityActivityPayload,
   ) => Promise<boolean>;
 }) {
+  const router = useRouter();
   const [showActivityForm, setShowActivityForm] = useState(false);
 
   /* A different opportunity in the same drawer starts with a closed form, so
@@ -2571,11 +2619,17 @@ function LeadDetailsDrawer({
               <h2 className="text-[16px] font-semibold">Lead Details</h2>
             </div>
 
+            {/* A quotation is the next step out of an opportunity - the
+                sales order follows from the quotation, not from here - and
+                the new quotation opens already filled in from this deal. */}
             <button
               type="button"
+              onClick={() =>
+                router.push(`/sales/quotations?opportunity=${opportunity.id}`)
+              }
               className="rounded-lg bg-[#233353] px-4 py-2 text-[11px] font-semibold text-white"
             >
-              Create Sales Order
+              Create Quotation
             </button>
           </div>
 
@@ -2625,6 +2679,20 @@ function LeadDetailsDrawer({
               });
             })()}
           </div>
+
+          {/* Jump straight to a stage. A deal rarely walks the pipeline a
+              step at a time - a customer who has already seen the product
+              goes to Proposal - so any stage ahead can be picked. */}
+          <StageSelect
+            opportunity={opportunity}
+            saving={saving}
+            onMove={(status) =>
+              onLogActivity({
+                status,
+                remarks: `Stage moved to ${statusToStage(status)}.`,
+              })
+            }
+          />
         </div>
 
         {/* Customer */}
@@ -3200,7 +3268,6 @@ function NewOpportunityPage({
      "Sales Team" option could never map to a real user. */
   const [assignedTo, setAssignedTo] = useState(seed.assigned_to_id || "");
 
-  const [attachments, setAttachments] = useState<File[]>([]);
 
   /* Line items chosen through Add Product, replacing the old fixed
      checkbox list which could not carry a model, SKU, price or tax. */
@@ -3336,12 +3403,6 @@ function NewOpportunityPage({
   const removeLineItem = (key: string) =>
     setLineItems((current) => current.filter((item) => item.key !== key));
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-
-    setAttachments(files);
-  };
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -3388,7 +3449,6 @@ function NewOpportunityPage({
         assignedTo,
         ownerId: assignedTo,
         remarks,
-        attachments,
         opportunityName,
         /* Left blank, the estimate is what the lines already add up to.
            Defaulting to 0 instead meant an opportunity worth lakhs counted
@@ -4092,7 +4152,7 @@ function NewOpportunityPage({
 
               <FormSectionBlock
                 icon={<FiFileText size={17} />}
-                title="Requirements & Files"
+                title="Requirements"
               >
                 <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
                   Remarks
@@ -4106,33 +4166,6 @@ function NewOpportunityPage({
                   className="w-full resize-none rounded-lg border border-slate-200 bg-white p-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
                 />
 
-                <div className="mt-3">
-                  <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-                    Attachments
-                  </label>
-
-                  <label className="flex min-h-[105px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 text-center transition hover:bg-slate-50 dark:border-[#31506b] dark:hover:bg-[#0b2034]">
-                    <FiUploadCloud size={19} className="text-slate-400" />
-
-                    <p className="mt-1 text-[10px] text-slate-500">
-                      {attachments.length
-                        ? `${attachments.length} file(s) selected`
-                        : "Drop files or click to upload"}
-                    </p>
-
-                    <p className="text-[8px] text-slate-400">
-                      PDF, DOC, XLS up to 10MB
-                    </p>
-
-                    <input
-                      type="file"
-                      multiple
-                      accept=".pdf,.doc,.docx,.xls,.xlsx"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
               </FormSectionBlock>
             </FormCard>
           </div>

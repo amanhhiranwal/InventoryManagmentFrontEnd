@@ -42,14 +42,21 @@ export const OPPORTUNITY_STATUS_LABEL: Record<OpportunityStatus, string> = {
   LOST: "Dead",
 };
 
-/** Allowed forward moves, mirroring OPPORTUNITY_TRANSITIONS on the backend. */
+/* Allowed moves, mirroring OPPORTUNITY_TRANSITIONS on the backend: any
+   stage ahead of the current one, plus the two ways a deal can end. A
+   customer who has already seen the product goes straight to Proposal, so
+   stages can be skipped; going back is not allowed, because the history
+   would stop meaning anything. */
+function forwardFrom(stage: OpportunityStatus): OpportunityStatus[] {
+  const ahead = OPPORTUNITY_PIPELINE.slice(OPPORTUNITY_PIPELINE.indexOf(stage) + 1);
+  return [...ahead, OPPORTUNITY_STATUS.WON, OPPORTUNITY_STATUS.LOST];
+}
+
 export const OPPORTUNITY_TRANSITIONS: Record<OpportunityStatus, OpportunityStatus[]> =
   {
-    QUALIFICATION: ["REQUIREMENT", "LOST"],
-    REQUIREMENT: ["DEMO", "LOST"],
-    DEMO: ["PROPOSAL", "LOST"],
-    PROPOSAL: ["NEGOTIATION", "LOST"],
-    NEGOTIATION: ["WON", "LOST"],
+    ...(Object.fromEntries(
+      OPPORTUNITY_PIPELINE.map((stage) => [stage, forwardFrom(stage)]),
+    ) as Record<OpportunityStatus, OpportunityStatus[]>),
     WON: [],
     LOST: [],
   };

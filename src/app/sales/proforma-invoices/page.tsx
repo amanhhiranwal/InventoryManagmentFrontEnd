@@ -105,7 +105,7 @@ const CUSTOMER_TYPES = [
   "Distributor",
   "OEM",
   "End Customer",
-  "Institution",
+  "Dealer",
   "Corporate",
   "Other",
 ];
@@ -835,7 +835,8 @@ export default function ProformaInvoiceListPage() {
                                 label="View"
                                 onClick={() => router.push(`/sales/proforma-invoices/${invoice.id}`)}
                               />
-                              {invoice.status === "DRAFT" && (
+                              {(invoice.status === "DRAFT" ||
+                                invoice.status === "GENERATED") && (
                                 <MenuItem
                                   icon={<LuPencil size={13} />}
                                   label="Edit PI"
