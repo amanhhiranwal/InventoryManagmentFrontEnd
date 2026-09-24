@@ -71,7 +71,6 @@ import {
   FiPhoneCall,
   FiXCircle,
   FiUploadCloud,
-  FiPaperclip,
   FiUser,
   FiBriefcase,
   FiShield,
@@ -2955,7 +2954,7 @@ function LeadFormPage({
             </div>
           </FormSectionBlock>
 
-          <FormSectionBlock icon={<FiFileText />} title="Requirements & Files">
+          <FormSectionBlock icon={<FiFileText />} title="Requirements">
             <div className="space-y-5">
               {/* Remarks */}
               <div>
@@ -2991,80 +2990,6 @@ function LeadFormPage({
                 />
               </div>
 
-              {/* Attachments Heading */}
-              <div>
-                <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
-                  Attachments
-                </label>
-
-                {/* Upload Area */}
-                <label
-                  className="
-                    flex
-                    min-h-[150px]
-                    w-full
-                    cursor-pointer
-                    flex-col
-                    items-center
-                    justify-center
-                    rounded-2xl
-                    border-2
-                    border-dashed
-                    border-slate-200
-                    p-5
-                    text-center
-                    transition
-                    hover:bg-slate-50
-                    dark:border-[#0d2336]
-                    dark:hover:bg-[#071929]
-                  "
-                >
-                  <FiPaperclip className="mb-3 text-2xl text-slate-400" />
-
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                    Drop files or click to upload
-                  </span>
-
-                  <span className="mt-1 text-[10px] text-slate-400">
-                    PDF, DOC, XLS up to 10MB
-                  </span>
-
-                  <input
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={onAttachment}
-                  />
-                </label>
-              </div>
-
-              {/* Selected Attachments */}
-              {form.attachments.length > 0 && (
-                <div className="space-y-2">
-                  {form.attachments.map((attachment, index) => (
-                    <div
-                      key={`${attachment}-${index}`}
-                      className="
-                flex
-                items-center
-                gap-2
-                rounded-lg
-                bg-slate-50
-                px-3
-                py-2
-                text-[10px]
-                font-semibold
-                text-slate-500
-                dark:bg-[#071929]
-              "
-                    >
-                      <FiCheckCircle className="shrink-0 text-emerald-500" />
-
-                      <span className="truncate">{attachment}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           </FormSectionBlock>
         </FormCard>

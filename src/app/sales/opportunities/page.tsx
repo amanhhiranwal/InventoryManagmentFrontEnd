@@ -217,8 +217,6 @@ interface Opportunity {
   productItems?: ProductItem[];
   opportunityName?: string;
   lineItems?: OpportunityLineItem[];
-  /** Requirements & Files uploads, recorded by name/size/type on save. */
-  attachments?: File[];
 
   /** The API record this was mapped from, kept so Edit can reopen the full
       New Opportunity form with every field - shipping address, product
@@ -990,11 +988,6 @@ function OpportunitiesPageInner() {
         /* Assigned to was a single hardcoded option and was never sent, so
            every opportunity was created unassigned. */
         assigned_to_id: payload.ownerId || undefined,
-        attachments: (payload.attachments || []).map((file: File) => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        })),
 
         product_items: (payload.lineItems || []).map(
           (item: OpportunityLineItem) => ({
@@ -3200,7 +3193,6 @@ function NewOpportunityPage({
      "Sales Team" option could never map to a real user. */
   const [assignedTo, setAssignedTo] = useState(seed.assigned_to_id || "");
 
-  const [attachments, setAttachments] = useState<File[]>([]);
 
   /* Line items chosen through Add Product, replacing the old fixed
      checkbox list which could not carry a model, SKU, price or tax. */
@@ -3336,12 +3328,6 @@ function NewOpportunityPage({
   const removeLineItem = (key: string) =>
     setLineItems((current) => current.filter((item) => item.key !== key));
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-
-    setAttachments(files);
-  };
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -3388,7 +3374,6 @@ function NewOpportunityPage({
         assignedTo,
         ownerId: assignedTo,
         remarks,
-        attachments,
         opportunityName,
         /* Left blank, the estimate is what the lines already add up to.
            Defaulting to 0 instead meant an opportunity worth lakhs counted
@@ -4092,7 +4077,7 @@ function NewOpportunityPage({
 
               <FormSectionBlock
                 icon={<FiFileText size={17} />}
-                title="Requirements & Files"
+                title="Requirements"
               >
                 <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
                   Remarks
@@ -4106,33 +4091,6 @@ function NewOpportunityPage({
                   className="w-full resize-none rounded-lg border border-slate-200 bg-white p-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
                 />
 
-                <div className="mt-3">
-                  <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-                    Attachments
-                  </label>
-
-                  <label className="flex min-h-[105px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 text-center transition hover:bg-slate-50 dark:border-[#31506b] dark:hover:bg-[#0b2034]">
-                    <FiUploadCloud size={19} className="text-slate-400" />
-
-                    <p className="mt-1 text-[10px] text-slate-500">
-                      {attachments.length
-                        ? `${attachments.length} file(s) selected`
-                        : "Drop files or click to upload"}
-                    </p>
-
-                    <p className="text-[8px] text-slate-400">
-                      PDF, DOC, XLS up to 10MB
-                    </p>
-
-                    <input
-                      type="file"
-                      multiple
-                      accept=".pdf,.doc,.docx,.xls,.xlsx"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
               </FormSectionBlock>
             </FormCard>
           </div>
