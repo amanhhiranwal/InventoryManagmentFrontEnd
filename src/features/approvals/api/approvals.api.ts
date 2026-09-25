@@ -3,9 +3,10 @@ import api from "@/lib/axios";
 /* =========================================================
    DISCOUNT APPROVALS
 
-   A discount is applied by a salesperson and signed for above them: the
-   AVP carries the first 15%, the CEO the next 5%, and past 20% only the
-   founder. Dealer price is a transfer price and is the CEO's alone.
+   A discount is applied by a salesperson and signed for above them. The
+   bands - who carries how much - are set by a super admin on the Quotation
+   Approval screen. Dealer price ignores them: it is a transfer price and
+   the CEO sets it.
 ========================================================= */
 
 export const PRICE_TYPE = {
@@ -70,12 +71,22 @@ export interface ApprovalBand {
   label: string;
 }
 
-export const getApprovalMatrixApi = async (): Promise<{
+export interface ApprovalMatrix {
   bands: ApprovalBand[];
   founder_role: string;
   price_types: { value: PriceType; label: string }[];
-}> => {
+}
+
+export const getApprovalMatrixApi = async (): Promise<ApprovalMatrix> => {
   const { data } = await api.get("/api/v1/approvals/matrix");
+  return data.data;
+};
+
+/** Set who may approve how much. Super admin only. */
+export const saveApprovalMatrixApi = async (
+  bands: { role: string; to_percent: number | null }[],
+): Promise<ApprovalMatrix> => {
+  const { data } = await api.put("/api/v1/approvals/matrix", { bands });
   return data.data;
 };
 

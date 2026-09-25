@@ -105,6 +105,9 @@ export interface QuotationModel {
   id: number;
   quote_number?: string | null;
   opportunity_id?: number | null;
+  /** Which of our companies is selling, and so whose letterhead this
+      proposal carries. */
+  company_id?: string | null;
 
   status: QuotationStatus;
 
@@ -306,12 +309,49 @@ export interface QuotationBrand {
   signatory?: string | null;
   signatory_title?: string | null;
   offerings: string[];
-  about: string;
+  /** One paragraph per entry. */
+  about: string[];
+  email?: string | null;
+  phone?: string | null;
+  /** Who is sending this quotation - named on the cover and the signature. */
+  sender?: {
+    name: string;
+    title?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
 }
 
-export const getQuotationBrandApi = async (): Promise<QuotationBrand> => {
-  const { data } = await api.get("/api/v1/quotations/brand");
+/** The letterhead for a quotation: its own selling company where one is
+    set, otherwise the global Company Profile. */
+export const getQuotationBrandApi = async (
+  quotationId?: number | string,
+  companyId?: string | null,
+): Promise<QuotationBrand> => {
+  const { data } = await api.get("/api/v1/quotations/brand", {
+    params: {
+      ...(quotationId ? { quotation_id: quotationId } : {}),
+      ...(companyId ? { company_id: companyId } : {}),
+    },
+  });
   return data.data;
+};
+
+/** The letterhead mark for a quotation. Rendered by an <img>, which cannot
+    carry a token, so the endpoint behind it is open. */
+export const quotationBrandLogoUrl = (
+  quotationId?: number | string | null,
+  companyId?: string | null,
+): string => {
+  const base = `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/quotations/brand/logo`;
+  const params = new URLSearchParams();
+
+  if (companyId) params.set("company_id", String(companyId));
+  else if (quotationId) params.set("quotation_id", String(quotationId));
+
+  const query = params.toString();
+
+  return query ? `${base}?${query}` : base;
 };
 
 /** Downloads the proposal PDF - the same document the client is emailed. */

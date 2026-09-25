@@ -35,6 +35,10 @@ import AmountInput, {
 import RichTextEditor, { textToHtml } from "@/components/crm/RichTextEditor";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
+  getInventoryCompaniesApi,
+  type ScopeCompany,
+} from "@/features/inventory/api/inventory.api";
+import {
   PRICE_TYPE,
   PRICE_TYPE_LABEL,
   type PriceType,
@@ -465,6 +469,12 @@ export default function QuotationPage() {
      what the approval chain is about: who has to sign depends on how much
      margin is being given away, and on whether this is an end customer
      price or a dealer transfer price. */
+  /* Which of our companies is selling. One installation can run several,
+     and the proposal goes out on that company's letterhead - so a
+     quotation for Unique Event must not carry Qonevo's website. */
+  const [sellingCompanyId, setSellingCompanyId] = useState("");
+  const [sellingCompanies, setSellingCompanies] = useState<ScopeCompany[]>([]);
+
   const [priceType, setPriceType] = useState<PriceType>(PRICE_TYPE.ECP);
   const [approvalChain, setApprovalChain] = useState<string[]>([]);
   const [approvalReason, setApprovalReason] = useState("");
@@ -833,6 +843,11 @@ export default function QuotationPage() {
     setAttachments([]);
     setTerms(DEFAULT_TERMS);
     setRemarks("");
+    /* Back to the obvious company, so a fresh quotation never inherits the
+       letterhead of the one edited before it. */
+    setSellingCompanyId(
+      sellingCompanies.length === 1 ? sellingCompanies[0].id : "",
+    );
   };
 
   const openCreate = () => {
@@ -863,6 +878,7 @@ export default function QuotationPage() {
         setEmail(saved.email || "");
         setMobileNumber(saved.mobile_number || "");
         setAssignedToId(saved.assigned_to_id || "");
+        setSellingCompanyId(saved.company_id || "");
         setQuotationDate(toInputDate(saved.quotation_date));
         setValidationDate(toInputDate(saved.validation_date));
 
@@ -1033,6 +1049,17 @@ export default function QuotationPage() {
     if (sameAsBilling) setShipping(billing);
   }, [sameAsBilling, billing]);
 
+  /* The same list the product form offers, because the letterhead should
+     match the company whose stock is being sold. */
+  useEffect(() => {
+    getInventoryCompaniesApi()
+      .then(({ companies }) => {
+        setSellingCompanies(companies);
+        if (companies.length === 1) setSellingCompanyId(companies[0].id);
+      })
+      .catch(() => setSellingCompanies([]));
+  }, []);
+
   /* The opportunity drawer's Create Quotation button arrives here with
      ?opportunity=<id>: open the blank form and fill it from that
      opportunity, so the quotation starts where the deal left off. */
@@ -1059,6 +1086,7 @@ export default function QuotationPage() {
 
   const toPayload = (status: QuotationStatus) => ({
     opportunity_id: opportunityId,
+    company_id: sellingCompanyId || undefined,
     status,
 
     opportunity_name: opportunityName.trim() || undefined,
@@ -2063,6 +2091,31 @@ export default function QuotationPage() {
                   <p className="mb-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
                     Pricing &amp; Approval
                   </p>
+
+                  {/* Whose letterhead the proposal carries. Only worth
+                      asking when the salesperson sells for more than one. */}
+                  {sellingCompanies.length > 1 && (
+                    <>
+                      <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
+                        Selling Company
+                      </label>
+
+                      <select
+                        value={sellingCompanyId}
+                        onChange={(event) =>
+                          setSellingCompanyId(event.target.value)
+                        }
+                        className="mb-3 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                      >
+                        <option value="">Use the default profile</option>
+                        {sellingCompanies.map((company) => (
+                          <option key={company.id} value={company.id}>
+                            {company.company_name}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
 
                   <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
                     Price Type
