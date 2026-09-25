@@ -17,6 +17,7 @@ import {
   PRICE_TYPE,
   requestApprovalApi,
 } from "@/features/approvals/api/approvals.api";
+import ApprovalPanel from "@/features/approvals/components/ApprovalPanel";
 import {
   SALES_ORDER_PIPELINE,
   SALES_ORDER_STATUS,
@@ -552,6 +553,13 @@ export default function SalesOrderDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* The approval on this order, for whoever it is waiting on. */}
+      <ApprovalPanel
+        documentType="SALES_ORDER"
+        documentId={order.id}
+        onChanged={loadOrder}
+      />
 
       <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_306px]">
         {/* =====================================================

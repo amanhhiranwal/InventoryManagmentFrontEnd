@@ -40,6 +40,7 @@ import {
   type QuotationBrand,
 } from "@/features/quotations/api/quotations.api";
 import QuotationDocument from "@/features/quotations/components/QuotationDocument";
+import ApprovalPanel from "@/features/approvals/components/ApprovalPanel";
 
 import {
   FiChevronLeft,
@@ -583,6 +584,13 @@ export default function QuotationDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* The approval on this quotation, for whoever it is waiting on. */}
+      <ApprovalPanel
+        documentType="QUOTATION"
+        documentId={quotation.id}
+        onChanged={loadQuotation}
+      />
 
       {/* HEADLINE FIGURES */}
 
