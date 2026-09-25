@@ -20,7 +20,9 @@ import { useUIStore } from "@/lib/store/ui.store";
 import {
   CompanyProfile,
   getCompanyProfileApi,
+  removeCompanyCoverApi,
   saveCompanyProfileApi,
+  uploadCompanyCoverApi,
   uploadCompanyLogoApi,
 } from "@/features/settings/api/companyProfile.api";
 
@@ -39,6 +41,7 @@ export default function CompanyProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const logoInput = useRef<HTMLInputElement | null>(null);
+  const coverInput = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -90,15 +93,29 @@ export default function CompanyProfilePage() {
     }
   };
 
-  const uploadLogo = async (file: File) => {
+  const sendImage = async (
+    file: File,
+    send: (file: File) => Promise<CompanyProfile>,
+    done: string,
+  ) => {
     try {
-      setProfile(await uploadCompanyLogoApi(file));
-      addToast("Logo uploaded.", "success");
+      setProfile(await send(file));
+      addToast(done, "success");
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "The logo could not be uploaded.";
+          ?.detail || "That image could not be uploaded.";
       addToast(detail, "error");
+    }
+  };
+
+  const clearCover = async () => {
+    try {
+      setProfile(await removeCompanyCoverApi());
+      addToast("Cover image removed.", "info");
+    } catch (error) {
+      console.error(error);
+      addToast("The cover image could not be removed.", "error");
     }
   };
 
@@ -299,7 +316,75 @@ export default function CompanyProfilePage() {
               hidden
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file) void uploadLogo(file);
+                if (file) {
+                  void sendImage(file, uploadCompanyLogoApi, "Logo uploaded.");
+                }
+                event.target.value = "";
+              }}
+            />
+          </div>
+        </div>
+      </Section>
+
+      <Section icon={<LuImage size={16} />} title="Cover Image">
+        <div className="flex flex-wrap items-start gap-5">
+          {profile.company_cover_image ? (
+            <img
+              src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/company-profile/cover/image?v=${encodeURIComponent(profile.company_cover_image)}`}
+              alt="Proposal cover"
+              className="h-28 w-auto rounded-lg border border-slate-200 object-cover dark:border-[#17304a]"
+              onError={(event) => {
+                (event.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+          ) : (
+            <div className="flex h-28 w-44 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400 dark:border-[#17304a]">
+              No cover image
+            </div>
+          )}
+
+          <div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => coverInput.current?.click()}
+                className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
+              >
+                <LuImage size={13} />
+                {profile.company_cover_image ? "Replace Cover" : "Upload Cover"}
+              </button>
+
+              {profile.company_cover_image && (
+                <button
+                  type="button"
+                  onClick={clearCover}
+                  className="h-9 rounded-lg border border-rose-200 px-4 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900/40"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+
+            <p className="mt-1.5 max-w-sm text-[10px] leading-relaxed text-slate-400">
+              Sits on the proposal cover under the addresses — a product
+              photo, as the printed proposal has. Without one the cover
+              simply runs without a picture.
+            </p>
+
+            <input
+              ref={coverInput}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void sendImage(
+                    file,
+                    uploadCompanyCoverApi,
+                    "Cover image uploaded.",
+                  );
+                }
                 event.target.value = "";
               }}
             />

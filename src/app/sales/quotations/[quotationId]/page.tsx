@@ -158,10 +158,12 @@ export default function QuotationDetailPage() {
   const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    getQuotationBrandApi()
+    if (!quotationId) return;
+
+    getQuotationBrandApi(quotationId)
       .then(setBrand)
       .catch(() => setBrand(null));
-  }, []);
+  }, [quotationId]);
 
   const [activities, setActivities] = useState<QuotationActivity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);

@@ -72,12 +72,18 @@ export default function QuotationDocument({
     ...addressLines(quotation.billing_address),
   ];
 
-  const submittedBy = [
-    brand?.signatory || company,
-    ...(brand?.signatory
-      ? [brand.signatory_title, company].filter(Boolean)
-      : []),
-  ] as string[];
+  /* Who the client has actually been dealing with, not the company's
+     standing signatory. */
+  const sender = brand?.sender;
+
+  const submittedBy = (
+    sender
+      ? [sender.name, sender.title, company, sender.email, sender.phone]
+      : [
+          brand?.signatory || company,
+          ...(brand?.signatory ? [brand.signatory_title, company] : []),
+        ]
+  ).filter(Boolean) as string[];
 
   /* What the company sells. Falls back to what is on this quotation when
      no range has been configured, as the PDF does. */
@@ -164,9 +170,14 @@ export default function QuotationDocument({
         >
           <h2 className="text-center text-[19px] font-bold">About {company}</h2>
 
-          <p className="mt-5 text-justify text-[11px] leading-[17px]">
-            {brand?.about}
-          </p>
+          {(brand?.about || []).map((paragraph, index) => (
+            <p
+              key={index}
+              className="mt-5 text-justify text-[11px] leading-[17px]"
+            >
+              {paragraph}
+            </p>
+          ))}
         </div>
 
         {offerings.length > 0 && (
@@ -327,9 +338,27 @@ export default function QuotationDocument({
 
         <div className="mt-10 text-[12px] font-bold leading-[19px]">
           <p>Best Regards</p>
-          {brand?.signatory && <p>{brand.signatory}</p>}
-          {brand?.signatory_title && <p>{brand.signatory_title}</p>}
+          {(sender?.name || brand?.signatory) && (
+            <p>{sender?.name || brand?.signatory}</p>
+          )}
+          {(sender?.title || brand?.signatory_title) && (
+            <p>{sender?.title || brand?.signatory_title}</p>
+          )}
           <p>{company}</p>
+
+          {[sender?.phone || brand?.phone, sender?.email || brand?.email, brand?.website]
+            .filter(Boolean)
+            .join(" | ") && (
+            <p className="text-[11px] font-normal text-slate-500">
+              {[
+                sender?.phone || brand?.phone,
+                sender?.email || brand?.email,
+                brand?.website,
+              ]
+                .filter(Boolean)
+                .join(" | ")}
+            </p>
+          )}
 
           {(brand?.address || []).slice(0, 2).map((line) => (
             <p key={line} className="font-normal text-[11px] text-slate-500">

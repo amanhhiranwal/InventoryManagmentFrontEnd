@@ -47,14 +47,22 @@ export const saveCompanyProfileApi = async (
   return data.data;
 };
 
-export const uploadCompanyLogoApi = async (
-  file: File,
-): Promise<CompanyProfile> => {
+const upload = async (path: string, file: File): Promise<CompanyProfile> => {
   const form = new FormData();
   form.append("file", file);
 
-  const { data } = await api.post("/api/v1/company-profile/logo", form, {
+  const { data } = await api.post(`/api/v1/company-profile/${path}`, form, {
     headers: { "Content-Type": "multipart/form-data" },
   });
+  return data.data;
+};
+
+export const uploadCompanyLogoApi = (file: File) => upload("logo", file);
+
+/** The picture on the proposal cover, under the addresses. Optional. */
+export const uploadCompanyCoverApi = (file: File) => upload("cover", file);
+
+export const removeCompanyCoverApi = async (): Promise<CompanyProfile> => {
+  const { data } = await api.delete("/api/v1/company-profile/cover");
   return data.data;
 };

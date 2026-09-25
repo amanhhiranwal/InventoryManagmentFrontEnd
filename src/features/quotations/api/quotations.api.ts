@@ -306,11 +306,27 @@ export interface QuotationBrand {
   signatory?: string | null;
   signatory_title?: string | null;
   offerings: string[];
-  about: string;
+  /** One paragraph per entry. */
+  about: string[];
+  email?: string | null;
+  phone?: string | null;
+  /** Who is sending this quotation - named on the cover and the signature. */
+  sender?: {
+    name: string;
+    title?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
 }
 
-export const getQuotationBrandApi = async (): Promise<QuotationBrand> => {
-  const { data } = await api.get("/api/v1/quotations/brand");
+/** The letterhead for a quotation: its own selling company where one is
+    set, otherwise the global Company Profile. */
+export const getQuotationBrandApi = async (
+  quotationId?: number | string,
+): Promise<QuotationBrand> => {
+  const { data } = await api.get("/api/v1/quotations/brand", {
+    params: quotationId ? { quotation_id: quotationId } : undefined,
+  });
   return data.data;
 };
 
