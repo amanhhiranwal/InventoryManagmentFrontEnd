@@ -33,9 +33,14 @@ import {
   QuotationStatus,
   getQuotationActivitiesApi,
   getQuotationApi,
+  getQuotationBrandApi,
+  downloadQuotationPdfApi,
   logQuotationActivityApi,
   updateQuotationApi,
+  type QuotationBrand,
 } from "@/features/quotations/api/quotations.api";
+import QuotationDocument from "@/features/quotations/components/QuotationDocument";
+import ApprovalPanel from "@/features/approvals/components/ApprovalPanel";
 
 import {
   FiChevronLeft,
@@ -145,6 +150,20 @@ export default function QuotationDetailPage() {
 
   const [quotation, setQuotation] = useState<QuotationModel | null>(null);
   const [loading, setLoading] = useState(true);
+
+  /* The proposal exactly as the client receives it. The same brand values
+     feed the PDF, so the preview cannot drift from what is sent. */
+  const [brand, setBrand] = useState<QuotationBrand | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    if (!quotationId) return;
+
+    getQuotationBrandApi(quotationId)
+      .then(setBrand)
+      .catch(() => setBrand(null));
+  }, [quotationId]);
 
   const [activities, setActivities] = useState<QuotationActivity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
@@ -430,6 +449,58 @@ export default function QuotationDetailPage() {
      still a draft, rather than presenting an edit that would 400. */
   const editable = quotation.status === QUOTATION_STATUS.DRAFT;
 
+  /* The proposal on an A4 sheet, over the page. Shown rather than routed
+     to, so closing it puts the user back exactly where they were. */
+  if (previewing) {
+    return (
+      <div className="fixed inset-0 z-[200] overflow-y-auto bg-slate-200/90 py-8 dark:bg-slate-900/90">
+        <div className="mx-auto mb-4 flex w-[794px] items-center justify-between">
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {quotation.quote_number} — as the client receives it
+          </h2>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={downloading}
+              onClick={async () => {
+                setDownloading(true);
+
+                try {
+                  await downloadQuotationPdfApi(
+                    quotation.id,
+                    `${quotation.quote_number || "Quotation"}.pdf`,
+                  );
+                } catch (error) {
+                  console.error(error);
+                  addToast("The proposal PDF could not be generated.", "error");
+                } finally {
+                  setDownloading(false);
+                }
+              }}
+              className="flex h-9 items-center gap-2 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white transition hover:bg-[#18243a] disabled:opacity-50"
+            >
+              <FiDownload size={13} />
+              {downloading ? "Preparing..." : "Download PDF"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPreviewing(false)}
+              className="flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="mx-auto w-[794px] shadow-2xl">
+          <QuotationDocument quotation={quotation} brand={brand} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-full space-y-4 pb-8">
       {/* HEADER */}
@@ -462,11 +533,37 @@ export default function QuotationDetailPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() => setPreviewing(true)}
               className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
             >
+              <FiFileText size={13} />
+              Preview
+            </button>
+
+            {/* Fetches the real PDF rather than printing the screen, so
+                what is saved is the document the client is emailed. */}
+            <button
+              type="button"
+              disabled={downloading}
+              onClick={async () => {
+                setDownloading(true);
+
+                try {
+                  await downloadQuotationPdfApi(
+                    quotation.id,
+                    `${quotation.quote_number || "Quotation"}.pdf`,
+                  );
+                } catch (error) {
+                  console.error(error);
+                  addToast("The proposal PDF could not be generated.", "error");
+                } finally {
+                  setDownloading(false);
+                }
+              }}
+              className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:opacity-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+            >
               <FiDownload size={13} />
-              Download
+              {downloading ? "Preparing..." : "Download"}
             </button>
 
             {/* Carries the quotation's reference through, so the New Sales
@@ -489,6 +586,13 @@ export default function QuotationDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* The approval on this quotation, for whoever it is waiting on. */}
+      <ApprovalPanel
+        documentType="QUOTATION"
+        documentId={quotation.id}
+        onChanged={loadQuotation}
+      />
 
       {/* HEADLINE FIGURES */}
 
@@ -737,7 +841,7 @@ export default function QuotationDetailPage() {
                 />
 
                 <SummaryLine
-                  label="Lumpsum (Installation):"
+                  label="Installation:"
                   value={`+${money(quotation.installation_lumpsum)}`}
                   edit={editable ? {
                     amount: quotation.installation_lumpsum || 0,

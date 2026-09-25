@@ -52,7 +52,12 @@ import {
   type ProformaInvoiceActivity,
   type ProformaInvoiceModel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
-import { salesOrderStatusLabel } from "@/features/salesOrders/api/salesOrders.api";
+import {
+  SALES_ORDER_PIPELINE,
+  SALES_ORDER_STATUS,
+  salesOrderStatusLabel,
+} from "@/features/salesOrders/api/salesOrders.api";
+import type { SalesOrderStatus } from "@/features/salesOrders/api/salesOrders.api";
 import {
   AddressFields,
   BankingDetails,
@@ -278,7 +283,15 @@ function ProformaInvoiceDetail() {
     );
   }
 
+  /* What can still be changed in place. Draft and Generated both can:
+     an invoice waiting on approval is still ours to correct. Sent is
+     fixed. */
   const isDraft = invoice.status === "DRAFT";
+
+  /* What can still be changed in place. A generated invoice can too: one
+     waiting on approval is still ours to correct, and freezing it meant
+     cancelling and rebuilding over a wrong quantity. Sent is fixed. */
+  const isEditable = isDraft || invoice.status === "GENERATED";
   const contact = (invoice.customer_information?.primary_contact || {}) as Record<string, string>;
   const order = invoice.sales_order;
 
@@ -413,7 +426,7 @@ function ProformaInvoiceDetail() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {isDraft && (
+            {isEditable && (
               <button
                 type="button"
                 onClick={() => router.push(`/sales/proforma-invoices/new?edit=${invoice.id}`)}
@@ -489,7 +502,7 @@ function ProformaInvoiceDetail() {
               icon={<LuMapPin size={17} />}
               title="Location Information"
               action={
-                isDraft && addressDirty && (
+                isEditable && addressDirty && (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -513,28 +526,28 @@ function ProformaInvoiceDetail() {
 
             <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
               {/* Addresses are fixed once the invoice is generated, so past
-                  Draft they are shown as the saved values, not inputs that
-                  could not be saved. */}
+                  editable they are shown as the saved values, not inputs
+                  that could not be saved. */}
               <AddressFields
                 title="Billing Address"
                 address={billing}
                 onChange={setBilling}
-                readOnly={!isDraft}
+                readOnly={!isEditable}
               />
               <AddressFields
                 title="Shipping Address"
                 address={sameAsBilling ? billing : shipping}
                 onChange={setShipping}
-                disabled={isDraft && sameAsBilling}
-                readOnly={!isDraft}
+                disabled={isEditable && sameAsBilling}
+                readOnly={!isEditable}
                 header={
                   <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
                     <input
                       type="checkbox"
-                      disabled={!isDraft}
+                      disabled={!isEditable}
                       checked={
                         sameAsBilling ||
-                        (!isDraft &&
+                        (!isEditable &&
                           JSON.stringify(invoice.billing_address) ===
                             JSON.stringify(invoice.shipping_address))
                       }
@@ -701,7 +714,15 @@ function ProformaInvoiceDetail() {
 
 function OrderProcess({ invoice }: { invoice: ProformaInvoiceModel }) {
   const order = invoice.sales_order;
-  const confirmed = !!order && ["CONFIRMED", "RELEASED", "ON_HOLD", "COMPLETED"].includes(order.status);
+
+  /* Confirmed once the order has reached that point in the chain - not a
+     hand-kept list of statuses, which fell behind when the fulfilment
+     stages were added. */
+  const confirmed =
+    !!order &&
+    (order.status === "ON_HOLD" ||
+      SALES_ORDER_PIPELINE.indexOf(order.status as SalesOrderStatus) >=
+        SALES_ORDER_PIPELINE.indexOf(SALES_ORDER_STATUS.CONFIRMED));
 
   const piState: StepState =
     invoice.status === "GENERATED" || invoice.status === "SENT"
@@ -740,21 +761,96 @@ function OrderProcess({ invoice }: { invoice: ProformaInvoiceModel }) {
             : `${invoice.pi_number} ${proformaInvoiceStatusLabel(invoice.status)}`
         }
       />
-      <ProcessStep
-        state={order?.status === "COMPLETED" ? "done" : order?.status === "RELEASED" ? "current" : "todo"}
-        title="Fulfillment"
-        caption={
-          order?.status === "COMPLETED"
-            ? "Completed"
-            : order?.status === "RELEASED"
-              ? "Released for dispatch"
-              : "Not Released"
-        }
-        last
-      />
+      {/* What happens after this invoice is paid. Recording a payment here
+          is what moves the order to Payment Verified, and it then walks the
+          rest of the chain on its own page - so the two screens tell the
+          same story rather than the invoice stopping at "Released". */}
+      {AFTER_PAYMENT.map((step, index) => {
+        const reached = SALES_ORDER_PIPELINE.indexOf(
+          (order?.status || "DRAFT") as SalesOrderStatus,
+        );
+        const mine = SALES_ORDER_PIPELINE.indexOf(step.status);
+
+        return (
+          <ProcessStep
+            key={step.status}
+            state={reached > mine ? "done" : reached === mine ? "current" : "todo"}
+            title={step.title}
+            caption={
+              reached > mine
+                ? step.done
+                : reached === mine
+                  ? step.doing
+                  : step.todo
+            }
+            last={index === AFTER_PAYMENT.length - 1}
+          />
+        );
+      })}
     </div>
   );
 }
+
+/* The rest of the journey, from the money landing to the deal closing.
+   The same chain the sales order's own page walks, so the invoice shows
+   where the order has actually got to instead of stopping at dispatch. */
+const AFTER_PAYMENT: {
+  status: SalesOrderStatus;
+  title: string;
+  done: string;
+  doing: string;
+  todo: string;
+}[] = [
+  {
+    status: SALES_ORDER_STATUS.PAYMENT_VERIFIED,
+    title: "Payment Verified",
+    done: "Advance confirmed by accounts",
+    doing: "Advance received against this invoice",
+    todo: "Awaiting the advance",
+  },
+  {
+    status: SALES_ORDER_STATUS.PROCUREMENT,
+    title: "Procurement",
+    done: "Stock secured",
+    doing: "With inventory",
+    todo: "Not started",
+  },
+  {
+    status: SALES_ORDER_STATUS.READY,
+    title: "Ready To Dispatch",
+    done: "Picked and packed",
+    doing: "Ready to go out",
+    todo: "Not ready",
+  },
+  {
+    status: SALES_ORDER_STATUS.DISPATCHED,
+    title: "Dispatched",
+    done: "Left the warehouse",
+    doing: "In transit",
+    todo: "Not dispatched",
+  },
+  {
+    status: SALES_ORDER_STATUS.DELIVERED,
+    title: "Delivered",
+    done: "Received by the client",
+    doing: "With the client",
+    todo: "Not delivered",
+  },
+  {
+    status: SALES_ORDER_STATUS.INSTALLED,
+    title: "Installed",
+    done: "Installation signed off",
+    doing: "Installation underway",
+    todo: "Not installed",
+  },
+  {
+    status: SALES_ORDER_STATUS.COMPLETED,
+    title: "Completed",
+    done: "Balance settled, deal won",
+    doing: "Closing out",
+    todo: "Balance outstanding",
+  },
+];
 
 type StepState = "done" | "current" | "todo";
 

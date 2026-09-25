@@ -4,9 +4,9 @@
  * Generate Proforma Invoice.
  *
  * Reached two ways: from the Create Proforma Invoice dialog with ?order=<id>,
- * where everything is prefilled from that sales order, and from Edit PI on a
- * draft with ?edit=<id>. Save as Draft keeps it editable; Send For Approval
- * generates it, after which the lines and dates are fixed.
+ * where everything is prefilled from that sales order, and from Edit PI with
+ * ?edit=<id>. A draft and a generated invoice are both editable here; once
+ * the invoice has been sent to the customer it is fixed.
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -189,11 +189,14 @@ function GenerateProformaInvoice() {
       if (editingId) {
         const invoice = await getProformaInvoiceApi(editingId);
 
-        /* Past Draft the lines and dates are fixed on the backend, so a
-           generated invoice goes to its own page instead of a form that
-           could not be saved. */
-        if (invoice.status !== "DRAFT") {
-          addToast("Only a draft proforma invoice can be edited.", "warning");
+        /* Draft and Generated are both still ours to correct. Once the
+           invoice has gone to the customer it is fixed, so it goes to its
+           own page instead of a form that could not be saved. */
+        if (invoice.status !== "DRAFT" && invoice.status !== "GENERATED") {
+          addToast(
+            "A proforma invoice can only be edited before it is sent.",
+            "warning",
+          );
           router.replace(`/sales/proforma-invoices/${invoice.id}`);
           return;
         }
@@ -559,9 +562,19 @@ function GenerateProformaInvoice() {
                 }
               />
 
+              {/* This form only ever opens on a draft, so the lines are
+                  editable here; once the invoice is generated they are
+                  fixed and the detail page shows them read-only. */}
               <ProductsTable
                 lines={lines}
                 onRemove={(index) => setLines((current) => current.filter((_, i) => i !== index))}
+                onEdit={(index, patch) =>
+                  setLines((current) =>
+                    current.map((line, i) =>
+                      i === index ? { ...line, ...patch } : line,
+                    ),
+                  )
+                }
               />
 
               <TotalsBlock

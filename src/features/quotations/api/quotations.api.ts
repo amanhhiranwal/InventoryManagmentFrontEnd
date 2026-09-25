@@ -8,6 +8,7 @@ import api from "@/lib/axios";
 
 export const QUOTATION_STATUS = {
   DRAFT: "DRAFT",
+  PENDING_APPROVAL: "PENDING_APPROVAL",
   SENT: "SENT",
   ACCEPTED: "ACCEPTED",
   REJECTED: "REJECTED",
@@ -19,6 +20,7 @@ export type QuotationStatus =
 
 export const QUOTATION_STATUSES: QuotationStatus[] = [
   QUOTATION_STATUS.DRAFT,
+  QUOTATION_STATUS.PENDING_APPROVAL,
   QUOTATION_STATUS.SENT,
   QUOTATION_STATUS.ACCEPTED,
   QUOTATION_STATUS.REJECTED,
@@ -27,6 +29,7 @@ export const QUOTATION_STATUSES: QuotationStatus[] = [
 
 export const QUOTATION_STATUS_LABEL: Record<QuotationStatus, string> = {
   DRAFT: "Draft",
+  PENDING_APPROVAL: "Pending Approval",
   SENT: "Sent",
   ACCEPTED: "Accepted",
   REJECTED: "Rejected",
@@ -36,7 +39,8 @@ export const QUOTATION_STATUS_LABEL: Record<QuotationStatus, string> = {
 /** Mirrors QUOTATION_TRANSITIONS on the backend. */
 export const QUOTATION_TRANSITIONS: Record<QuotationStatus, QuotationStatus[]> =
   {
-    DRAFT: ["SENT", "EXPIRED"],
+    DRAFT: ["PENDING_APPROVAL", "SENT", "EXPIRED"],
+    PENDING_APPROVAL: ["SENT", "DRAFT", "EXPIRED"],
     SENT: ["ACCEPTED", "REJECTED", "EXPIRED"],
     ACCEPTED: [],
     REJECTED: [],
@@ -101,6 +105,9 @@ export interface QuotationModel {
   id: number;
   quote_number?: string | null;
   opportunity_id?: number | null;
+  /** Which of our companies is selling, and so whose letterhead this
+      proposal carries. */
+  company_id?: string | null;
 
   status: QuotationStatus;
 
@@ -290,6 +297,82 @@ export const sendQuotationApi = async (
     payload,
   );
   return data.data || data;
+};
+
+/** The company details the proposal is built from - the preview and the
+    PDF read these same values so they cannot drift apart. */
+export interface QuotationBrand {
+  name: string;
+  address: string[];
+  gstin?: string | null;
+  website?: string | null;
+  signatory?: string | null;
+  signatory_title?: string | null;
+  offerings: string[];
+  /** One paragraph per entry. */
+  about: string[];
+  email?: string | null;
+  phone?: string | null;
+  /** Who is sending this quotation - named on the cover and the signature. */
+  sender?: {
+    name: string;
+    title?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
+}
+
+/** The letterhead for a quotation: its own selling company where one is
+    set, otherwise the global Company Profile. */
+export const getQuotationBrandApi = async (
+  quotationId?: number | string,
+  companyId?: string | null,
+): Promise<QuotationBrand> => {
+  const { data } = await api.get("/api/v1/quotations/brand", {
+    params: {
+      ...(quotationId ? { quotation_id: quotationId } : {}),
+      ...(companyId ? { company_id: companyId } : {}),
+    },
+  });
+  return data.data;
+};
+
+/** The letterhead mark for a quotation. Rendered by an <img>, which cannot
+    carry a token, so the endpoint behind it is open. */
+export const quotationBrandLogoUrl = (
+  quotationId?: number | string | null,
+  companyId?: string | null,
+): string => {
+  const base = `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/quotations/brand/logo`;
+  const params = new URLSearchParams();
+
+  if (companyId) params.set("company_id", String(companyId));
+  else if (quotationId) params.set("quotation_id", String(quotationId));
+
+  const query = params.toString();
+
+  return query ? `${base}?${query}` : base;
+};
+
+/** Downloads the proposal PDF - the same document the client is emailed. */
+export const downloadQuotationPdfApi = async (
+  quotationId: number | string,
+  filename: string,
+): Promise<void> => {
+  const { data } = await api.get(`/api/v1/quotations/${quotationId}/pdf`, {
+    responseType: "blob",
+  });
+
+  const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(url);
 };
 
 /* =========================================================

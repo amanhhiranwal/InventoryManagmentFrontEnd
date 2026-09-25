@@ -82,7 +82,7 @@ const CUSTOMER_TYPES = [
   "Distributor",
   "OEM",
   "End Customer",
-  "Institution",
+  "Dealer",
   "Corporate",
   "Other",
 ];
