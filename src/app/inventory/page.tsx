@@ -548,8 +548,15 @@ export default function InventoryPage() {
             <CgSpinner className="animate-spin text-3xl text-primary" />
             <span className="text-xs">Loading inventory items...</span>
           </div>
-        ) : items.length > 0 ? (
-          <Table headers={["Product Preview", "Item Name", "Serial Number", "Category Group", "Company", "Stock Status *", "Wholesale Rate *", "Actions"]}>
+        ) : /* Table hides its rows unless it is told how many there are:
+               without totalItems it draws "No records found" over a full
+               list, which is what this screen was doing. */
+        items.length > 0 ? (
+          <Table
+            headers={["Product Preview", "Item Name", "Serial Number", "Category Group", "Company", "Stock Status *", "Wholesale Rate *", "Actions"]}
+            totalItems={items.length}
+            pageSize={items.length || 1}
+          >
             {items.map((item) => {
               const typeName = productTypes.find((t) => t.code === item.product_type_code)?.name || item.product_type_code;
               const rateVal = item.attributes?.rate ?? 0;

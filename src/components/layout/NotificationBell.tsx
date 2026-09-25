@@ -266,6 +266,9 @@ export default function NotificationBell() {
                     <span className="mt-1 block text-[10px] text-[#777777] dark:text-slate-400">
                       {MODULE_LABEL[notification.module] || "Update"}
                       {notification.actor_name ? ` · by ${notification.actor_name}` : ""}
+                      {/* A super admin's feed is everybody's, so each row
+                          says whose work it is. */}
+                      {notification.for_user ? ` · for ${notification.for_user}` : ""}
                     </span>
                   </span>
 
