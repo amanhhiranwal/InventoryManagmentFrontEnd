@@ -14,7 +14,10 @@
  * layout previewed differently from how it printed.
  */
 
-import { QuotationModel } from "@/features/quotations/api/quotations.api";
+import {
+  QuotationModel,
+  quotationBrandLogoUrl,
+} from "@/features/quotations/api/quotations.api";
 import type { QuotationBrand } from "@/features/quotations/api/quotations.api";
 
 const NAVY = "#1f477b";
@@ -59,6 +62,7 @@ export default function QuotationDocument({
   brand: QuotationBrand | null;
 }) {
   const company = brand?.name || "Synergy Group";
+  const logo = quotationBrandLogoUrl(quotation.id, quotation.company_id);
   const items = quotation.items || [];
   const gstPercent = Number(quotation.gst_percent || 0);
 
@@ -132,7 +136,7 @@ export default function QuotationDocument({
         />
 
         <div className="relative">
-          <BrandLogo />
+          <BrandLogo src={logo} />
 
           <h1
             className="mt-[74px] text-[42px] font-bold leading-none"
@@ -161,7 +165,7 @@ export default function QuotationDocument({
       {/* ---------------- ABOUT ---------------- */}
       <section className="relative min-h-[1123px] px-[68px] pb-[70px] pt-[40px]">
         <div className="flex justify-end">
-          <BrandLogo small />
+          <BrandLogo src={logo} small />
         </div>
 
         <div
@@ -196,7 +200,7 @@ export default function QuotationDocument({
       {/* ---------------- OFFER ---------------- */}
       <section className="relative min-h-[1123px] px-[68px] pb-[70px] pt-[40px]">
         <div className="flex justify-end">
-          <BrandLogo small />
+          <BrandLogo src={logo} small />
         </div>
 
         <h2
@@ -427,11 +431,13 @@ function TotalRow({
   );
 }
 
-/** The bundled brand mark, served by the backend so it matches the PDF. */
-function BrandLogo({ small }: { small?: boolean }) {
+/** The selling company's brand mark, served by the backend so it matches
+    the PDF - a proposal for one of our other companies carries that
+    company's logo, not the group's. */
+function BrandLogo({ src, small }: { src: string; small?: boolean }) {
   return (
     <img
-      src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/quotations/brand/logo`}
+      src={src}
       alt=""
       className={small ? "h-[34px] w-auto" : "h-[44px] w-auto"}
       onError={(event) => {

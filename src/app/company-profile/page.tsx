@@ -142,7 +142,7 @@ export default function CompanyProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 pb-10">
+    <div className="space-y-6 pb-10">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white">
@@ -165,232 +165,243 @@ export default function CompanyProfilePage() {
         </button>
       </div>
 
-      <Section icon={<LuBuilding2 size={16} />} title="Identity">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="Legal Name" hint="Printed on the cover and the signature.">
-            <input
-              value={profile.company_legal_name}
-              onChange={(event) => set("company_legal_name", event.target.value)}
-              placeholder="Qonevo Technologies"
-              className={INPUT}
-            />
-          </Field>
+      {/* The long-form copy on the left, the short settings beside it, so
+          the screen fills the width the way every other page does. */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="space-y-6 xl:col-span-2">
+          <Section icon={<LuBuilding2 size={16} />} title="Identity">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="Legal Name" hint="Printed on the cover and the signature.">
+                <input
+                  value={profile.company_legal_name}
+                  onChange={(event) => set("company_legal_name", event.target.value)}
+                  placeholder="Qonevo Technologies"
+                  className={INPUT}
+                />
+              </Field>
 
-          <Field label="Website" hint="Shown in the footer bar of every page.">
-            <input
-              value={profile.company_website}
-              onChange={(event) => set("company_website", event.target.value)}
-              placeholder="www.qonevo.in"
-              className={INPUT}
-            />
-          </Field>
+              <Field label="Website" hint="Shown in the footer bar of every page.">
+                <input
+                  value={profile.company_website}
+                  onChange={(event) => set("company_website", event.target.value)}
+                  placeholder="www.qonevo.in"
+                  className={INPUT}
+                />
+              </Field>
 
-          <Field label="Email">
-            <input
-              value={profile.company_email}
-              onChange={(event) => set("company_email", event.target.value)}
-              placeholder="sales@qonevo.in"
-              className={INPUT}
-            />
-          </Field>
+              <Field label="Email">
+                <input
+                  value={profile.company_email}
+                  onChange={(event) => set("company_email", event.target.value)}
+                  placeholder="sales@qonevo.in"
+                  className={INPUT}
+                />
+              </Field>
 
-          <Field label="Phone">
-            <input
-              value={profile.company_phone}
-              onChange={(event) => set("company_phone", event.target.value)}
-              placeholder="9891818195"
-              className={INPUT}
-            />
-          </Field>
+              <Field label="Phone">
+                <input
+                  value={profile.company_phone}
+                  onChange={(event) => set("company_phone", event.target.value)}
+                  placeholder="9891818195"
+                  className={INPUT}
+                />
+              </Field>
 
-          <Field label="GSTIN">
-            <input
-              value={profile.company_gstin}
-              onChange={(event) => set("company_gstin", event.target.value)}
-              placeholder="29ABCDE1234F1Z5"
-              className={INPUT}
-            />
-          </Field>
+              <Field label="GSTIN">
+                <input
+                  value={profile.company_gstin}
+                  onChange={(event) => set("company_gstin", event.target.value)}
+                  placeholder="29ABCDE1234F1Z5"
+                  className={INPUT}
+                />
+              </Field>
 
-          <Field label="Address" hint="One line per row.">
-            <textarea
-              rows={3}
-              value={profile.company_address.replace(/\|/g, "\n")}
-              onChange={(event) => set("company_address", event.target.value)}
-              placeholder={"Plot 12, Sector 63\nNoida, Uttar Pradesh 201301"}
-              className={AREA}
-            />
-          </Field>
-        </div>
-      </Section>
-
-      <Section icon={<LuFileText size={16} />} title="About &amp; Range">
-        <Field
-          label="About"
-          hint="One paragraph per row. Two or more set themselves in the proposal's two columns."
-        >
-          <textarea
-            rows={6}
-            value={profile.company_about.replace(/\|/g, "\n")}
-            onChange={(event) => set("company_about", event.target.value)}
-            placeholder="A technology hardware solution and business consulting company..."
-            className={AREA}
-          />
-        </Field>
-
-        <Field label="What you sell" hint="One per row. Listed under the About panel.">
-          <textarea
-            rows={5}
-            value={profile.company_offerings.replace(/\|/g, "\n")}
-            onChange={(event) => set("company_offerings", event.target.value)}
-            placeholder={"Interactive Flat Panels\nOPS PC\nMovable stands"}
-            className={AREA}
-          />
-        </Field>
-
-        {profile.company_offering_list.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {profile.company_offering_list.map((offering) => (
-              <span
-                key={offering}
-                className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-[#0b2034] dark:text-slate-300"
-              >
-                {offering}
-              </span>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      <Section icon={<LuPenLine size={16} />} title="Signature">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="Signatory Name" hint="Shown as Submitted By, and signs the proposal.">
-            <input
-              value={profile.signatory_name}
-              onChange={(event) => set("signatory_name", event.target.value)}
-              placeholder="Sahil Ramani"
-              className={INPUT}
-            />
-          </Field>
-
-          <Field label="Signatory Title">
-            <input
-              value={profile.signatory_title}
-              onChange={(event) => set("signatory_title", event.target.value)}
-              placeholder="Group CEO"
-              className={INPUT}
-            />
-          </Field>
-        </div>
-      </Section>
-
-      <Section icon={<LuImage size={16} />} title="Logo">
-        <div className="flex flex-wrap items-center gap-5">
-          <img
-            src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/quotations/brand/logo?v=${profile.company_logo_path}`}
-            alt="Brand logo"
-            className="h-14 w-auto rounded-lg border border-slate-200 bg-white p-2 dark:border-[#17304a]"
-            onError={(event) => {
-              (event.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-
-          <div>
-            <button
-              type="button"
-              onClick={() => logoInput.current?.click()}
-              className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
-            >
-              <LuImage size={13} />
-              Replace Logo
-            </button>
-
-            <p className="mt-1.5 text-[10px] text-slate-400">
-              PNG, JPG or WEBP. Appears on every page of the proposal.
-            </p>
-
-            <input
-              ref={logoInput}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  void sendImage(file, uploadCompanyLogoApi, "Logo uploaded.");
-                }
-                event.target.value = "";
-              }}
-            />
-          </div>
-        </div>
-      </Section>
-
-      <Section icon={<LuImage size={16} />} title="Cover Image">
-        <div className="flex flex-wrap items-start gap-5">
-          {profile.company_cover_image ? (
-            <img
-              src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/company-profile/cover/image?v=${encodeURIComponent(profile.company_cover_image)}`}
-              alt="Proposal cover"
-              className="h-28 w-auto rounded-lg border border-slate-200 object-cover dark:border-[#17304a]"
-              onError={(event) => {
-                (event.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          ) : (
-            <div className="flex h-28 w-44 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400 dark:border-[#17304a]">
-              No cover image
+              <Field label="Address" hint="One line per row.">
+                <textarea
+                  rows={3}
+                  value={profile.company_address.replace(/\|/g, "\n")}
+                  onChange={(event) => set("company_address", event.target.value)}
+                  placeholder={"Plot 12, Sector 63\nNoida, Uttar Pradesh 201301"}
+                  className={AREA}
+                />
+              </Field>
             </div>
-          )}
+          </Section>
 
-          <div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => coverInput.current?.click()}
-                className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
+          <Section icon={<LuFileText size={16} />} title="About &amp; Range">
+            <Field
+              label="About"
+              hint="One paragraph per row. Two or more set themselves in the proposal's two columns."
+            >
+              <textarea
+                rows={6}
+                value={profile.company_about.replace(/\|/g, "\n")}
+                onChange={(event) => set("company_about", event.target.value)}
+                placeholder="A technology hardware solution and business consulting company..."
+                className={AREA}
+              />
+            </Field>
+
+            <Field label="What you sell" hint="One per row. Listed under the About panel.">
+              <textarea
+                rows={5}
+                value={profile.company_offerings.replace(/\|/g, "\n")}
+                onChange={(event) => set("company_offerings", event.target.value)}
+                placeholder={"Interactive Flat Panels\nOPS PC\nMovable stands"}
+                className={AREA}
+              />
+            </Field>
+
+            {profile.company_offering_list.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {profile.company_offering_list.map((offering) => (
+                  <span
+                    key={offering}
+                    className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-[#0b2034] dark:text-slate-300"
+                  >
+                    {offering}
+                  </span>
+                ))}
+              </div>
+            )}
+          </Section>
+        </div>
+
+        <div className="space-y-6">
+          <Section icon={<LuPenLine size={16} />} title="Signature">
+            <div className="grid grid-cols-1 gap-4">
+              <Field
+                label="Signatory Name"
+                hint="Only used where a proposal has no salesperson of its own — otherwise it is signed by whoever is sending it."
               >
-                <LuImage size={13} />
-                {profile.company_cover_image ? "Replace Cover" : "Upload Cover"}
-              </button>
+                <input
+                  value={profile.signatory_name}
+                  onChange={(event) => set("signatory_name", event.target.value)}
+                  placeholder="Authorised signatory"
+                  className={INPUT}
+                />
+              </Field>
 
-              {profile.company_cover_image && (
+              <Field label="Signatory Title">
+                <input
+                  value={profile.signatory_title}
+                  onChange={(event) => set("signatory_title", event.target.value)}
+                  placeholder="Director"
+                  className={INPUT}
+                />
+              </Field>
+            </div>
+          </Section>
+
+          <Section icon={<LuImage size={16} />} title="Logo">
+            <div className="flex flex-wrap items-center gap-5">
+              <img
+                src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/quotations/brand/logo?v=${profile.company_logo_path}`}
+                alt="Brand logo"
+                className="h-14 w-auto rounded-lg border border-slate-200 bg-white p-2 dark:border-[#17304a]"
+                onError={(event) => {
+                  (event.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+
+              <div>
                 <button
                   type="button"
-                  onClick={clearCover}
-                  className="h-9 rounded-lg border border-rose-200 px-4 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900/40"
+                  onClick={() => logoInput.current?.click()}
+                  className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
                 >
-                  Remove
+                  <LuImage size={13} />
+                  Replace Logo
                 </button>
-              )}
+
+                <p className="mt-1.5 text-[10px] text-slate-400">
+                  PNG, JPG or WEBP. Appears on every page of the proposal.
+                </p>
+
+                <input
+                  ref={logoInput}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      void sendImage(file, uploadCompanyLogoApi, "Logo uploaded.");
+                    }
+                    event.target.value = "";
+                  }}
+                />
+              </div>
             </div>
+          </Section>
 
-            <p className="mt-1.5 max-w-sm text-[10px] leading-relaxed text-slate-400">
-              Sits on the proposal cover under the addresses — a product
-              photo, as the printed proposal has. Without one the cover
-              simply runs without a picture.
-            </p>
+          <Section icon={<LuImage size={16} />} title="Cover Image">
+            <div className="flex flex-wrap items-start gap-5">
+              {profile.company_cover_image ? (
+                <img
+                  src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/company-profile/cover/image?v=${encodeURIComponent(profile.company_cover_image)}`}
+                  alt="Proposal cover"
+                  className="h-28 w-auto rounded-lg border border-slate-200 object-cover dark:border-[#17304a]"
+                  onError={(event) => {
+                    (event.target as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              ) : (
+                <div className="flex h-28 w-44 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400 dark:border-[#17304a]">
+                  No cover image
+                </div>
+              )}
 
-            <input
-              ref={coverInput}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  void sendImage(
-                    file,
-                    uploadCompanyCoverApi,
-                    "Cover image uploaded.",
-                  );
-                }
-                event.target.value = "";
-              }}
-            />
-          </div>
+              <div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => coverInput.current?.click()}
+                    className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
+                  >
+                    <LuImage size={13} />
+                    {profile.company_cover_image ? "Replace Cover" : "Upload Cover"}
+                  </button>
+
+                  {profile.company_cover_image && (
+                    <button
+                      type="button"
+                      onClick={clearCover}
+                      className="h-9 rounded-lg border border-rose-200 px-4 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900/40"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+
+                <p className="mt-1.5 max-w-sm text-[10px] leading-relaxed text-slate-400">
+                  Sits on the proposal cover under the addresses — a product
+                  photo, as the printed proposal has. Without one the cover
+                  simply runs without a picture.
+                </p>
+
+                <input
+                  ref={coverInput}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      void sendImage(
+                        file,
+                        uploadCompanyCoverApi,
+                        "Cover image uploaded.",
+                      );
+                    }
+                    event.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
+          </Section>
         </div>
-      </Section>
+      </div>
     </div>
   );
 }

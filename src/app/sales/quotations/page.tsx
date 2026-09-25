@@ -843,6 +843,11 @@ export default function QuotationPage() {
     setAttachments([]);
     setTerms(DEFAULT_TERMS);
     setRemarks("");
+    /* Back to the obvious company, so a fresh quotation never inherits the
+       letterhead of the one edited before it. */
+    setSellingCompanyId(
+      sellingCompanies.length === 1 ? sellingCompanies[0].id : "",
+    );
   };
 
   const openCreate = () => {
@@ -873,6 +878,7 @@ export default function QuotationPage() {
         setEmail(saved.email || "");
         setMobileNumber(saved.mobile_number || "");
         setAssignedToId(saved.assigned_to_id || "");
+        setSellingCompanyId(saved.company_id || "");
         setQuotationDate(toInputDate(saved.quotation_date));
         setValidationDate(toInputDate(saved.validation_date));
 
