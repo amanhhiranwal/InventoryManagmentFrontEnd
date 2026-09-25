@@ -10,6 +10,8 @@
  * there.
  */
 
+import Link from "next/link";
+
 import {
   DeskOrder,
   getProcurementDeskApi,
@@ -32,6 +34,7 @@ export default function ProcurementDeskPage() {
 
 function StockDetail({ order }: { order: DeskOrder }) {
   const lines = order.stock || [];
+  const moved = order.stock_movements || [];
 
   return (
     <div className="space-y-3">
@@ -90,10 +93,44 @@ function StockDetail({ order }: { order: DeskOrder }) {
         </table>
       </div>
 
+      {moved.length > 0 ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+            Taken off the shelf
+          </p>
+
+          <ul className="space-y-1">
+            {moved.map((line, index) => (
+              <li
+                key={index}
+                className="text-[12px] text-emerald-800 dark:text-emerald-300"
+              >
+                {line.direction === "OUT" ? "Issued" : "Returned"}{" "}
+                <strong>{line.quantity}</strong> × {line.product} —{" "}
+                {line.stock_before} → <strong>{line.stock_after}</strong> left
+                in stock
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="text-[11px] text-slate-400">
+          Stock comes off the shelf when the order is dispatched, not before
+          — a picked order can still be put back.
+        </p>
+      )}
+
       <p className="text-[11px] text-slate-400">
         A line that is short does not stop you — confirm it if the stock is
         on order, or reject it so the reason is on the record. Approving
-        moves this order to {stageLabel(order.approves_to || "")}.
+        moves this order to {stageLabel(order.approves_to || "")}.{" "}
+        <Link
+          href="/inventory"
+          className="font-semibold text-[#233353] hover:underline dark:text-sky-400"
+        >
+          Open the catalogue
+        </Link>{" "}
+        to add a product or correct a count.
       </p>
     </div>
   );

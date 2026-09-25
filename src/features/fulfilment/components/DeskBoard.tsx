@@ -30,6 +30,7 @@ import {
   StatGrid,
   TableCard,
 } from "@/components/crm/ListPageShell";
+import QueueTabs from "@/features/fulfilment/components/QueueTabs";
 import { useUIStore } from "@/lib/store/ui.store";
 import {
   DeskOrder,
@@ -210,40 +211,24 @@ export default function DeskBoard({
         search={search}
         onSearchChange={setSearch}
         placeholder={`Search ${title.toLowerCase()}`}
-        trailing={
-          <div className="flex gap-1.5">
-            {/* One chip per stage this desk holds, so "what is sitting in
-                procurement?" is one click rather than a scan. */}
-            {(queue?.stages || []).map((option) => (
-              <button
-                key={option.status}
-                type="button"
-                onClick={() =>
-                  setStage(stage === option.status ? null : option.status)
-                }
-                className={`flex h-[39px] shrink-0 items-center gap-2 rounded-lg px-3.5 text-[12px] font-medium transition ${
-                  stage === option.status
-                    ? "bg-[#273756] text-white"
-                    : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
-                }`}
-              >
-                {option.label}
-                <span
-                  className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                    stage === option.status
-                      ? "bg-white/20"
-                      : "bg-slate-100 dark:bg-[#0b2034]"
-                  }`}
-                >
-                  {option.count}
-                </span>
-              </button>
-            ))}
-          </div>
-        }
       />
 
       <TableCard>
+        {/* Which part of the queue, on the table rather than beside the
+            search box: these are not actions. */}
+        <QueueTabs
+          tabs={[
+            { value: null, label: "All Orders", count: all.length },
+            ...(queue?.stages || []).map((option) => ({
+              value: option.status,
+              label: option.label,
+              count: option.count,
+            })),
+          ]}
+          active={stage}
+          onChange={setStage}
+        />
+
         <div className="overflow-x-auto">
           <table className={`w-full min-w-[920px] text-left ${LIST_TABLE}`}>
             <thead>

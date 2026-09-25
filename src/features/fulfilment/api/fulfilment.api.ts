@@ -4,11 +4,13 @@ import api from "@/lib/axios";
    FULFILMENT
 
    Where an order goes once the discount chain has cleared it. Accounts
-   confirm the money arrived, inventory confirm the stock is there and
-   send it out, and everyone else watches the tracking board.
+   confirm the money arrived, and inventory confirm the stock is there and
+   send it out.
 
    A desk only ever sees the orders waiting on it, and only the desk
-   holding an order can move it on - the backend enforces both.
+   holding an order can move it on - the backend enforces both. Where an
+   order has got to is shown on the sales order itself, so there is no
+   separate tracking board here.
 ========================================================= */
 
 export type DeskRole = "Accounts" | "Inventory";
@@ -23,6 +25,18 @@ export interface Kpi {
   /** Colours the card when the number is one somebody should act on. */
   tone?: "warn" | "good";
   hint?: string;
+}
+
+/** Stock this order has already taken off the shelf, or put back. */
+export interface StockMovement {
+  product?: string | null;
+  serial_number?: string | null;
+  direction: "OUT" | "IN";
+  quantity: number;
+  stock_before: number;
+  stock_after: number;
+  actor?: string | null;
+  created_at?: string | null;
 }
 
 /** One line of an order against what the shelf can cover. */
@@ -76,6 +90,8 @@ export interface DeskOrder {
   /** Procurement desk only. */
   stock?: StockLine[];
   stock_short?: boolean;
+  /** What this order has already moved. Empty until it is dispatched. */
+  stock_movements?: StockMovement[];
 }
 
 export interface DeskQueue {
@@ -91,29 +107,6 @@ export interface DeskQueue {
   kpis: Kpi[];
 }
 
-export interface TrackedOrder {
-  id: number;
-  order_number?: string | null;
-  customer_name: string;
-  company_name?: string | null;
-  status: string;
-  grand_total: number;
-  advance_received: number;
-  outstanding_balance: number;
-  order_date?: string | null;
-  waiting_days: number;
-  /** Whose move it is, or null when nobody is holding it up. */
-  with_desk?: DeskRole | null;
-  waiting_for?: string | null;
-  stage_index: number | null;
-}
-
-export interface TrackingBoard {
-  pipeline: string[];
-  orders: TrackedOrder[];
-  kpis: Kpi[];
-}
-
 export const getAccountsDeskApi = async (): Promise<DeskQueue> => {
   const { data } = await api.get("/api/v1/fulfilment/accounts");
   return data.data;
@@ -121,11 +114,6 @@ export const getAccountsDeskApi = async (): Promise<DeskQueue> => {
 
 export const getProcurementDeskApi = async (): Promise<DeskQueue> => {
   const { data } = await api.get("/api/v1/fulfilment/procurement");
-  return data.data;
-};
-
-export const getTrackingBoardApi = async (): Promise<TrackingBoard> => {
-  const { data } = await api.get("/api/v1/fulfilment/tracking");
   return data.data;
 };
 
