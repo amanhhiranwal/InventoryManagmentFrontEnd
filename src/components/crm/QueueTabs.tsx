@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The slices of a queue, as tabs across the top of its table.
+ * The slices of a list, as tabs across the top of its table.
  *
  * These started life as buttons wedged in beside the search box, which
  * read as a row of unrelated actions and pushed the search into a corner.
@@ -11,6 +11,9 @@
  * A tab with nothing in it is still shown but muted and not clickable:
  * "nothing is waiting on stock" is worth knowing, and a strip that
  * reshuffles itself as work arrives is hard to aim at.
+ *
+ * Used by both fulfilment desks for their queue stages and by the
+ * Inventory catalogue for its product categories.
  */
 
 export interface QueueTab {

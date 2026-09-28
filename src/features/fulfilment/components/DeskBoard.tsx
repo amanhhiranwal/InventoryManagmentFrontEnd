@@ -30,7 +30,10 @@ import {
   StatGrid,
   TableCard,
 } from "@/components/crm/ListPageShell";
-import QueueTabs from "@/features/fulfilment/components/QueueTabs";
+import QueueTabs from "@/components/crm/QueueTabs";
+import ListActionsMenu, {
+  ExportColumn,
+} from "@/components/crm/ListActions";
 import { useUIStore } from "@/lib/store/ui.store";
 import {
   DeskOrder,
@@ -43,6 +46,25 @@ import {
 
 /** Orders sitting this long at one desk are worth a second look. */
 const STALE_DAYS = 7;
+
+/** A desk's queue as a spreadsheet, for a hand-over or a chase list. */
+const DESK_COLUMNS: ExportColumn<DeskOrder>[] = [
+  { header: "Order", value: (order) => order.order_number || order.id },
+  { header: "Customer", value: (order) => order.customer_name },
+  { header: "Company", value: (order) => order.company_name || "" },
+  { header: "Stage", value: (order) => order.status_label },
+  { header: "What This Desk Must Confirm", value: (order) => order.asks || "" },
+  { header: "Order Value", value: (order) => order.grand_total },
+  { header: "Advance Expected", value: (order) => order.advance_expected },
+  { header: "Advance Received", value: (order) => order.advance_received },
+  { header: "Outstanding", value: (order) => order.outstanding_balance },
+  { header: "Days Waiting", value: (order) => order.waiting_days },
+  {
+    header: "Stock Short",
+    value: (order) =>
+      order.stock === undefined ? "" : order.stock_short ? "Yes" : "No",
+  },
+];
 
 export default function DeskBoard({
   title,
@@ -181,9 +203,14 @@ export default function DeskBoard({
         refreshing={refreshing}
         onRefresh={() => refresh(true)}
         actions={
-          <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:bg-[#0b2034] dark:text-slate-300">
-            {all.length}
-          </span>
+          <ListActionsMenu
+            name={title}
+            rows={orders}
+            columns={DESK_COLUMNS}
+            chart={(queue?.kpis || [])
+              .filter((kpi) => kpi.format === "count")
+              .map((kpi) => ({ label: kpi.label, value: kpi.value }))}
+          />
         }
       />
 

@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import PageHeader from "@/components/ui/PageHeader";
-import Card from "@/components/ui/Card";
+import {
+  ListPage,
+  ListToolbar,
+  PrimaryAction,
+} from "@/components/crm/ListPageShell";
 import Table from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -13,7 +17,6 @@ import { useAuthStore } from "@/features/auth/store/auth.store";
 import {
   FiPlus,
   FiTrash2,
-  FiSearch,
   FiBox,
   FiSliders,
   FiPlusCircle,
@@ -273,42 +276,31 @@ export default function ProductTypesPage() {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <PageHeader
-          title="Product Types Master"
-          description="Manage inventory classifications, product categories, and build dynamic forms specifications."
-        />
-        {superAdmin && (
-          <Button
-            onClick={() => setShowAddModal(true)}
-            icon={<FiPlus />}
-            className="shrink-0"
-          >
-            Add Product Type
-          </Button>
-        )}
-      </div>
+    <ListPage>
+      <PageHeader
+        title="Product Types Master"
+        description="Manage inventory classifications, product categories, and build dynamic forms specifications."
+      />
 
-      <div className="flex items-center gap-3 max-w-md bg-white dark:bg-[#051422] rounded-xl border border-slate-200 dark:border-[#0d2336] px-3.5 py-2">
-        <FiSearch className="text-slate-400 text-sm" />
-        <input
-          type="text"
-          placeholder="Search product classifications..."
-          className="w-full text-xs bg-transparent outline-none text-slate-800 dark:text-white"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+      <ListToolbar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search product classifications"
+        trailing={
+          superAdmin ? (
+            <PrimaryAction
+              onClick={() => setShowAddModal(true)}
+              icon={<FiPlus size={14} />}
+            >
+              Add Product Type
+            </PrimaryAction>
+          ) : undefined
+        }
+      />
 
-      <Card>
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
-            <CgSpinner className="animate-spin text-3xl text-primary" />
-            <span className="text-xs">Fetching Product Types...</span>
-          </div>
-        ) : filtered.length > 0 ? (
-          <Table headers={["Product Type", "Code", "Category Group", "Description", "Actions"]}>
+      {/* Table draws its own card, spinner and empty state, so there is
+          no second container or page-level ternary around it. */}
+      <Table headers={["Product Type", "Code", "Category Group", "Description", "Actions"]} loading={loading}>
             {filtered.map((t) => (
               <tr
                 key={t.id}
@@ -363,13 +355,7 @@ export default function ProductTypesPage() {
                 </td>
               </tr>
             ))}
-          </Table>
-        ) : (
-          <div className="text-center py-12 text-slate-400 italic text-xs">
-            No product classifications match your filter query.
-          </div>
-        )}
-      </Card>
+      </Table>
 
       {/* Add Modal */}
       <Modal
@@ -872,6 +858,6 @@ export default function ProductTypesPage() {
           </div>
         </Modal>
       )}
-    </div>
+    </ListPage>
   );
 }

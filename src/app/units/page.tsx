@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import PageHeader from "@/components/ui/PageHeader";
-import Card from "@/components/ui/Card";
+import {
+  ListPage,
+  ListToolbar,
+  PrimaryAction,
+} from "@/components/crm/ListPageShell";
 import Table from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -10,8 +14,7 @@ import Modal from "@/components/ui/Modal";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 import { useAuthStore } from "@/features/auth/store/auth.store";
-import { FiPlus, FiTrash2, FiSearch, FiSliders } from "react-icons/fi";
-import { CgSpinner } from "react-icons/cg";
+import { FiPlus, FiTrash2, FiSliders } from "react-icons/fi";
 
 export default function UnitsPage() {
   const { addToast } = useUIStore();
@@ -99,42 +102,31 @@ export default function UnitsPage() {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <PageHeader
-          title="Units Master"
-          description="Manage stock units specifications (e.g. Kg, Ltr, Box)."
-        />
-        {superAdmin && (
-          <Button
-            onClick={() => setShowAddModal(true)}
-            icon={<FiPlus />}
-            className="shrink-0"
-          >
-            Add Unit
-          </Button>
-        )}
-      </div>
+    <ListPage>
+      <PageHeader
+        title="Units Master"
+        description="Manage stock units specifications (e.g. Kg, Ltr, Box)."
+      />
 
-      <div className="flex items-center gap-3 max-w-md bg-white dark:bg-[#051422] rounded-xl border border-slate-200 dark:border-[#0d2336] px-3.5 py-2">
-        <FiSearch className="text-slate-400 text-sm" />
-        <input
-          type="text"
-          placeholder="Search units..."
-          className="w-full text-xs bg-transparent outline-none text-slate-800 dark:text-white"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+      <ListToolbar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search units"
+        trailing={
+          superAdmin ? (
+            <PrimaryAction
+              onClick={() => setShowAddModal(true)}
+              icon={<FiPlus size={14} />}
+            >
+              Add Unit
+            </PrimaryAction>
+          ) : undefined
+        }
+      />
 
-      <Card>
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
-            <CgSpinner className="animate-spin text-3xl text-primary" />
-            <span className="text-xs">Fetching units...</span>
-          </div>
-        ) : filtered.length > 0 ? (
-          <Table headers={["Unit Name", "Actions"]}>
+      {/* Table draws its own card, spinner and empty state, so there is
+          no second container or page-level ternary around it. */}
+      <Table headers={["Unit Name", "Actions"]} loading={loading}>
             {filtered.map((u) => (
               <tr
                 key={u}
@@ -164,13 +156,7 @@ export default function UnitsPage() {
                 </td>
               </tr>
             ))}
-          </Table>
-        ) : (
-          <div className="text-center py-12 text-slate-400 italic text-xs">
-            No units match your query.
-          </div>
-        )}
-      </Card>
+      </Table>
 
       {/* Add Modal */}
       <Modal
@@ -234,6 +220,6 @@ export default function UnitsPage() {
           </div>
         </Modal>
       )}
-    </div>
+    </ListPage>
   );
 }
