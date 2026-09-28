@@ -44,19 +44,20 @@ import FormPageHeader, {
 } from "@/components/crm/FormPageHeader";
 import {
   LIST_TABLE,
+  ListPageHeader,
   ListToolbar,
   PrimaryAction,
   StatGrid,
 } from "@/components/crm/ListPageShell";
+import ListActionsMenu, {
+  ExportColumn,
+} from "@/components/crm/ListActions";
 
 import {
-  FiRefreshCw,
   FiSearch,
   FiPlus,
   FiMoreVertical,
-  FiDownload,
   FiEdit2,
-  FiBarChart2,
   FiX,
   FiCalendar,
   FiClipboard,
@@ -233,6 +234,33 @@ const getCustomerType = (order: Order) => order.customer_type || "Distributor";
 
 const getState = (order: Order) => order.state || "-";
 
+/** An order as a spreadsheet row. */
+const ORDER_COLUMNS: ExportColumn<Order>[] = [
+  { header: "Order ID", value: (order) => order._id },
+  { header: "Customer Name", value: (order) => order.customer_name },
+  { header: "Company", value: (order) => order.company_name || "" },
+  { header: "Order Value", value: (order) => order.grand_total },
+  { header: "Assigned To", value: (order) => getAssignedTo(order) },
+  {
+    header: "Order Date",
+    value: (order) => new Date(getOrderDate(order)).toLocaleDateString("en-IN"),
+  },
+  { header: "Status", value: (order) => normalizeStatus(order.status) },
+  { header: "Customer Type", value: (order) => getCustomerType(order) },
+  { header: "State", value: (order) => getState(order) },
+];
+
+/** The stages the chart is drawn across, in the order an order moves.
+    "All Orders" is the tab, not a stage, so it is not one of them. */
+const ORDER_CHART_STAGES: Exclude<StatusFilter, "All Orders">[] = [
+  "Draft",
+  "Confirmed",
+  "On Hold",
+  "Released",
+  "Completed",
+  "Cancelled",
+];
+
 /* The contact's real email from the customer details saved on the order. */
 const getContactEmail = (order: Order) => {
   const contact = (order.customer_information?.primary_contact || {}) as Record<
@@ -284,7 +312,6 @@ export default function OrdersListPage() {
 
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
   /* =======================================================
      NEW SALES ORDER STATE
@@ -647,197 +674,6 @@ export default function OrdersListPage() {
     setFilters(empty);
     setAppliedFilters(empty);
     setShowFilters(false);
-  };
-
-  /* =======================================================
-     EXPORT
-  ======================================================= */
-
-  const exportData = () => {
-    if (!filteredOrders.length) {
-      addToast("No order data available to export.", "warning");
-
-      return;
-    }
-
-    const headers = [
-      "Order ID",
-      "Customer Name",
-      "Company",
-      "Order Value",
-      "Assigned To",
-      "Order Date",
-      "Status",
-      "Customer Type",
-      "State",
-    ];
-
-    const rows = filteredOrders.map((order) => [
-      order._id,
-      order.customer_name,
-      order.company_name || "",
-      order.grand_total,
-      getAssignedTo(order),
-      new Date(getOrderDate(order)).toLocaleDateString("en-IN"),
-      normalizeStatus(order.status),
-      getCustomerType(order),
-      getState(order),
-    ]);
-
-    const csv = [
-      headers.join(","),
-      ...rows.map((row) =>
-        row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
-      ),
-    ].join("\n");
-
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;",
-    });
-
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = "sales-orders.csv";
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
-
-    setHeaderMenuOpen(false);
-
-    addToast("Sales order data exported successfully.", "success");
-  };
-
-  /* =======================================================
-     DOWNLOAD CHART
-  ======================================================= */
-
-  const downloadChart = () => {
-    const width = 900;
-    const height = 500;
-
-    const values = [
-      statusCounts["Draft"],
-      statusCounts["Confirmed"],
-      statusCounts["On Hold"],
-      statusCounts["Released"],
-      statusCounts["Completed"],
-      statusCounts["Cancelled"],
-    ];
-
-    const labels = [
-      "Draft",
-      "Confirmed",
-      "On Hold",
-      "Released",
-      "Completed",
-      "Cancelled",
-    ];
-
-    const max = Math.max(...values, 1);
-
-    const bars = values
-      .map((value, index) => {
-        const barWidth = 100;
-
-        const barHeight = (value / max) * 280;
-
-        const x = 100 + index * 145;
-
-        const y = 360 - barHeight;
-
-        return `
-          <rect
-            x="${x}"
-            y="${y}"
-            width="${barWidth}"
-            height="${barHeight}"
-            rx="6"
-            fill="#24395f"
-          />
-
-          <text
-            x="${x + 50}"
-            y="${y - 10}"
-            text-anchor="middle"
-            font-size="16"
-            fill="#1e293b"
-          >
-            ${value}
-          </text>
-
-          <text
-            x="${x + 50}"
-            y="390"
-            text-anchor="middle"
-            font-size="12"
-            fill="#64748b"
-          >
-            ${labels[index]}
-          </text>
-        `;
-      })
-      .join("");
-
-    const svg = `
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="${width}"
-        height="${height}"
-      >
-        <rect
-          width="100%"
-          height="100%"
-          fill="white"
-        />
-
-        <text
-          x="60"
-          y="55"
-          font-size="24"
-          font-weight="700"
-          fill="#0f172a"
-        >
-          Sales Order Status
-        </text>
-
-        <line
-          x1="70"
-          y1="360"
-          x2="850"
-          y2="360"
-          stroke="#cbd5e1"
-        />
-
-        ${bars}
-      </svg>
-    `;
-
-    const blob = new Blob([svg], {
-      type: "image/svg+xml;charset=utf-8",
-    });
-
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = "sales-order-chart.svg";
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
-
-    setHeaderMenuOpen(false);
-
-    addToast("Sales order chart downloaded.", "success");
   };
 
   /* =======================================================
@@ -3217,65 +3053,22 @@ export default function OrdersListPage() {
           HEADER
       ================================================= */}
 
-      <div className="relative flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            Sales Order
-          </h1>
-
-          <button
-            type="button"
-            onClick={() => fetchOrders(true)}
-            title="Refresh"
-            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
-          >
-            <FiRefreshCw
-              size={14}
-              className={refreshing ? "animate-spin" : ""}
-            />
-          </button>
-        </div>
-
-        <div className="relative">
-          <button
-            type="button"
-            title="More options"
-            onClick={() => setHeaderMenuOpen((value) => !value)}
-            className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-slate-700 transition-colors hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
-          >
-            <FiMoreVertical size={17} />
-          </button>
-
-          {headerMenuOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setHeaderMenuOpen(false)}
-              />
-
-              <div className="absolute right-0 top-10 z-50 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl dark:border-[#17304a] dark:bg-[#071929] dark:[&_button]:text-slate-200 dark:[&_button:hover]:bg-[#0b2034]">
-                <button
-                  type="button"
-                  onClick={exportData}
-                  className="w-full px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                >
-                  <FiDownload size={14} />
-                  Export Data
-                </button>
-
-                <button
-                  type="button"
-                  onClick={downloadChart}
-                  className="w-full px-3 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                >
-                  <FiBarChart2 size={14} />
-                  Download Chart
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      <ListPageHeader
+        title="Sales Order"
+        refreshing={refreshing}
+        onRefresh={() => fetchOrders(true)}
+        actions={
+          <ListActionsMenu
+            name="Sales Orders"
+            rows={filteredOrders}
+            columns={ORDER_COLUMNS}
+            chart={ORDER_CHART_STAGES.map((stage) => ({
+              label: stage,
+              value: statusCounts[stage] || 0,
+            }))}
+          />
+        }
+      />
 
       {/* =================================================
           KPI

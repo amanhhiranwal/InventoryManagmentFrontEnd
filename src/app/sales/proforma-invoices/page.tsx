@@ -15,7 +15,6 @@ import {
   LuBan,
   LuTriangleAlert,
   LuCalendar,
-  LuChartNoAxesColumn,
   LuChevronDown,
   LuDownload,
   LuEllipsisVertical,
@@ -42,6 +41,9 @@ import {
   PrimaryAction,
   StatGrid,
 } from "@/components/crm/ListPageShell";
+import ListActionsMenu, {
+  ExportColumn,
+} from "@/components/crm/ListActions";
 import {
   getSalesOrdersApi,
   type SalesOrderModel,
@@ -130,6 +132,23 @@ const contactOf = (record: { customer_information?: Record<string, any> | null }
     (today by default). */
 const createdAt = (invoice: ProformaInvoiceModel) => invoice.created_at;
 
+/** A proforma invoice as a spreadsheet row. */
+const PROFORMA_COLUMNS: ExportColumn<ProformaInvoiceModel>[] = [
+  { header: "PI ID", value: (invoice) => invoice.pi_number },
+  { header: "Customer Name", value: (invoice) => invoice.customer_name },
+  { header: "Email", value: (invoice) => contactOf(invoice).email || "" },
+  { header: "Company", value: (invoice) => invoice.company_name || "" },
+  { header: "Sales Order", value: (invoice) => invoice.sales_order?.order_number || "" },
+  { header: "PI Value", value: (invoice) => invoice.grand_total },
+  { header: "Amount Paid", value: (invoice) => invoice.amount_paid },
+  { header: "Balance Due", value: (invoice) => invoice.balance_due },
+  { header: "Assigned To", value: (invoice) => invoice.assigned_to || "" },
+  { header: "Issue Date", value: (invoice) => formatDate(invoice.issue_date) },
+  { header: "Due Date", value: (invoice) => formatDate(invoice.due_date) },
+  { header: "Status", value: (invoice) => proformaInvoiceStatusLabel(invoice.status) },
+];
+
+
 const isOverdue = (
   invoice: ProformaInvoiceModel,
   asOf = new Date().setHours(0, 0, 0, 0),
@@ -156,7 +175,6 @@ export default function ProformaInvoiceListPage() {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
   const [page, setPage] = useState(1);
 
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [openMenu, setOpenMenu] = useState<number | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
@@ -406,98 +424,6 @@ export default function ProformaInvoiceListPage() {
      EXPORT
   --------------------------------------------------------------- */
 
-  const download = (content: string, type: string, filename: string) => {
-    const url = URL.createObjectURL(new Blob([content], { type }));
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportData = () => {
-    setHeaderMenuOpen(false);
-
-    if (!visible.length) {
-      addToast("No proforma invoice data available to export.", "warning");
-      return;
-    }
-
-    const headers = [
-      "PI ID",
-      "Customer Name",
-      "Email",
-      "Company",
-      "Sales Order",
-      "PI Value",
-      "Amount Paid",
-      "Balance Due",
-      "Assigned To",
-      "Issue Date",
-      "Due Date",
-      "Status",
-    ];
-
-    const rows = visible.map((invoice) => [
-      invoice.pi_number,
-      invoice.customer_name,
-      contactOf(invoice).email || "",
-      invoice.company_name || "",
-      invoice.sales_order?.order_number || "",
-      invoice.grand_total,
-      invoice.amount_paid,
-      invoice.balance_due,
-      invoice.assigned_to || "",
-      formatDate(invoice.issue_date),
-      formatDate(invoice.due_date),
-      proformaInvoiceStatusLabel(invoice.status),
-    ]);
-
-    download(
-      [headers, ...rows]
-        .map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
-        .join("\n"),
-      "text/csv;charset=utf-8;",
-      "proforma-invoices.csv",
-    );
-
-    addToast("Proforma invoice data exported.", "success");
-  };
-
-  const downloadChart = () => {
-    setHeaderMenuOpen(false);
-
-    const counts = PROFORMA_INVOICE_STATUSES.map(
-      (status) => invoices.filter((invoice) => invoice.status === status).length,
-    );
-    const max = Math.max(...counts, 1);
-
-    const bars = counts
-      .map((count, index) => {
-        const height = (count / max) * 280;
-        const x = 120 + index * 190;
-        const y = 360 - height;
-
-        return `<rect x="${x}" y="${y}" width="110" height="${height}" rx="6" fill="#233353"/>
-          <text x="${x + 55}" y="${y - 10}" text-anchor="middle" font-size="16" fill="#1e293b">${count}</text>
-          <text x="${x + 55}" y="390" text-anchor="middle" font-size="12" fill="#64748b">${proformaInvoiceStatusLabel(
-            PROFORMA_INVOICE_STATUSES[index],
-          )}</text>`;
-      })
-      .join("");
-
-    download(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="460"><rect width="100%" height="100%" fill="white"/><text x="60" y="55" font-size="24" font-weight="700" fill="#0f172a">Proforma Invoice Status</text><line x1="90" y1="360" x2="860" y2="360" stroke="#cbd5e1"/>${bars}</svg>`,
-      "image/svg+xml;charset=utf-8",
-      "proforma-invoice-chart.svg",
-    );
-
-    addToast("Proforma invoice chart downloaded.", "success");
-  };
-
   /* ---------------------------------------------------------------
      RENDER
   --------------------------------------------------------------- */
@@ -509,40 +435,15 @@ export default function ProformaInvoiceListPage() {
         refreshing={refreshing}
         onRefresh={() => load(true)}
         actions={
-          <div className="relative">
-            <button
-              type="button"
-              aria-label="More options"
-              onClick={() => setHeaderMenuOpen((value) => !value)}
-              className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 dark:bg-[#071929] dark:text-slate-200"
-            >
-              <LuEllipsisVertical size={16} />
-            </button>
-
-            {headerMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setHeaderMenuOpen(false)} />
-                <div className="absolute right-0 top-10 z-50 w-44 overflow-hidden rounded-lg border border-slate-100 bg-white py-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.12)] dark:border-[#17304a] dark:bg-[#071929]">
-                  <button
-                    type="button"
-                    onClick={exportData}
-                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-[#0b2034]"
-                  >
-                    <LuDownload size={15} className="text-slate-600 dark:text-slate-300" />
-                    Export Data
-                  </button>
-                  <button
-                    type="button"
-                    onClick={downloadChart}
-                    className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-[#0b2034]"
-                  >
-                    <LuChartNoAxesColumn size={15} className="text-slate-600 dark:text-slate-300" />
-                    Download Chart
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          <ListActionsMenu
+            name="Proforma Invoices"
+            rows={visible}
+            columns={PROFORMA_COLUMNS}
+            chart={PROFORMA_INVOICE_STATUSES.map((status) => ({
+              label: proformaInvoiceStatusLabel(status),
+              value: invoices.filter((invoice) => invoice.status === status).length,
+            }))}
+          />
         }
       />
 

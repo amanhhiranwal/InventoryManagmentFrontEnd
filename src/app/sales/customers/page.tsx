@@ -15,6 +15,9 @@ import {
   PrimaryAction,
   TableCard,
 } from "@/components/crm/ListPageShell";
+import ListActionsMenu, {
+  ExportColumn,
+} from "@/components/crm/ListActions";
 import { useUIStore } from "@/lib/store/ui.store";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { hasPermission } from "@/features/auth/utils/permissions";
@@ -41,7 +44,6 @@ import {
   FiActivity,
   FiCalendar,
   FiChevronDown,
-  FiDownload,
   FiEdit2,
   FiFile,
   FiLink,
@@ -176,7 +178,6 @@ export default function CustomersPage() {
 
   const [newCustomerMenuOpen, setNewCustomerMenuOpen] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [openRowMenu, setOpenRowMenu] = useState<string | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -363,225 +364,29 @@ export default function CustomersPage() {
   // Export
   // --------------------------------------------------
 
-  const handleExportData = () => {
-    if (!filteredCustomers.length) {
-      addToast("No customer data available to export.", "warning");
-      return;
-    }
-
-    const headers = [
-      "Customer ID",
-      "Company",
-      "Contact Name",
-      "Email",
-      "Phone",
-      "Customer Type",
-      "Assigned To",
-      "Stage",
-      "Status",
-      "State",
-      "Last Activity",
-      "Category",
-      "GST",
-      "PAN",
-    ];
-
+  /* A customer as a spreadsheet row. Built here rather than at module
+     level because the stage label comes from the stage master. */
+  const customerColumns: ExportColumn<Customer>[] = useMemo(() => {
     const stageLabel = (stage: CustomerStage) =>
       CUSTOMER_STAGES.find((item) => item.value === stage)?.label || stage;
 
-    const rows = filteredCustomers.map((customer) => [
-      customer.code.replace("#", ""),
-      customer.name,
-      customer.contactName,
-      customer.email,
-      customer.phone,
-      customer.customerType || "",
-      customer.assignedTo || "",
-      stageLabel(customer.stage),
-      customer.status,
-      customer.state || "",
-      formatDate(customer.lastActivity),
-      customer.category,
-      customer.gst || "",
-      customer.pan || "",
-    ]);
-
-    const escapeCsvValue = (value: unknown) => {
-      const stringValue = String(value ?? "");
-      return /[",\n]/.test(stringValue)
-        ? `"${stringValue.replace(/"/g, '""')}"`
-        : stringValue;
-    };
-
-    const csvContent = [
-      headers.map(escapeCsvValue).join(","),
-      ...rows.map((row) => row.map(escapeCsvValue).join(",")),
-    ].join("\n");
-
-    const url = URL.createObjectURL(
-      new Blob([csvContent], { type: "text/csv;charset=utf-8;" }),
-    );
-
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `customers-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    setExportMenuOpen(false);
-
-    addToast(`${filteredCustomers.length} customer records exported successfully.`, "success");
-  };
-
-  const handleDownloadChart = () => {
-    const activeCustomers = filteredCustomers.filter(
-      (customer) => customer.status === "Active",
-    ).length;
-
-    const inactiveCustomers = filteredCustomers.filter(
-      (customer) => customer.status === "Inactive",
-    ).length;
-
-    const totalCustomers = activeCustomers + inactiveCustomers;
-
-    if (!totalCustomers) {
-      addToast("No customer data available for the chart.", "warning");
-
-      return;
-    }
-
-    const canvas = document.createElement("canvas");
-
-    canvas.width = 1200;
-    canvas.height = 700;
-
-    const ctx = canvas.getContext("2d");
-
-    if (!ctx) {
-      addToast("Unable to generate customer chart.", "error");
-
-      return;
-    }
-
-    // Background
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Title
-    ctx.fillStyle = "#233353";
-    ctx.font = "700 32px Arial";
-    ctx.fillText("Customer Status Overview", 70, 75);
-
-    ctx.fillStyle = "#64748b";
-    ctx.font = "16px Arial";
-    ctx.fillText(`Total Customers: ${totalCustomers}`, 70, 110);
-
-    const chartX = 170;
-    const chartY = 170;
-    const chartWidth = 850;
-    const chartHeight = 350;
-
-    const maxValue = Math.max(activeCustomers, inactiveCustomers, 1);
-
-    // Grid lines
-    ctx.strokeStyle = "#e2e8f0";
-    ctx.lineWidth = 1;
-
-    for (let i = 0; i <= 5; i++) {
-      const y = chartY + chartHeight - (i / 5) * chartHeight;
-
-      ctx.beginPath();
-      ctx.moveTo(chartX, y);
-      ctx.lineTo(chartX + chartWidth, y);
-      ctx.stroke();
-
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "13px Arial";
-
-      const value = Math.round((i / 5) * maxValue);
-
-      ctx.fillText(String(value), chartX - 40, y + 5);
-    }
-
-    const barWidth = 180;
-
-    const drawBar = (
-      x: number,
-      value: number,
-      label: string,
-      barColor: string,
-    ) => {
-      const height = (value / maxValue) * chartHeight;
-
-      const y = chartY + chartHeight - height;
-
-      ctx.fillStyle = barColor;
-
-      ctx.fillRect(x, y, barWidth, height);
-
-      ctx.fillStyle = "#233353";
-      ctx.font = "700 18px Arial";
-
-      ctx.textAlign = "center";
-
-      ctx.fillText(String(value), x + barWidth / 2, y - 12);
-
-      ctx.fillStyle = "#475569";
-      ctx.font = "600 16px Arial";
-
-      ctx.fillText(label, x + barWidth / 2, chartY + chartHeight + 40);
-
-      ctx.textAlign = "left";
-    };
-
-    drawBar(chartX + 170, activeCustomers, "Active", "#22c55e");
-
-    drawBar(chartX + 520, inactiveCustomers, "Inactive", "#ef4444");
-
-    // Footer
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = "13px Arial";
-
-    ctx.fillText(
-      `Generated on ${new Date().toLocaleDateString("en-IN")}`,
-      70,
-      650,
-    );
-
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        addToast("Failed to download chart.", "error");
-
-        return;
-      }
-
-      const url = URL.createObjectURL(blob);
-
-      const link = document.createElement("a");
-
-      link.href = url;
-      link.download = `customer-status-chart-${new Date()
-        .toISOString()
-        .slice(0, 10)}.png`;
-
-      document.body.appendChild(link);
-
-      link.click();
-
-      document.body.removeChild(link);
-
-      URL.revokeObjectURL(url);
-
-      setExportMenuOpen(false);
-
-      addToast("Customer chart downloaded successfully.", "success");
-    }, "image/png");
-  };
-  // --------------------------------------------------
-  // New Customer menu
-  // --------------------------------------------------
+    return [
+      { header: "Customer ID", value: (row) => row.code.replace("#", "") },
+      { header: "Company", value: (row) => row.name },
+      { header: "Contact Name", value: (row) => row.contactName },
+      { header: "Email", value: (row) => row.email },
+      { header: "Phone", value: (row) => row.phone },
+      { header: "Customer Type", value: (row) => row.customerType || "" },
+      { header: "Assigned To", value: (row) => row.assignedTo || "" },
+      { header: "Stage", value: (row) => stageLabel(row.stage) },
+      { header: "Status", value: (row) => row.status },
+      { header: "State", value: (row) => row.state || "" },
+      { header: "Last Activity", value: (row) => formatDate(row.lastActivity) },
+      { header: "Category", value: (row) => row.category },
+      { header: "GST", value: (row) => row.gst || "" },
+      { header: "PAN", value: (row) => row.pan || "" },
+    ];
+  }, []);
 
   const handleAddSingleLead = () => {
     setNewCustomerMenuOpen(false);
@@ -739,7 +544,6 @@ export default function CustomersPage() {
         onClick={() => {
           setOpenRowMenu(null);
           setNewCustomerMenuOpen(false);
-          setExportMenuOpen(false);
         }}
       >
         {/* ============================================================
@@ -751,29 +555,21 @@ export default function CustomersPage() {
           refreshing={loading}
           onRefresh={handleRefreshCustomers}
           actions={
-            <div className="relative" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={() => setExportMenuOpen((prev) => !prev)}
-                title="More Actions"
-                aria-label="More Actions"
-                className="flex h-[30px] w-[30px] items-center justify-center rounded-md bg-white text-[#131313] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
-              >
-                <FiMoreVertical size={15} />
-              </button>
-
-              {exportMenuOpen && (
-                <div className="absolute right-0 top-9 z-50 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
-                  <MenuItem icon={<FiDownload />} onClick={handleExportData}>
-                    Export Data
-                  </MenuItem>
-
-                  <MenuItem icon={<FiDownload />} onClick={handleDownloadChart}>
-                    Download Chart
-                  </MenuItem>
-                </div>
-              )}
-            </div>
+            <ListActionsMenu
+              name="Customers"
+              rows={filteredCustomers}
+              columns={customerColumns}
+              chart={[
+                {
+                  label: "Active",
+                  value: filteredCustomers.filter((row) => row.status === "Active").length,
+                },
+                {
+                  label: "Inactive",
+                  value: filteredCustomers.filter((row) => row.status === "Inactive").length,
+                },
+              ]}
+            />
           }
         />
 
