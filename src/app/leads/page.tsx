@@ -33,7 +33,10 @@ import {
 import { useRouter } from "next/navigation";
 import { getUsersApi, User } from "@/features/users/api/users.api";
 import StatCard from "@/components/crm/StatCard";
-import { LIST_TABLE } from "@/components/crm/ListPageShell";
+import { LIST_TABLE, ListPageHeader } from "@/components/crm/ListPageShell";
+import ListActionsMenu, {
+  ExportColumn,
+} from "@/components/crm/ListActions";
 import { monthOverMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
@@ -52,12 +55,9 @@ import Input from "@/components/ui/Input";
 
 import {
   FiPlus,
-  FiRefreshCw,
   FiMoreVertical,
   FiSearch,
   FiSliders,
-  FiDownload,
-  FiGrid,
   FiPhone,
   FiUserPlus,
   FiFileText,
@@ -460,6 +460,42 @@ function getUserName(user: User) {
   return `${user.first_name || ""} ${user.last_name || ""}`.trim();
 }
 
+/** A lead as a spreadsheet row.
+ *
+ * Read through getLeadDetails, which takes each field from the lead's own
+ * column and only falls back to the legacy description blob for records
+ * old enough to have been stored that way. The export used to read the
+ * blob directly, so every lead created since those columns existed came
+ * out with an ID, an owner, a status and eighteen empty cells.
+ */
+const LEAD_COLUMNS: ExportColumn<Lead>[] = [
+  { header: "Lead ID", value: (lead) => formatLeadId(lead.id) },
+  { header: "Customer Name", value: (lead) => getLeadDetails(lead).contactName },
+  { header: "Organization", value: (lead) => getLeadDetails(lead).organizationName },
+  { header: "Customer Type", value: (lead) => getLeadDetails(lead).customerType },
+  { header: "Website", value: (lead) => getLeadDetails(lead).website },
+  { header: "Email", value: (lead) => getLeadDetails(lead).email },
+  { header: "Mobile", value: (lead) => getLeadDetails(lead).mobileNumber },
+  { header: "Address", value: (lead) => getLeadDetails(lead).address },
+  { header: "City", value: (lead) => getLeadDetails(lead).city },
+  { header: "State", value: (lead) => getLeadDetails(lead).state },
+  { header: "PIN / ZIP", value: (lead) => getLeadDetails(lead).zipCode },
+  { header: "Country", value: (lead) => getLeadDetails(lead).country },
+  { header: "GST", value: (lead) => getLeadDetails(lead).gstNumber },
+  { header: "PAN", value: (lead) => getLeadDetails(lead).panNumber },
+  { header: "COI", value: (lead) => getLeadDetails(lead).coiNumber },
+  { header: "Designation", value: (lead) => getLeadDetails(lead).designation },
+  { header: "Lead Source", value: (lead) => getLeadDetails(lead).leadSource },
+  { header: "Title", value: (lead) => lead.title },
+  { header: "Requirements", value: (lead) => lead.requirements || "" },
+  { header: "Remarks", value: (lead) => getLeadDetails(lead).remarks },
+  { header: "Created By", value: (lead) => lead.creator_name || "" },
+  { header: "Assigned To", value: (lead) => lead.assigned_to_name || "" },
+  { header: "Status", value: (lead) => lead.status },
+  { header: "Stage", value: (lead) => lead.stage },
+  { header: "Created At", value: (lead) => formatDate(lead.created_at) },
+];
+
 function getInitials(value?: string) {
   if (!value) return "U";
 
@@ -527,7 +563,6 @@ export default function LeadsPage() {
 
   const [search, setSearch] = useState("");
 
-  const [showTopMenu, setShowTopMenu] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
 
   const [showFilter, setShowFilter] = useState(false);
@@ -578,7 +613,6 @@ export default function LeadsPage() {
 
   const excelInputRef = useRef<HTMLInputElement | null>(null);
   const filterRef = useRef<HTMLDivElement | null>(null);
-  const topMenuRef = useRef<HTMLDivElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
 
   /* --------------------------------------------------------------------------
@@ -695,10 +729,6 @@ export default function LeadsPage() {
 
       if (filterRef.current && !filterRef.current.contains(target)) {
         setShowFilter(false);
-      }
-
-      if (topMenuRef.current && !topMenuRef.current.contains(target)) {
-        setShowTopMenu(false);
       }
 
       if (addMenuRef.current && !addMenuRef.current.contains(target)) {
@@ -863,7 +893,6 @@ export default function LeadsPage() {
     setPageMode("create");
 
     setShowAddMenu(false);
-    setShowTopMenu(false);
   };
 
   const openEditPage = (lead: Lead) => {
@@ -1367,184 +1396,6 @@ export default function LeadsPage() {
   );
 
   /* --------------------------------------------------------------------------
-     EXPORT
-  -------------------------------------------------------------------------- */
-
-  const exportCSV = () => {
-    if (!filteredLeads.length) {
-      addToast("No leads available for export.", "warning");
-
-      return;
-    }
-
-    const header = [
-      "Lead ID",
-      "Customer Name",
-      "Organization",
-      "Customer Type",
-      "Website",
-      "Email",
-      "Mobile",
-      "Address",
-      "City",
-      "State",
-      "PIN / ZIP",
-      "Country",
-      "GST",
-      "PAN",
-      "COI",
-      "Designation",
-      "Lead Source",
-      "Assigned To",
-      "Status",
-      "Stage",
-      "Created At",
-    ];
-
-    const rows = filteredLeads.map((lead) => {
-      const details = parseLeadDescription(lead.description);
-
-      return [
-        formatLeadId(lead.id),
-        details.contactName,
-        details.organizationName,
-        details.customerType,
-        details.website,
-        details.email,
-        details.mobileNumber,
-        details.address,
-        details.city,
-        details.state,
-        details.zipCode,
-        details.country,
-        details.gstNumber,
-        details.panNumber,
-        details.coiNumber,
-        details.designation,
-        details.leadSource,
-        lead.assigned_to_name || "",
-        lead.status,
-        lead.stage,
-        formatDate(lead.created_at),
-      ];
-    });
-
-    const csv = [header, ...rows]
-      .map((row) =>
-        row
-          .map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`)
-          .join(","),
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;",
-    });
-
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
-
-    setShowTopMenu(false);
-
-    addToast("Leads exported successfully.", "success");
-  };
-
-  /* --------------------------------------------------------------------------
-     KPI CHART
-  -------------------------------------------------------------------------- */
-
-  const downloadChart = () => {
-    const canvas = document.createElement("canvas");
-
-    canvas.width = 1200;
-    canvas.height = 600;
-
-    const ctx = canvas.getContext("2d");
-
-    if (!ctx) return;
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = "#0f172a";
-    ctx.font = "bold 32px Arial";
-
-    ctx.fillText("Leads Pipeline", 60, 70);
-
-    const values = [
-      {
-        label: "Total Leads",
-        value: totalLeads,
-      },
-      {
-        label: "New",
-        value: newLeads,
-      },
-      {
-        label: "Qualified",
-        value: qualifiedLeads,
-      },
-      {
-        label: "Dead",
-        value: deadLeads,
-      },
-    ];
-
-    const max = Math.max(...values.map((item) => item.value), 1);
-
-    const chartBottom = 500;
-    const chartTop = 130;
-    const barWidth = 150;
-    const gap = 100;
-
-    values.forEach((item, index) => {
-      const x = 100 + index * (barWidth + gap);
-
-      const height = (item.value / max) * (chartBottom - chartTop);
-
-      ctx.fillStyle = "#1d2b45";
-
-      ctx.fillRect(x, chartBottom - height, barWidth, height);
-
-      ctx.fillStyle = "#0f172a";
-
-      ctx.font = "bold 20px Arial";
-
-      ctx.fillText(
-        item.value.toLocaleString("en-IN"),
-        x + 35,
-        chartBottom - height - 15,
-      );
-
-      ctx.font = "16px Arial";
-
-      ctx.fillText(item.label, x + 20, chartBottom + 35);
-    });
-
-    const link = document.createElement("a");
-
-    link.download = "leads-pipeline-chart.png";
-
-    link.href = canvas.toDataURL("image/png");
-
-    link.click();
-
-    setShowTopMenu(false);
-
-    addToast("Chart downloaded.", "success");
-  };
-
-  /* --------------------------------------------------------------------------
      FILE IMPORT
   -------------------------------------------------------------------------- */
 
@@ -1886,56 +1737,24 @@ export default function LeadsPage() {
     >
       {/* HEADER */}
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            Leads
-          </h1>
-
-          <button
-            type="button"
-            title="Refresh Leads"
-            onClick={fetchLeads}
-            className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
-          >
-            <FiRefreshCw size={12} className={loading ? "animate-spin" : ""} />
-          </button>
-        </div>
-
-        <div ref={topMenuRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setShowTopMenu((previous) => !previous)}
-            className="
-              rounded-xl
-              border
-              border-slate-200
-              bg-white
-              p-2
-              text-slate-600
-              shadow-sm
-              hover:bg-slate-50
-              dark:border-[#0d2336]
-              dark:bg-[#051422]
-              dark:text-slate-300
-            "
-          >
-            <FiMoreVertical />
-          </button>
-
-          {showTopMenu && (
-            <DropdownMenu>
-              <DropdownButton icon={<FiDownload />} onClick={exportCSV}>
-                Export Data
-              </DropdownButton>
-
-              <DropdownButton icon={<FiGrid />} onClick={downloadChart}>
-                Download Chart
-              </DropdownButton>
-            </DropdownMenu>
-          )}
-        </div>
-      </div>
+      <ListPageHeader
+        title="Leads"
+        refreshing={loading}
+        onRefresh={fetchLeads}
+        actions={
+          <ListActionsMenu
+            name="Leads"
+            rows={filteredLeads}
+            columns={LEAD_COLUMNS}
+            chart={[
+              { label: "Total Leads", value: totalLeads },
+              { label: "New", value: newLeads },
+              { label: "Qualified", value: qualifiedLeads },
+              { label: "Dead", value: deadLeads },
+            ]}
+          />
+        }
+      />
 
       {/* KPI */}
 
@@ -2123,7 +1942,6 @@ export default function LeadsPage() {
                 icon={<FiLink className="text-indigo-500" />}
                 onClick={() => {
                   setShowAddMenu(false);
-                  setShowTopMenu(false);
 
                   if (leads.length > 0) {
                     const lead = leads[0];

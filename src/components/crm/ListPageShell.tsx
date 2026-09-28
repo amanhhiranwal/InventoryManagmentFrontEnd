@@ -3,6 +3,8 @@
 import { ReactNode } from "react";
 import { FiRefreshCw, FiSearch, FiSliders } from "react-icons/fi";
 
+import { useUIStore } from "@/lib/store/ui.store";
+
 /**
  * Page chrome shared by the Leads, Opportunity and Sales Order lists so the
  * three screens read as one product: same background, title row, KPI grid,
@@ -47,10 +49,29 @@ export function ListPageHeader({
 }: {
   title: string;
   refreshing?: boolean;
-  onRefresh?: () => void;
+  onRefresh?: () => void | Promise<void>;
   /** Right-hand slot, typically the overflow menu. */
   actions?: ReactNode;
 }) {
+  const { addToast } = useUIStore();
+
+  /* Confirming the refresh is the header's job, not each page's.
+     Opportunity and Quotation raised a toast, Leads, Customers, the
+     invoices and both desks raised nothing, so on half the screens the
+     button gave no sign it had done anything and people clicked it
+     again. One place, one behaviour. */
+  const refresh = async () => {
+    if (!onRefresh) return;
+
+    try {
+      await onRefresh();
+      addToast(`${title} refreshed.`, "success");
+    } catch {
+      // The page's own loader reports why it failed; saying "refreshed"
+      // over the top of that would be a lie.
+    }
+  };
+
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
@@ -61,9 +82,10 @@ export function ListPageHeader({
         {onRefresh && (
           <button
             type="button"
-            onClick={onRefresh}
+            onClick={refresh}
+            disabled={refreshing}
             aria-label={`Refresh ${title}`}
-            className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:hover:bg-[#0b2034]"
+            className="flex h-6 w-6 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed dark:border-[#17304a] dark:bg-[#071929] dark:hover:bg-[#0b2034]"
           >
             <FiRefreshCw
               size={11}

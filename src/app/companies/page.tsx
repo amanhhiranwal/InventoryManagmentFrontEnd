@@ -16,10 +16,10 @@ import { useUIStore } from "@/lib/store/ui.store";
 import { hasPermission } from "@/features/auth/utils/permissions";
 import { FiPlus, FiBriefcase, FiCheckCircle, FiEdit2, FiTrash2, FiGlobe, FiPhone, FiMail, FiMapPin } from "react-icons/fi";
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import PageHeader from "@/components/ui/PageHeader";
+import { ListPage, PrimaryAction } from "@/components/crm/ListPageShell";
 import Table from "@/components/ui/Table";
 
 export default function CompaniesPage() {
@@ -205,21 +205,21 @@ export default function CompaniesPage() {
   }
 
   return (
-    <div className="space-y-6 relative">
+    <ListPage>
       <PageHeader
         title="Companies Directory"
         description="Manage enterprise companies, system registrations, and tax configurations."
         action={
           showAddCompany && (
-            <Button onClick={handleOpenCreateModal} icon={<FiPlus />}>
+            <PrimaryAction onClick={handleOpenCreateModal} icon={<FiPlus size={14} />}>
               Create Company
-            </Button>
+            </PrimaryAction>
           )
         }
       />
 
-      <Card className="p-0 overflow-visible" bodyClassName="p-0">
-        <Table
+      {/* Table is its own card, so it needs no wrapper. */}
+      <Table
           headers={["Company Details", "Tax Code / Website", "Location / Address", "Status", "Actions"]}
           loading={loading}
           currentPage={currentPage}
@@ -297,27 +297,39 @@ export default function CompaniesPage() {
                   <span>{company.is_active ? "Active" : "Inactive"}</span>
                 </span>
               </td>
+              {/* Icon actions, as every other list uses: a filled red
+                  Delete button in each row shouts louder than anything
+                  else on the page, and it is not the main thing here. */}
               <td className="py-4 px-5 text-right">
-                <div className="flex justify-end gap-2">
+                <div className="flex justify-end gap-1.5">
                   {canUpdateCompany && (
-                    <Button variant="outline" size="sm" onClick={() => handleOpenEditModal(company)} icon={<FiEdit2 />}>
-                      Edit
-                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditModal(company)}
+                      title="Edit company"
+                      className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 transition hover:text-primary"
+                    >
+                      <FiEdit2 className="text-sm" />
+                    </button>
                   )}
                   {canDeleteCompany && (
-                    <Button variant="danger" size="sm" onClick={() => handleOpenDeleteModal(company)} icon={<FiTrash2 />}>
-                      Delete
-                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDeleteModal(company)}
+                      title="Delete company"
+                      className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-rose-500 dark:hover:bg-[#0d2336]"
+                    >
+                      <FiTrash2 className="text-sm" />
+                    </button>
                   )}
                   {!canUpdateCompany && !canDeleteCompany && (
-                    <span className="text-xs text-slate-400 italic">No permissions</span>
+                    <span className="text-[13px] text-slate-400">No permissions</span>
                   )}
                 </div>
               </td>
             </tr>
           ))}
         </Table>
-      </Card>
 
       {/* Create & Edit Company Modal */}
       <Modal
@@ -499,6 +511,6 @@ export default function CompaniesPage() {
           </div>
         )}
       </Modal>
-    </div>
+    </ListPage>
   );
 }

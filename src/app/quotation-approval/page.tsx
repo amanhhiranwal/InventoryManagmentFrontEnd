@@ -13,6 +13,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CgSpinner } from "react-icons/cg";
+
+import PageHeader from "@/components/ui/PageHeader";
+import { ListPage, PrimaryAction } from "@/components/crm/ListPageShell";
 import { LuPercent, LuPlus, LuSave, LuTrash2 } from "react-icons/lu";
 
 import { useAuthStore } from "@/features/auth/store/auth.store";
@@ -118,32 +121,21 @@ export default function QuotationApprovalPage() {
   }
 
   return (
-    <div className="space-y-6 pb-10">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white">
-            Quotation Approval
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            How much discount each role can sign off. A discount travels up
-            until it reaches someone whose ceiling covers it.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving}
-          className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#233353] px-5 text-xs font-bold text-white transition hover:bg-[#18243a] disabled:opacity-50"
-        >
-          {saving ? (
-            <CgSpinner className="animate-spin" size={14} />
-          ) : (
-            <LuSave size={14} />
-          )}
-          {saving ? "Saving..." : "Save Bands"}
-        </button>
-      </div>
+    <ListPage>
+      <PageHeader
+        title="Quotation Approval"
+        description="How much discount each role can sign off. A discount travels up until it reaches someone whose ceiling covers it."
+        action={
+          <PrimaryAction onClick={save}>
+            {saving ? (
+              <CgSpinner className="animate-spin" size={14} />
+            ) : (
+              <LuSave size={14} />
+            )}
+            {saving ? "Saving..." : "Save Bands"}
+          </PrimaryAction>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs xl:col-span-2 dark:border-[#17304a] dark:bg-[#071929]">
@@ -251,7 +243,7 @@ export default function QuotationApprovalPage() {
 
         <WorkedExample rows={rows} />
       </div>
-    </div>
+    </ListPage>
   );
 }
 

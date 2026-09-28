@@ -13,6 +13,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CgSpinner } from "react-icons/cg";
+
+import PageHeader from "@/components/ui/PageHeader";
+import { ListPage, PrimaryAction } from "@/components/crm/ListPageShell";
 import { LuBuilding2, LuFileText, LuImage, LuPenLine, LuSave } from "react-icons/lu";
 
 import { useAuthStore } from "@/features/auth/store/auth.store";
@@ -142,28 +145,21 @@ export default function CompanyProfilePage() {
   }
 
   return (
-    <div className="space-y-6 pb-10">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-white">
-            Company Profile
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            What appears on every proposal and every email you send: the name
-            on the cover, the About panel, the range, and the signature.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving}
-          className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-[#233353] px-5 text-xs font-bold text-white transition hover:bg-[#18243a] disabled:opacity-50"
-        >
-          {saving ? <CgSpinner className="animate-spin" size={14} /> : <LuSave size={14} />}
-          {saving ? "Saving..." : "Save Profile"}
-        </button>
-      </div>
+    <ListPage>
+      <PageHeader
+        title="Company Profile"
+        description="What appears on every proposal and every email you send: the name on the cover, the About panel, the range, and the signature."
+        action={
+          <PrimaryAction onClick={save}>
+            {saving ? (
+              <CgSpinner className="animate-spin" size={14} />
+            ) : (
+              <LuSave size={14} />
+            )}
+            {saving ? "Saving..." : "Save Profile"}
+          </PrimaryAction>
+        }
+      />
 
       {/* The long-form copy on the left, the short settings beside it, so
           the screen fills the width the way every other page does. */}
@@ -402,7 +398,7 @@ export default function CompanyProfilePage() {
           </Section>
         </div>
       </div>
-    </div>
+    </ListPage>
   );
 }
 

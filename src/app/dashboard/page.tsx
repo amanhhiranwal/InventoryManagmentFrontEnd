@@ -32,12 +32,6 @@ import {
   getOpportunitiesApi,
   type OpportunityModel,
 } from "@/features/opportunities/api/opportunities.api";
-import {
-  getQuotationsApi,
-  quotationStatusLabel,
-  type QuotationModel,
-} from "@/features/quotations/api/quotations.api";
-
 import { useUIStore } from "@/lib/store/ui.store";
 
 /* ============================================================
@@ -87,14 +81,6 @@ type RegionalData = {
   revenue: number;
 };
 
-type ActivityItem = {
-  id: string;
-  title: string;
-  person: string;
-  detail: string;
-  value: number;
-  date: Date | null;
-};
 
 type ProductData = {
   name: string;
@@ -224,9 +210,6 @@ function getLeadValue(lead: DashboardLead) {
 
 
 
-function getLeadCompanyName(lead: DashboardLead) {
-  return lead.customer_name || lead.customer || "Lead";
-}
 
 function getPercentageChange(current: number, previous: number) {
   if (!previous) {
@@ -277,9 +260,53 @@ function getRegionLabel(value?: string) {
 
     kerala: "KL",
     kl: "KL",
+
+    haryana: "HR",
+    hr: "HR",
+
+    punjab: "PB",
+    pb: "PB",
+
+    "madhya pradesh": "MP",
+    mp: "MP",
+
+    bihar: "BR",
+    br: "BR",
+
+    odisha: "OD",
+    orissa: "OD",
+    od: "OD",
+
+    assam: "AS",
+    as: "AS",
+
+    jharkhand: "JH",
+    jh: "JH",
+
+    chhattisgarh: "CG",
+    cg: "CG",
+
+    uttarakhand: "UK",
+    uk: "UK",
+
+    "himachal pradesh": "HP",
+    hp: "HP",
+
+    goa: "GA",
+    ga: "GA",
+
+    "andhra pradesh": "AP",
+    ap: "AP",
+
+    "jammu and kashmir": "JK",
+    "jammu & kashmir": "JK",
+    jk: "JK",
   };
 
-  return stateMap[normalized] || value;
+  /* An unmapped state keeps its own name. The column is sized for two
+     letters, so anything long is cut back rather than allowed to shove
+     the bar off the row. */
+  return stateMap[normalized] || value.trim().slice(0, 3).toUpperCase();
 }
 
 /* Recent Orders lists real sales orders, with the columns of the Sales Order
@@ -325,12 +352,20 @@ const ORDER_SORT_VALUE: Record<
   status: (order) => salesOrderStatusLabel(order.status),
 };
 
-/* Orders that count as business done: confirmed onwards, not drafts or
-   cancelled ones. Revenue, units, regions and the team are measured on these. */
-const BOOKED_ORDER_STATUSES = ["CONFIRMED", "ON_HOLD", "RELEASED", "COMPLETED"];
+/* Orders that count as business done: confirmed onwards. Revenue, units,
+   regions and the top product are all measured on these.
+
+   Stated as what is *not* booked rather than as a list of what is. The
+   list version named four statuses and was written before the fulfilment
+   chain existed, so every order that reached Payment Verified, Procurement,
+   Ready, Dispatched, Delivered or Installed fell straight out of it - and
+   with the demo orders sitting at Dispatched and Installed, the whole
+   dashboard read zero. A stage added later cannot break this the same way:
+   it counts unless it is one of the three that plainly should not. */
+const UNBOOKED_ORDER_STATUSES = ["DRAFT", "PENDING_APPROVAL", "CANCELLED"];
 
 const isBookedOrder = (order: SalesOrderModel) =>
-  BOOKED_ORDER_STATUSES.includes(order.status);
+  !UNBOOKED_ORDER_STATUSES.includes(order.status);
 
 const orderDateValue = (order: SalesOrderModel) => {
   const date = new Date(orderDate(order) || 0);
@@ -511,10 +546,12 @@ export default function Dashboard() {
 
   const [dbLeads, setDbLeads] = useState<DashboardLead[]>([]);
   const [opportunities, setOpportunities] = useState<OpportunityModel[]>([]);
-  const [quotations, setQuotations] = useState<QuotationModel[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrderModel[]>([]);
 
-  const [chartMode, setChartMode] = useState<ChartMode>("yearly");
+  /* Monthly is the view the design opens on, and the one that actually
+     says something: a yearly axis of six points, five of them before the
+     business had any orders, draws a flat line along the bottom. */
+  const [chartMode, setChartMode] = useState<ChartMode>("monthly");
 
   const [activeChartIndex, setActiveChartIndex] = useState(0);
 
@@ -547,22 +584,17 @@ export default function Dashboard() {
     try {
       setRefreshing(true);
 
-      const [leadsResult, opportunitiesResult, ordersResult, quotationsResult] =
+      const [leadsResult, opportunitiesResult, ordersResult] =
         await Promise.allSettled([
           getLeadsApi(),
           getOpportunitiesApi(),
           getSalesOrdersApi(),
-          getQuotationsApi(),
         ]);
 
       setOpportunities(
         opportunitiesResult.status === "fulfilled"
           ? opportunitiesResult.value || []
           : [],
-      );
-
-      setQuotations(
-        quotationsResult.status === "fulfilled" ? quotationsResult.value || [] : [],
       );
 
       if (ordersResult.status === "fulfilled") {
@@ -724,15 +756,6 @@ export default function Dashboard() {
       setActiveChartIndex(chartData.length - 1);
     }
   }, [chartData.length, activeChartIndex]);
-
-  const selectedChartPoint = chartData[
-    hoveredChartIndex ?? activeChartIndex
-  ] || {
-    label: "",
-    year: new Date().getFullYear(),
-    revenue: 0,
-    units: 0,
-  };
 
   /* ==========================================================
      CURRENT / PREVIOUS MONTH
@@ -965,6 +988,11 @@ export default function Dashboard() {
       });
     });
 
+    /* A lead that has been qualified belongs in Qualified, not in New
+       Leads. Every open lead used to land in the first band regardless of
+       how far it had been worked, so the funnel's widest stage was also
+       its least truthful one. Converted leads are not counted here at all
+       - they are counted again below as the opportunity they became. */
     dbLeads.forEach((lead) => {
       const status = (lead.status || "").toUpperCase();
 
@@ -972,7 +1000,7 @@ export default function Dashboard() {
         return;
       }
 
-      const stage = map.get("new")!;
+      const stage = map.get(status === "QUALIFIED" ? "qualified" : "new")!;
 
       stage.count += 1;
       stage.revenue += getLeadValue(lead);
@@ -1007,67 +1035,12 @@ export default function Dashboard() {
     return PIPELINE_STAGES.map((stage) => map.get(stage.key)!);
   }, [dbLeads, opportunities, bookedOrders]);
 
+
   /* ==========================================================
      SALES ACTIVITY
      The latest leads, quotations and orders, newest first.
   ========================================================== */
 
-  const activities = useMemo<ActivityItem[]>(() => {
-    const items: ActivityItem[] = [];
-
-    const toDate = (value?: string | null) => {
-      const date = value ? new Date(value) : null;
-
-      return date && !Number.isNaN(date.getTime()) ? date : null;
-    };
-
-    dbLeads.forEach((lead) => {
-      items.push({
-        id: `lead-${lead.id}`,
-        title: "New Lead",
-        person: lead.assigned_to_name || lead.creator_name || "Sales Team",
-        detail: lead.title || getLeadCompanyName(lead),
-        value: getLeadValue(lead),
-        date: toDate(lead.created_at),
-      });
-    });
-
-    quotations.forEach((quotation) => {
-      items.push({
-        id: `quotation-${quotation.id}`,
-        title: `Quotation ${quotationStatusLabel(quotation.status)}`,
-        person:
-          opportunities.find(
-            (opportunity) => opportunity.id === quotation.opportunity_id,
-          )?.assigned_to_name || "Sales Team",
-        detail: `#${quotation.quote_number} · ${
-          quotation.organization_name || quotation.contact_name || ""
-        }`,
-        value: Number(quotation.total_payable || 0),
-        date: toDate(quotation.updated_at || quotation.created_at),
-      });
-    });
-
-    salesOrders.forEach((order) => {
-      items.push({
-        id: `order-${order.id}`,
-        title: isBookedOrder(order) ? "Deal Closed" : "Sales Order Drafted",
-        person: orderAssignee(order),
-        detail: `${orderNumber(order)} · ${order.company_name || order.customer_name}`,
-        value: Number(order.grand_total || 0),
-        date: toDate(order.updated_at || order.created_at),
-      });
-    });
-
-    return items
-      .sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0))
-      .slice(0, 6);
-  }, [dbLeads, quotations, salesOrders, opportunities]);
-
-  /* ==========================================================
-   ORDERS TABLE
-   Newest sales orders first; a column header sorts the rows shown.
-========================================================== */
   const sortedSalesOrders = useMemo(
     () =>
       [...salesOrders].sort(
@@ -1245,35 +1218,6 @@ export default function Dashboard() {
       ],
     );
   }, [exportRows, regionalPerformance]);
-
-  const exportSalesTeamData = useCallback(() => {
-    exportRows(`sales-team-${new Date().toISOString().slice(0, 10)}.csv`, [
-      ["Role", "Name", "Revenue", "Units", "Conversion"],
-
-      ...salesTeam.map((person, index) => [
-        index === 0 ? "AVP" : index === 1 ? "Zonal Head" : "Area Head",
-
-        person.name,
-        person.revenue,
-        person.units,
-        `${person.conversion}%`,
-      ]),
-    ]);
-  }, [exportRows, salesTeam]);
-
-  const exportActivityData = useCallback(() => {
-    exportRows(`sales-activity-${new Date().toISOString().slice(0, 10)}.csv`, [
-      ["Activity", "Sales Person", "Details", "Value", "Date"],
-
-      ...activities.map((activity) => [
-        activity.title,
-        activity.person,
-        activity.detail,
-        activity.value,
-        activity.date ? activity.date.toLocaleDateString("en-IN") : "",
-      ]),
-    ]);
-  }, [exportRows, activities]);
 
   const exportOrdersData = useCallback(() => {
     exportRows(`recent-orders-${new Date().toISOString().slice(0, 10)}.csv`, [
@@ -1674,268 +1618,6 @@ export default function Dashboard() {
 
   /* ==========================================================
      SALES TEAM CHART DOWNLOAD
-  ========================================================== */
-
-  const downloadSalesTeamChart = useCallback(() => {
-    const width = 1000;
-
-    const rowHeight = 75;
-
-    const height = 80 + Math.max(salesTeam.length, 1) * rowHeight;
-
-    const maxRevenue = Math.max(
-      ...salesTeam.map((person) => person.revenue),
-      1,
-    );
-
-    const rows = salesTeam
-      .map((person, index) => {
-        const y = 65 + index * rowHeight;
-
-        const barWidth = (person.revenue / maxRevenue) * 600;
-
-        const role =
-          index === 0 ? "AVP" : index === 1 ? "Zonal Head" : "Area Head";
-
-        return `
-                <text
-                  x="20"
-                  y="${y + 20}"
-                  font-size="14"
-                  font-weight="700"
-                  fill="#18294a"
-                >
-                  ${role}
-                </text>
-
-                <text
-                  x="120"
-                  y="${y + 20}"
-                  font-size="14"
-                  fill="#38588f"
-                >
-                  ${person.name}
-                </text>
-
-                <rect
-                  x="300"
-                  y="${y + 5}"
-                  width="600"
-                  height="22"
-                  rx="5"
-                  fill="#eef1f5"
-                />
-
-                <rect
-                  x="300"
-                  y="${y + 5}"
-                  width="${barWidth}"
-                  height="22"
-                  rx="5"
-                  fill="#38588f"
-                />
-
-                <text
-                  x="920"
-                  y="${y + 21}"
-                  text-anchor="end"
-                  font-size="14"
-                  font-weight="700"
-                  fill="#233353"
-                >
-                  ${formatCompactCurrency(person.revenue)}
-                </text>
-
-                <text
-                  x="300"
-                  y="${y + 48}"
-                  font-size="11"
-                  fill="#64748b"
-                >
-                  ${person.units.toLocaleString("en-IN")} Units
-                </text>
-
-                <text
-                  x="420"
-                  y="${y + 48}"
-                  font-size="11"
-                  fill="#64748b"
-                >
-                  ${person.conversion}% Conversion
-                </text>
-
-                <text
-                  x="620"
-                  y="${y + 48}"
-                  font-size="11"
-                  fill="#64748b"
-                >
-                  ${person.deals} Deals
-                </text>
-              `;
-      })
-      .join("");
-
-    const svg = `
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="${width}"
-          height="${height}"
-          viewBox="0 0 ${width} ${height}"
-        >
-          <rect
-            width="100%"
-            height="100%"
-            fill="white"
-          />
-
-          <text
-            x="20"
-            y="30"
-            font-size="20"
-            font-weight="700"
-            fill="#18294a"
-          >
-            Sales Team Performance
-          </text>
-
-          ${rows}
-        </svg>
-      `;
-
-    downloadSvg(
-      `sales-team-performance-${new Date().toISOString().slice(0, 10)}.svg`,
-      svg,
-    );
-
-    addToast("Sales team chart downloaded.", "success");
-  }, [salesTeam, addToast]);
-
-  /* ==========================================================
-     SALES ACTIVITY CHART DOWNLOAD
-  ========================================================== */
-
-  const downloadActivityChart = useCallback(() => {
-    const width = 900;
-
-    const rowHeight = 85;
-
-    const height = 80 + Math.max(activities.length, 1) * rowHeight;
-
-    const rows = activities
-      .map((item, index) => {
-        const y = 55 + index * rowHeight;
-
-        const activity = escapeSvgText(item.title);
-
-        const dateLabel = item.date ? item.date.toLocaleDateString("en-IN") : "—";
-
-        return `
-                <line
-                  x1="35"
-                  y1="${y}"
-                  x2="35"
-                  y2="${y + 60}"
-                  stroke="#d9dee7"
-                  stroke-width="2"
-                />
-
-                <circle
-                  cx="35"
-                  cy="${y}"
-                  r="7"
-                  fill="#38588f"
-                />
-
-                <text
-                  x="60"
-                  y="${y + 5}"
-                  font-size="14"
-                  font-weight="700"
-                  fill="#18294a"
-                >
-                  ${activity}
-                </text>
-
-                <text
-                  x="60"
-                  y="${y + 27}"
-                  font-size="12"
-                  fill="#64748b"
-                >
-                  ${escapeSvgText(item.person)}
-                </text>
-
-                <text
-                  x="60"
-                  y="${y + 48}"
-                  font-size="12"
-                  fill="#64748b"
-                >
-                  ${escapeSvgText(item.detail || "Sales activity")}
-                </text>
-
-                <text
-                  x="820"
-                  y="${y + 5}"
-                  text-anchor="end"
-                  font-size="12"
-                  fill="#64748b"
-                >
-                  ${dateLabel}
-                </text>
-
-                <text
-                  x="820"
-                  y="${y + 30}"
-                  text-anchor="end"
-                  font-size="15"
-                  font-weight="700"
-                  fill="#233353"
-                >
-                  ${formatCurrency(item.value)}
-                </text>
-              `;
-      })
-      .join("");
-
-    const svg = `
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="${width}"
-          height="${height}"
-          viewBox="0 0 ${width} ${height}"
-        >
-          <rect
-            width="100%"
-            height="100%"
-            fill="white"
-          />
-
-          <text
-            x="20"
-            y="30"
-            font-size="20"
-            font-weight="700"
-            fill="#18294a"
-          >
-            Sales Activity
-          </text>
-
-          ${rows}
-        </svg>
-      `;
-
-    downloadSvg(
-      `sales-activity-${new Date().toISOString().slice(0, 10)}.svg`,
-      svg,
-    );
-
-    addToast("Sales activity chart downloaded.", "success");
-  }, [activities, addToast]);
-
-  /* ==========================================================
-     RECENT ORDERS CHART DOWNLOAD
   ========================================================== */
 
   const downloadOrdersChart = useCallback(() => {
@@ -2370,15 +2052,6 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
-
-        <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
-          <span className="h-2 w-2 rounded-full bg-[#38588f]" />
-          Selected:
-          <span className="font-semibold text-slate-600 dark:text-slate-200">
-            {selectedChartPoint.label}
-          </span>
-          <span>{formatCurrency(selectedChartPoint.revenue)}</span>
-        </div>
       </section>
 
       {/* ======================================================
@@ -2473,9 +2146,6 @@ export default function Dashboard() {
           const topY = index * stageHeight;
           const bottomY = topY + stageHeight;
 
-          const topWidths = [300, 252, 204, 156, 108];
-          const bottomWidths = [252, 204, 156, 108, 60];
-
           const colors = [
             "#26395B",
             "#304A78",
@@ -2483,6 +2153,19 @@ export default function Dashboard() {
             "#6687C0",
             "#20C66B",
           ];
+
+          /* An even taper, as the design draws it: the funnel is the
+             shape of the pipeline, not a bar chart of it. Sizing the
+             bands on the counts was tried and looked wrong - the stages
+             are not a subset chain, because a lead leaves New Leads the
+             moment it becomes an opportunity, so any stage holding more
+             than the one above it bulged the funnel back outward and an
+             empty stage pinched it to a thread.
+
+             The numbers live on the bands instead, where they can be
+             read without guessing at widths. */
+          const topWidths = [300, 252, 204, 156, 108];
+          const bottomWidths = [252, 204, 156, 108, 60];
 
           const topHalf = topWidths[index] / 2;
           const bottomHalf = bottomWidths[index] / 2;
@@ -2512,7 +2195,15 @@ export default function Dashboard() {
                 className="transition-opacity duration-150"
               />
 
-              {/* Show information ONLY for hovered stage */}
+              {/* The bands are plain until pointed at, as the design
+                  draws them; the stage you are on names itself and says
+                  what it holds.
+
+                  The second line has three cases, and they must not
+                  contradict the first: an empty stage is empty, a stage
+                  holding leads nobody has quoted yet has no figure to
+                  show - not a figure of zero - and anything else shows
+                  what it is worth. */}
               {isHovered && (
                 <>
                   <text
@@ -2525,20 +2216,26 @@ export default function Dashboard() {
                     fontWeight="500"
                     pointerEvents="none"
                   >
-                    {stage.label} ({stage.count} Deals)
+                    {stage.label} ({stage.count}{" "}
+                    {stage.count === 1 ? "Deal" : "Deals"})
                   </text>
 
                   <text
                     x={center}
-                    y={topY + 42}
+                    y={topY + 40}
                     textAnchor="middle"
                     dominantBaseline="middle"
                     fill="#ffffff"
-                    fontSize="14"
-                    fontWeight="700"
+                    fontSize={stage.revenue > 0 ? "14" : "10"}
+                    fontWeight={stage.revenue > 0 ? "700" : "400"}
+                    fillOpacity={stage.revenue > 0 ? 1 : 0.75}
                     pointerEvents="none"
                   >
-                    {formatCurrency(stage.revenue)}
+                    {stage.revenue > 0
+                      ? formatCurrency(stage.revenue)
+                      : stage.count > 0
+                        ? "Not valued yet"
+                        : "Nothing at this stage"}
                   </text>
                 </>
               )}
@@ -2608,177 +2305,6 @@ export default function Dashboard() {
             ) : (
               <div className="py-10 text-center text-xs text-slate-400">
                 Regional data is not available from the current lead API.
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ======================================================
-          SALES TEAM + ACTIVITY
-      ====================================================== */}
-
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* SALES TEAM */}
-
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:col-span-2 dark:border-[#0d2336] dark:bg-[#051422]">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 dark:border-[#0d2336]">
-            <div>
-              <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
-                Sales Team Hierarchy
-              </h3>
-
-      
-            </div>
-
-            <DashboardMenu
-              menu="salesTeam"
-              openMenu={openMenu}
-              setOpenMenu={setOpenMenu}
-              onExport={exportSalesTeamData}
-              onDownloadChart={downloadSalesTeamChart}
-            />
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] text-left">
-              <thead>
-                <tr className="border-b border-slate-100 text-xs text-slate-400 dark:border-[#0d2336]">
-                  <th className="px-5 py-4 font-semibold">Role</th>
-
-                  <th className="px-5 py-4 font-semibold">Incumbent</th>
-
-                  <th className="px-5 py-4 font-semibold">Revenue</th>
-
-                  <th className="px-5 py-4 font-semibold">Units</th>
-
-                  <th className="px-5 py-4 font-semibold">Conversion</th>
-
-                  <th className="px-5 py-4 font-semibold">
-                    Target Achievement
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {salesTeam.length > 0 ? (
-                  salesTeam.map((person, index) => (
-                    <tr
-                      key={person.name}
-                      className="border-b border-slate-100 last:border-0 dark:border-[#0d2336]"
-                    >
-                      <td className="px-5 py-5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                        {index === 0
-                          ? "AVP"
-                          : index === 1
-                            ? "Zonal Head"
-                            : "Area Head"}
-                      </td>
-
-                      <td className="px-5 py-5 text-xs font-medium text-[#38588f]">
-                        {person.name}
-                      </td>
-
-                      <td className="px-5 py-5 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                        {formatCurrency(person.revenue)}
-                      </td>
-
-                      <td className="px-5 py-5 text-xs text-slate-600 dark:text-slate-400">
-                        {person.units.toLocaleString("en-IN")}
-                      </td>
-
-                      <td className="px-5 py-5 text-xs text-slate-600 dark:text-slate-400">
-                        {person.conversion}%
-                      </td>
-
-                      <td className="px-5 py-5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-emerald-500">
-                            {person.conversion}%
-                          </span>
-
-                          <div className="h-1.5 w-16 rounded-full bg-slate-100 dark:bg-slate-800">
-                            <div
-                              className="h-1.5 rounded-full bg-emerald-500"
-                              style={{
-                                width: `${Math.min(person.conversion, 100)}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-5 py-12 text-center text-xs text-slate-400"
-                    >
-                      No sales team data available.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* SALES ACTIVITY */}
-
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
-                Sales Activity
-              </h3>
-            </div>
-
-            <DashboardMenu
-              menu="activity"
-              openMenu={openMenu}
-              setOpenMenu={setOpenMenu}
-              onExport={exportActivityData}
-              onDownloadChart={downloadActivityChart}
-            />
-          </div>
-
-          <div className="mt-6 space-y-6">
-            {activities.length > 0 ? (
-              activities.slice(0, 4).map((item) => (
-                <div
-                  key={item.id}
-                  className="relative border-l-2 border-slate-200 pl-5 dark:border-slate-700"
-                >
-                  <div className="absolute -left-[7px] top-1 h-3 w-3 rounded-full border-2 border-white bg-[#38588f] dark:border-[#051422]" />
-
-                  <div className="flex items-start justify-between gap-2">
-                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      {item.title}
-                    </h4>
-
-                    <span className="shrink-0 text-[10px] text-slate-400">
-                      {item.date ? item.date.toLocaleDateString("en-IN") : ""}
-                    </span>
-                  </div>
-
-                  <p className="mt-1 text-[10px] text-slate-400">
-                    {item.person}
-                  </p>
-
-                  <div className="mt-2 rounded-lg bg-slate-50 p-3 text-[10px] text-slate-500 dark:bg-[#071929] dark:text-slate-400">
-                    {item.detail}
-                    {item.value > 0 && (
-                      <span className="ml-1 font-semibold text-slate-700 dark:text-slate-200">
-                        · {formatCurrency(item.value)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-10 text-center text-xs text-slate-400">
-                No recent activity.
               </div>
             )}
           </div>
