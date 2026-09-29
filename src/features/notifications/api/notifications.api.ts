@@ -19,6 +19,9 @@ export interface NotificationModel {
   /** Where the record opens, e.g. "/sales/orders/3". */
   link?: string | null;
   actor_name?: string | null;
+  /** Whose notification this is. Only set on a super admin's feed, which
+      covers the whole business rather than only what was sent to them. */
+  for_user?: string | null;
   is_read: boolean;
   created_at?: string | null;
 }

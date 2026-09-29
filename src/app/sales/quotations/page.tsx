@@ -23,6 +23,9 @@ import {
   TableCard,
   Th,
 } from "@/components/crm/ListPageShell";
+import ListActionsMenu, {
+  ExportColumn,
+} from "@/components/crm/ListActions";
 import StatCard from "@/components/crm/StatCard";
 import { monthOverMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
@@ -439,7 +442,6 @@ export default function QuotationPage() {
   const [filters, setFilters] = useState<QuotationFilters>(EMPTY_FILTERS);
   const [draftFilters, setDraftFilters] = useState<QuotationFilters>(EMPTY_FILTERS);
 
-  const [showPageMenu, setShowPageMenu] = useState(false);
   const [rowMenuId, setRowMenuId] = useState<number | null>(null);
 
   /* ---- create form ---- */
@@ -506,7 +508,6 @@ export default function QuotationPage() {
   const [sender, setSender] = useState<QuotationSender | null>(null);
 
   const filterRef = useRef<HTMLDivElement | null>(null);
-  const pageMenuRef = useRef<HTMLDivElement | null>(null);
 
   /* --------------------------------------------------------------------------
      FETCH
@@ -581,10 +582,6 @@ export default function QuotationPage() {
         setShowFilter(false);
       }
 
-      if (pageMenuRef.current && !pageMenuRef.current.contains(target)) {
-        setShowPageMenu(false);
-      }
-
       /* Only close the row menu for clicks outside it: closing on every
          mousedown unmounts the button before its click can land. */
       if (target instanceof Element && target.closest("[data-row-menu]")) {
@@ -599,11 +596,11 @@ export default function QuotationPage() {
     return () => document.removeEventListener("mousedown", handleOutside);
   }, []);
 
+  // The header raises the "refreshed" toast for every list screen.
   const refresh = async () => {
     setRefreshing(true);
     await fetchQuotations();
     setRefreshing(false);
-    addToast("Quotation list refreshed.", "success");
   };
 
   /* --------------------------------------------------------------------------
@@ -1395,150 +1392,28 @@ export default function QuotationPage() {
     }
   };
 
-  const exportCsv = () => {
-    if (!filtered.length) {
-      addToast("No quotations available for export.", "warning");
-      return;
-    }
-
-    const header = [
-      "Quote ID",
-      "Customer Name",
-      "Email",
-      "Opportunity",
-      "Order Value",
-      "Assigned To",
-      "Date",
-      "Status",
-    ];
-
-    const rows = filtered.map((quotation) => [
-      quotation.quote_number || "",
-      quotation.contact_name || "",
-      quotation.email || "",
-      quotation.opportunity_name || "",
-      String(quotation.total_payable || 0),
-      userName(quotation.assigned_to_id),
-      formatDate(quotation.quotation_date || quotation.created_at),
-      quotationStatusLabel(quotation.status),
-    ]);
-
-    const csv = [header, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = `quotations-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-
-    URL.revokeObjectURL(url);
-    setShowPageMenu(false);
-    addToast("Quotations exported.", "success");
-  };
-
-  /** Renders the status breakdown to a PNG, matching the Opportunity page. */
-  const downloadChart = () => {
-    if (!quotations.length) {
-      addToast("No quotations available to chart.", "warning");
-      return;
-    }
-
-    const bars = STATUS_TABS.filter((tab) => tab.value !== "All").map((tab) => ({
-      label: tab.label,
-      count: quotations.filter((q) => q.status === tab.value).length,
-      value: quotations
-        .filter((q) => q.status === tab.value)
-        .reduce((sum, q) => sum + (q.total_payable || 0), 0),
-    }));
-
-    const width = 900;
-    const height = 460;
-    const canvas = document.createElement("canvas");
-
-    canvas.width = width;
-    canvas.height = height;
-
-    const ctx = canvas.getContext("2d");
-
-    if (!ctx) {
-      addToast("This browser cannot render the chart.", "error");
-      return;
-    }
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.fillStyle = "#233353";
-    ctx.font = "bold 20px Arial";
-    ctx.fillText("Quotation Pipeline", 40, 46);
-
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = "12px Arial";
-    ctx.fillText(
-      `${quotations.length} quotations · ${compactMoney(stats.grossValue)} gross value`,
-      40,
-      68,
-    );
-
-    const chartTop = 100;
-    const chartBottom = height - 70;
-    const chartHeight = chartBottom - chartTop;
-    const maxCount = Math.max(...bars.map((bar) => bar.count), 1);
-
-    const slot = (width - 100) / bars.length;
-    const barWidth = Math.min(80, slot - 30);
-
-    /* Same tones the StatusPill uses, so the export reads like the screen. */
-    const tones: Record<string, string> = {
-      Draft: "#94a3b8",
-      Sent: "#f59e0b",
-      Accepted: "#10b981",
-      Rejected: "#f43f5e",
-      Expired: "#cbd5e1",
-    };
-
-    ctx.strokeStyle = "#e2e8f0";
-    ctx.beginPath();
-    ctx.moveTo(40, chartBottom);
-    ctx.lineTo(width - 40, chartBottom);
-    ctx.stroke();
-
-    bars.forEach((bar, index) => {
-      const barHeight = (bar.count / maxCount) * (chartHeight - 30);
-      const x = 60 + index * slot;
-      const y = chartBottom - barHeight;
-
-      ctx.fillStyle = tones[bar.label] || "#94a3b8";
-      ctx.fillRect(x, y, barWidth, barHeight);
-
-      ctx.fillStyle = "#233353";
-      ctx.font = "bold 13px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText(String(bar.count), x + barWidth / 2, y - 8);
-
-      ctx.fillStyle = "#64748b";
-      ctx.font = "12px Arial";
-      ctx.fillText(bar.label, x + barWidth / 2, chartBottom + 20);
-
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "10px Arial";
-      ctx.fillText(compactMoney(bar.value), x + barWidth / 2, chartBottom + 38);
-
-      ctx.textAlign = "left";
-    });
-
-    const link = document.createElement("a");
-
-    link.href = canvas.toDataURL("image/png");
-    link.download = `quotation-chart-${new Date().toISOString().slice(0, 10)}.png`;
-    link.click();
-
-    setShowPageMenu(false);
-    addToast("Chart downloaded.", "success");
-  };
+  /* A quotation as a spreadsheet row. Built here rather than at module
+     level because the owner's name needs the users this page loaded. */
+  const quotationColumns: ExportColumn<QuotationModel>[] = useMemo(
+    () => [
+      { header: "Quote ID", value: (row) => row.quote_number || "" },
+      { header: "Customer Name", value: (row) => row.contact_name || "" },
+      { header: "Organization", value: (row) => row.organization_name || "" },
+      { header: "Email", value: (row) => row.email || "" },
+      { header: "Mobile", value: (row) => row.mobile_number || "" },
+      { header: "Opportunity", value: (row) => row.opportunity_name || "" },
+      { header: "Subtotal", value: (row) => row.subtotal || 0 },
+      { header: "Order Value", value: (row) => row.total_payable || 0 },
+      { header: "Assigned To", value: (row) => userName(row.assigned_to_id) },
+      {
+        header: "Date",
+        value: (row) => formatDate(row.quotation_date || row.created_at),
+      },
+      { header: "Valid Until", value: (row) => formatDate(row.validation_date) },
+      { header: "Status", value: (row) => quotationStatusLabel(row.status) },
+    ],
+    [userName],
+  );
 
   /* --------------------------------------------------------------------------
      RENDER - CREATE
@@ -2304,38 +2179,19 @@ export default function QuotationPage() {
         refreshing={refreshing}
         onRefresh={refresh}
         actions={
-          <div className="relative" ref={pageMenuRef}>
-            <button
-              type="button"
-              aria-label="Page actions"
-              onClick={() => setShowPageMenu((previous) => !previous)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929]"
-            >
-              <FiMoreVertical size={15} />
-            </button>
-
-            {showPageMenu && (
-              <div className="absolute right-0 top-full z-40 mt-1 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl dark:border-[#17304a] dark:bg-[#051422]">
-                <button
-                  type="button"
-                  onClick={exportCsv}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-[#071929]"
-                >
-                  <FiDownload size={14} className="text-slate-500" />
-                  Export Data
-                </button>
-
-                <button
-                  type="button"
-                  onClick={downloadChart}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-[#071929]"
-                >
-                  <FiGrid size={14} className="text-slate-500" />
-                  Download Chart
-                </button>
-              </div>
-            )}
-          </div>
+          <ListActionsMenu
+            name="Quotations"
+            rows={filtered}
+            columns={quotationColumns}
+            chart={[
+              { label: "Total", value: stats.total },
+              { label: "Draft", value: stats.drafts },
+              { label: "Sent", value: stats.sent },
+              { label: "Accepted", value: stats.accepted },
+              { label: "Rejected", value: stats.rejected },
+              { label: "Expired", value: stats.expired },
+            ]}
+          />
         }
       />
 

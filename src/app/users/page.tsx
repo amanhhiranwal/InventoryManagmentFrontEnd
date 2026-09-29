@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AxiosError } from "axios";
 import { getUsersApi, createUserApi, updateUserApi, deleteUserApi, User } from "@/features/users/api/users.api";
 import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
@@ -8,12 +8,19 @@ import { getCompaniesApi, Company } from "@/features/companies/api/companies.api
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
 import { hasPermission } from "@/features/auth/utils/permissions";
-import { FiPlus, FiSearch, FiUser, FiMail, FiPhone, FiTag, FiCheckCircle, FiTrash2, FiEdit2 } from "react-icons/fi";
+import { FiPlus, FiUser, FiMail, FiPhone, FiTag, FiCheckCircle, FiTrash2, FiEdit2 } from "react-icons/fi";
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import PageHeader from "@/components/ui/PageHeader";
+import {
+  ListPage,
+  ListToolbar,
+  PrimaryAction,
+} from "@/components/crm/ListPageShell";
+import ListActionsMenu, {
+  ExportColumn,
+} from "@/components/crm/ListActions";
 import Table from "@/components/ui/Table";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
 import { eligibleManagers, userLabel } from "@/features/users/utils/hierarchy";
@@ -261,6 +268,32 @@ export default function UserListPage() {
     }
   };
 
+  /* A user as a spreadsheet row. Built here rather than at module level
+     because the company names come from the companies this page loaded. */
+  const userColumns: ExportColumn<User>[] = useMemo(
+    () => [
+      {
+        header: "Name",
+        value: (u) => `${u.first_name || ""} ${u.last_name || ""}`.trim(),
+      },
+      { header: "Email", value: (u) => u.email },
+      { header: "Employee ID", value: (u) => u.employee_id || "" },
+      { header: "Phone", value: (u) => u.phone_number || "" },
+      { header: "Roles", value: (u) => (u.role_names || []).join(" / ") },
+      {
+        header: "Companies",
+        value: (u) =>
+          companies
+            .filter((c) => u.company_ids?.includes(c.id))
+            .map((c) => c.company_name)
+            .join(" / "),
+      },
+      { header: "Reports To", value: (u) => u.reports_to_name || "" },
+      { header: "Super Admin", value: (u) => (u.is_super_admin ? "Yes" : "No") },
+    ],
+    [companies],
+  );
+
   if (!canReadUsers) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center bg-white dark:bg-[#051422] border border-slate-200 dark:border-[#0d2336] rounded-2xl shadow-xl backdrop-blur-md">
@@ -283,36 +316,34 @@ export default function UserListPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <ListPage>
       <PageHeader
         title="User Management"
         description="View profiles, register new team members, and manage roles and authorization policies."
         action={
-          showAddUser && (
-            <Button onClick={() => setShowCreateModal(true)} icon={<FiPlus />}>
-              Add User
-            </Button>
-          )
+          <ListActionsMenu
+            name="Users"
+            rows={filteredUsers}
+            columns={userColumns}
+          />
         }
       />
 
-      <Card className="p-0 overflow-visible" bodyClassName="p-0">
-        <div className="p-5 border-b border-slate-100 dark:border-[#0d2336]">
-          <div className="relative max-w-md">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-              <FiSearch />
-            </span>
-            <input
-              type="text"
-              placeholder="Search users by name or email..."
-              className="
-                w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 pl-10 pr-4 py-2 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-primary focus:bg-white dark:focus:border-primary-hover dark:focus:bg-[#071929]
-              "
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
+      <ListToolbar
+        search={searchQuery}
+        onSearchChange={setSearchQuery}
+        placeholder="Search users by name or email"
+        trailing={
+          showAddUser ? (
+            <PrimaryAction
+              onClick={() => setShowCreateModal(true)}
+              icon={<FiPlus size={14} />}
+            >
+              Add User
+            </PrimaryAction>
+          ) : undefined
+        }
+      />
 
         <Table
           headers={["User", "Roles", "Companies", "ID / Details", "Actions"]}
@@ -438,7 +469,6 @@ export default function UserListPage() {
             );
           })}
         </Table>
-      </Card>
 
       {/* User Creation Modal */}
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Add New User">
@@ -619,6 +649,6 @@ export default function UserListPage() {
           </div>
         </Modal>
       )}
-    </div>
+    </ListPage>
   );
 }

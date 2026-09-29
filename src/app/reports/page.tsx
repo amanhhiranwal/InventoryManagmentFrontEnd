@@ -3,19 +3,39 @@
 import { useEffect, useState, useCallback } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
+import StatCard from "@/components/crm/StatCard";
+import { ListPage, StatGrid } from "@/components/crm/ListPageShell";
+import ListActionsMenu, {
+  ExportColumn,
+} from "@/components/crm/ListActions";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 import { getLeadsApi, Lead } from "@/features/workflows/api/workflows.api";
 import {
-  FiTrendingUp,
-  FiDownload,
-  FiRefreshCw,
   FiCheckCircle,
-  FiFileText,
-  FiShoppingBag
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
+
+/** The pipeline as a spreadsheet: one row per lead, with what it is
+    worth, so "Export Summary" produces an actual file. It used to raise a
+    toast saying it was exporting and then do nothing at all. */
+const REPORT_COLUMNS: ExportColumn<Lead>[] = [
+  { header: "Lead", value: (lead) => lead.title },
+  { header: "Organization", value: (lead) => lead.organization_name || "" },
+  { header: "Contact", value: (lead) => lead.contact_name || "" },
+  { header: "Email", value: (lead) => lead.email || "" },
+  { header: "Stage", value: (lead) => lead.stage },
+  { header: "Status", value: (lead) => lead.status },
+  { header: "Owner", value: (lead) => lead.assigned_to_name || lead.creator_name || "" },
+  {
+    header: "Quoted Value",
+    value: (lead) =>
+      (lead.quotation_items || []).reduce(
+        (total, item) => total + (item.qty || 1) * (item.price || 0),
+        0,
+      ),
+  },
+];
 
 export default function ReportsPage() {
   const { addToast } = useUIStore();
@@ -67,25 +87,27 @@ export default function ReportsPage() {
     fetchReportsData();
   }, [fetchReportsData]);
 
-  const handleExportReport = () => {
-    addToast("Exporting comprehensive executive report (CSV)...", "info");
-  };
+  /* The stages the distribution bars are drawn across. */
+  const STAGES = ["lead", "opportunity", "quotation", "won", "lost"];
+
+  const stageCount = (stage: string) =>
+    leads.filter((l) => l.stage === stage || l.status === stage).length;
 
   return (
-    <div className="space-y-6 select-none">
+    <ListPage>
       <PageHeader
         title="Executive Reports & Analytics"
         description="Comprehensive business intelligence performance summary and audit ledgers."
         action={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleExportReport} className="flex items-center gap-2">
-              <FiDownload className="text-xs" />
-              <span>Export Summary</span>
-            </Button>
-            <Button variant="secondary" size="sm" onClick={fetchReportsData} className="p-2.5">
-              <FiRefreshCw className="text-xs" />
-            </Button>
-          </div>
+          <ListActionsMenu
+            name="Reports"
+            rows={leads}
+            columns={REPORT_COLUMNS}
+            chart={STAGES.map((stage) => ({
+              label: stage.charAt(0).toUpperCase() + stage.slice(1),
+              value: stageCount(stage),
+            }))}
+          />
         }
       />
 
@@ -97,49 +119,23 @@ export default function ReportsPage() {
       ) : (
         <div className="space-y-6">
           {/* Top Performance Overview Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Pipeline Revenue</p>
-                  <h3 className="text-2xl font-extrabold text-slate-800 dark:text-white mt-1">
-                    ₹{totalRevenue.toLocaleString("en-IN")}
-                  </h3>
-                </div>
-                <div className="p-3 bg-emerald-500/10 text-emerald-600 rounded-xl">
-                  <FiTrendingUp className="text-2xl" />
-                </div>
-              </div>
-            </Card>
-
-            <Card>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Active Leads</p>
-                  <h3 className="text-2xl font-extrabold text-slate-800 dark:text-white mt-1">
-                    {leads.length}
-                  </h3>
-                </div>
-                <div className="p-3 bg-indigo-500/10 text-indigo-600 rounded-xl">
-                  <FiFileText className="text-2xl" />
-                </div>
-              </div>
-            </Card>
-
-            <Card>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Executed Orders</p>
-                  <h3 className="text-2xl font-extrabold text-slate-800 dark:text-white mt-1">
-                    {ordersCount}
-                  </h3>
-                </div>
-                <div className="p-3 bg-sky-500/10 text-sky-600 rounded-xl">
-                  <FiShoppingBag className="text-2xl" />
-                </div>
-              </div>
-            </Card>
-          </div>
+          <StatGrid>
+            <StatCard
+              label="Total Pipeline Revenue"
+              value={`₹${totalRevenue.toLocaleString("en-IN")}`}
+              caption="quoted across every open lead"
+            />
+            <StatCard
+              label="Total Active Leads"
+              value={leads.length}
+              caption="on the board right now"
+            />
+            <StatCard
+              label="Executed Orders"
+              value={ordersCount}
+              caption="raised to date"
+            />
+          </StatGrid>
 
           {/* Audit & Report Breakdown */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -182,6 +178,6 @@ export default function ReportsPage() {
           </div>
         </div>
       )}
-    </div>
+    </ListPage>
   );
 }

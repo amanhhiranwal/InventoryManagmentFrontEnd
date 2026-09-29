@@ -1,9 +1,20 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import PageHeader from "@/components/ui/PageHeader";
-import Card from "@/components/ui/Card";
-import Table from "@/components/ui/Table";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import {
+  LIST_TABLE,
+  ListPage,
+  ListPageHeader,
+  ListToolbar,
+  PrimaryAction,
+  StatGrid,
+  TableCard,
+} from "@/components/crm/ListPageShell";
+import StatCard from "@/components/crm/StatCard";
+import QueueTabs from "@/components/crm/QueueTabs";
+import ListActionsMenu, {
+  ExportColumn,
+} from "@/components/crm/ListActions";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
@@ -26,7 +37,6 @@ import {
 import {
   FiPlus,
   FiTrash2,
-  FiSearch,
   FiDatabase,
   FiEye,
   FiEdit2,
@@ -35,6 +45,28 @@ import {
   FiX
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
+
+/** The catalogue as a spreadsheet: what a stock take is done against. */
+const INVENTORY_COLUMNS: ExportColumn<InventoryItem>[] = [
+  { header: "Item Name", value: (item) => item.name },
+  { header: "Serial Number", value: (item) => item.serial_number },
+  { header: "Product Type", value: (item) => item.product_type_code },
+  { header: "Category Group", value: (item) => item.category },
+  { header: "Company", value: (item) => item.company_name || "All companies" },
+  {
+    header: "In Stock",
+    value: (item) => Number(item.attributes?.instock ?? item.attributes?.stock ?? 0),
+  },
+  { header: "Unit", value: (item) => String(item.attributes?.unit ?? "") },
+  { header: "Wholesale Rate", value: (item) => Number(item.attributes?.rate ?? 0) },
+  { header: "Case Size", value: (item) => Number(item.attributes?.case_size ?? 1) },
+  {
+    header: "Stock Value",
+    value: (item) =>
+      Number(item.attributes?.instock ?? item.attributes?.stock ?? 0) *
+      Number(item.attributes?.rate ?? 0),
+  },
+];
 
 export default function InventoryPage() {
   const { addToast } = useUIStore();
@@ -107,11 +139,14 @@ export default function InventoryPage() {
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  /* The whole catalogue for this company and search, not the chosen
+     category: the category tabs carry a count each, and a count can only
+     be worked out from the rows that are not being filtered out. Picking a
+     category is then instant rather than a round trip. */
   const fetchItems = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getInventoryItemsApi({
-        product_type_code: selectedFilterCategory || undefined,
         search: searchQuery || undefined,
         company_id: selectedFilterCompany || undefined,
       });
@@ -122,7 +157,7 @@ export default function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedFilterCategory, searchQuery, selectedFilterCompany, addToast]);
+  }, [searchQuery, selectedFilterCompany, addToast]);
 
   const fetchUnits = useCallback(async () => {
     try {
@@ -178,6 +213,65 @@ export default function InventoryPage() {
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
+
+  /* --------------------------------------------------------------------
+     What the shelf holds
+
+     The numbers across the top and the category tabs are both read off
+     the full catalogue, so choosing a category narrows the table without
+     moving the totals - the point of the header is what the warehouse
+     holds altogether.
+  -------------------------------------------------------------------- */
+  const stockOf = (item: InventoryItem): number =>
+    Number(item.attributes?.instock ?? item.attributes?.stock ?? 0);
+
+  const summary = useMemo(() => {
+    const units = items.reduce((total, item) => total + stockOf(item), 0);
+    const value = items.reduce(
+      (total, item) => total + stockOf(item) * Number(item.attributes?.rate ?? 0),
+      0,
+    );
+
+    return {
+      products: items.length,
+      units,
+      value,
+      // A line nobody has reordered yet, and one that cannot be sold at
+      // all - the two the warehouse acts on.
+      thin: items.filter((item) => stockOf(item) > 0 && stockOf(item) <= 3).length,
+      out: items.filter((item) => stockOf(item) === 0).length,
+      categories: new Set(items.map((item) => item.product_type_code)).size,
+    };
+  }, [items]);
+
+  /* A tab per product type, plus "All Products". Only types that are
+     actually stocked get a tab: a catalogue of seven types and one empty
+     one is a row of tabs that never does anything. */
+  const categoryTabs = useMemo(() => {
+    const counted = productTypes
+      .map((type) => ({
+        value: type.code,
+        label: type.name,
+        count: items.filter((item) => item.product_type_code === type.code).length,
+      }))
+      .filter((tab) => tab.count > 0);
+
+    return [
+      { value: "", label: "All Products", count: items.length },
+      ...counted,
+    ];
+  }, [productTypes, items]);
+
+  const visibleItems = useMemo(
+    () =>
+      selectedFilterCategory
+        ? items.filter((item) => item.product_type_code === selectedFilterCategory)
+        : items,
+    [items, selectedFilterCategory],
+  );
+
+  const money = (value: number) =>
+    `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
   // Load template when product type selection changes in form (Create)
   const loadFormTemplate = useCallback(async (code: string) => {
@@ -460,170 +554,212 @@ export default function InventoryPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <PageHeader
-          title="Inventory Management"
-          description="Access and track custom product specifications and inventory stock levels."
-        />
-        <Button
-          onClick={() => {
-            if (productTypes.length === 0) {
-              addToast("Please create a Product Type master first.", "warning");
-              return;
-            }
-            setShowCreateModal(true);
-          }}
-          icon={<FiPlus />}
-          className="shrink-0"
-        >
-          Add Inventory Product
-        </Button>
-      </div>
-
-      <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
-        {/* Search Input */}
-        <div className="flex items-center gap-3 max-w-md bg-white dark:bg-[#051422] rounded-xl border border-slate-200 dark:border-[#0d2336] px-3.5 py-2 flex-grow">
-          <FiSearch className="text-slate-400 text-sm" />
-          <input
-            type="text"
-            placeholder="Search items by name or serial..."
-            className="w-full text-xs bg-transparent outline-none text-slate-800 dark:text-white"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+    <ListPage>
+      <ListPageHeader
+        title="Inventory Management"
+        refreshing={loading}
+        onRefresh={fetchItems}
+        actions={
+          <ListActionsMenu
+            name="Inventory"
+            rows={visibleItems}
+            columns={INVENTORY_COLUMNS}
+            chart={[
+              { label: "Products", value: summary.products },
+              { label: "In Stock", value: summary.units },
+              { label: "Categories", value: summary.categories },
+              { label: "Running Thin", value: summary.thin },
+              { label: "Out Of Stock", value: summary.out },
+            ]}
           />
-        </div>
+        }
+      />
 
-        {/* Company filter - only worth showing when there is a choice. */}
-        {scopeCompanies.length > 1 && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Company:</span>
-            <select
-              value={selectedFilterCompany}
-              onChange={(e) => setSelectedFilterCompany(e.target.value)}
-              className="rounded-xl border border-slate-200 dark:border-[#0d2336] bg-white dark:bg-[#051422] px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 outline-none cursor-pointer"
-            >
-              <option value="">{anyCompany ? "All companies" : "All my companies"}</option>
-              {scopeCompanies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.company_name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+      <p className="-mt-3 text-[13px] text-[#777777] dark:text-slate-400">
+        Everything on the shelf, what it is worth, and what is running out.
+      </p>
 
-        {/* Category Filters row */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mr-2">Filter Category:</span>
-          <button
-            onClick={() => setSelectedFilterCategory("")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-              selectedFilterCategory === ""
-                ? "bg-primary text-white border-primary"
-                : "bg-white dark:bg-[#051422] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-[#0d2336] hover:bg-slate-50"
-            }`}
+      <StatGrid cols={6}>
+        <StatCard compact label="Products" value={summary.products} caption="in the catalogue" />
+        <StatCard compact label="Units In Stock" value={summary.units} caption="across every line" />
+        <StatCard compact label="Stock Value" value={money(summary.value)} caption="at wholesale rate" />
+        <StatCard compact label="Categories" value={summary.categories} caption="product types stocked" />
+        <StatCard
+          compact
+          label="Running Thin"
+          value={summary.thin}
+          caption="3 or fewer left"
+          change={summary.thin > 0 ? "reorder" : undefined}
+          positive={false}
+        />
+        <StatCard
+          compact
+          label="Out Of Stock"
+          value={summary.out}
+          caption="nothing to send"
+          change={summary.out > 0 ? "action" : undefined}
+          positive={false}
+        />
+      </StatGrid>
+
+      <ListToolbar
+        search={searchQuery}
+        onSearchChange={setSearchQuery}
+        placeholder="Search products by name or serial number"
+        trailing={
+          <PrimaryAction
+            onClick={() => {
+              if (productTypes.length === 0) {
+                addToast("Please create a Product Type master first.", "warning");
+                return;
+              }
+              setShowCreateModal(true);
+            }}
+            icon={<FiPlus size={14} />}
           >
-            All
-          </button>
-          {productTypes.map((t) => (
-            <button
-              key={t.code}
-              onClick={() => setSelectedFilterCategory(t.code)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                selectedFilterCategory === t.code
-                  ? "bg-primary text-white border-primary"
-                  : "bg-white dark:bg-[#051422] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-[#0d2336] hover:bg-slate-50"
-              }`}
-            >
-              {t.code}
-            </button>
-          ))}
-        </div>
-      </div>
+            Add Inventory Product
+          </PrimaryAction>
+        }
+      >
+        {/* Which company's shelf. Only worth showing when there is more
+            than one to choose between. */}
+        {scopeCompanies.length > 1 && (
+          <select
+            value={selectedFilterCompany}
+            onChange={(e) => setSelectedFilterCompany(e.target.value)}
+            aria-label="Company"
+            className="h-[39px] shrink-0 rounded-lg border border-[#cccccc] bg-[#f3f3f3] px-3 text-[13px] text-[#141414] outline-none transition focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+          >
+            <option value="">{anyCompany ? "All companies" : "All my companies"}</option>
+            {scopeCompanies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.company_name}
+              </option>
+            ))}
+          </select>
+        )}
+      </ListToolbar>
 
-      <Card>
+      <TableCard>
+        {/* Which part of the catalogue, on the table rather than beside
+            the search box: these are not actions, and a row of product
+            type codes read as one. */}
+        <QueueTabs
+          tabs={categoryTabs}
+          active={selectedFilterCategory}
+          onChange={(value) => setSelectedFilterCategory(value ?? "")}
+        />
+
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
+          <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400">
             <CgSpinner className="animate-spin text-3xl text-primary" />
             <span className="text-xs">Loading inventory items...</span>
           </div>
-        ) : items.length > 0 ? (
-          <Table headers={["Product Preview", "Item Name", "Serial Number", "Category Group", "Company", "Stock Status *", "Wholesale Rate *", "Actions"]}>
-            {items.map((item) => {
+        ) : visibleItems.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className={`w-full min-w-[980px] text-left ${LIST_TABLE}`}>
+              <thead>
+                <tr>
+                  <th className="px-5 py-3">Product</th>
+                  <th className="px-5 py-3">Item Name</th>
+                  <th className="px-5 py-3">Serial Number</th>
+                  <th className="px-5 py-3">Category Group</th>
+                  <th className="px-5 py-3">Company</th>
+                  <th className="px-5 py-3">In Stock</th>
+                  <th className="px-5 py-3">Wholesale Rate</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+            {visibleItems.map((item) => {
               const typeName = productTypes.find((t) => t.code === item.product_type_code)?.name || item.product_type_code;
               const rateVal = item.attributes?.rate ?? 0;
               const unitVal = item.attributes?.unit ?? "Unit";
               const stockVal = item.attributes?.instock ?? item.attributes?.stock ?? 0;
               const caseSizeVal = item.attributes?.case_size ?? 1;
 
+              /* The one number the warehouse acts on, so it is the one
+                 thing on the row that carries a colour. */
+              const stockTone =
+                stockVal === 0
+                  ? "bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400"
+                  : stockVal <= 3
+                    ? "bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400"
+                    : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400";
+
               return (
                 <tr
                   key={item._id}
-                  className="hover:bg-slate-50/50 dark:hover:bg-[#071929]/20 transition-all duration-150 border-b border-slate-100 dark:border-[#0d2336]/30"
+                  className="border-t border-slate-100 transition hover:bg-slate-50/60 dark:border-[#0d2336]/40 dark:hover:bg-[#0b2034]/40"
                 >
-                  <td className="py-3 px-5">
+                  <td className="px-5 py-3">
                     {item.image_base64 ? (
                       <img
                         src={item.image_base64}
                         alt={item.name}
-                        className="w-10 h-10 rounded-lg object-cover border border-slate-200 dark:border-[#0d2336] bg-slate-50"
+                        className="h-10 w-10 rounded-lg border border-slate-200 bg-slate-50 object-cover dark:border-[#0d2336]"
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded-lg border border-slate-100 dark:border-[#0d2336]/50 bg-slate-50 dark:bg-[#071929]/20 flex items-center justify-center text-slate-400">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-slate-400 dark:border-[#0d2336]/50 dark:bg-[#071929]/20">
                         <FiImage className="text-sm" />
                       </div>
                     )}
                   </td>
-                  <td className="py-4 px-5 font-bold text-slate-800 dark:text-white text-sm">
-                    <div className="flex items-center gap-2">
-                      <FiDatabase className="text-primary text-xs shrink-0" />
-                      <div>
-                        <span>{item.name}</span>
-                        <span className="text-[10px] text-slate-400 block font-normal">{typeName}</span>
-                      </div>
-                    </div>
+                  <td className="px-5 py-3">
+                    <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
+                      {item.name}
+                    </p>
+                    <p className="text-[11px] text-[#777777] dark:text-slate-400">
+                      {typeName}
+                    </p>
                   </td>
-                  <td className="py-4 px-5">
-                    <span className="font-mono text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider bg-slate-100 dark:bg-[#0d2336] px-2 py-0.5 rounded">
+                  <td className="px-5 py-3">
+                    <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-slate-700 dark:bg-[#0d2336] dark:text-white">
                       {item.serial_number}
                     </span>
                   </td>
-                  <td className="py-4 px-5 text-xs text-slate-500">
+                  <td className="px-5 py-3 text-[13px] text-slate-600 dark:text-slate-300">
                     {item.category}
                   </td>
-                  <td className="py-4 px-5 text-xs">
+                  <td className="px-5 py-3 text-[13px]">
                     {item.company_name ? (
-                      <span className="rounded-md bg-slate-100 dark:bg-[#0d2336] px-2 py-0.5 font-semibold text-slate-600 dark:text-slate-300">
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-[#0d2336] dark:text-slate-300">
                         {item.company_name}
                       </span>
                     ) : (
-                      <span className="italic text-slate-400">All companies</span>
+                      <span className="text-[13px] text-slate-400">All companies</span>
                     )}
                   </td>
-                  <td className="py-4 px-5 text-xs font-semibold text-slate-700 dark:text-slate-355 font-mono">
-                    {stockVal.toLocaleString('en-IN')} {unitVal}
+                  <td className="px-5 py-3">
+                    <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-[11px] font-semibold ${stockTone}`}>
+                      {stockVal.toLocaleString("en-IN")} {unitVal}
+                    </span>
                   </td>
-                  <td className="py-4 px-5 text-xs font-semibold text-primary font-mono">
-                    ₹{rateVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })} / {unitVal}
-                    <span className="text-[10px] text-slate-400 block font-normal font-sans">({caseSizeVal} {unitVal}/Case)</span>
+                  <td className="px-5 py-3">
+                    <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
+                      ₹{rateVal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      <span className="font-normal text-[#777777] dark:text-slate-400"> / {unitVal}</span>
+                    </p>
+                    <p className="text-[11px] text-[#777777] dark:text-slate-400">
+                      {caseSizeVal} {unitVal}/case
+                    </p>
                   </td>
-                  <td className="py-4 px-5 text-right">
+                  <td className="px-5 py-3 text-right">
                     <div className="flex justify-end gap-1.5">
                       <button
                         onClick={() => {
                           setItemView(item);
                           setShowViewModal(true);
                         }}
-                        className="p-1.5 rounded-lg border-none bg-transparent cursor-pointer text-slate-400 hover:text-slate-700"
-                        title="View Specifications & QR Code"
+                        className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                        title="View specifications and QR code"
                       >
                         <FiEye className="text-sm" />
                       </button>
                       <button
                         onClick={() => handleOpenEditModal(item)}
-                        className="p-1.5 rounded-lg border-none bg-transparent cursor-pointer text-slate-400 hover:text-primary"
-                        title="Edit Item"
+                        className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 hover:text-primary"
+                        title="Edit product"
                       >
                         <FiEdit2 className="text-sm" />
                       </button>
@@ -632,8 +768,8 @@ export default function InventoryPage() {
                           setItemToDelete(item);
                           setShowDeleteModal(true);
                         }}
-                        className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-[#0d2336] border-none bg-transparent cursor-pointer"
-                        title="Delete Item"
+                        className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 hover:bg-slate-100 hover:text-rose-500 dark:hover:bg-[#0d2336]"
+                        title="Delete product"
                       >
                         <FiTrash2 className="text-sm" />
                       </button>
@@ -642,13 +778,22 @@ export default function InventoryPage() {
                 </tr>
               );
             })}
-          </Table>
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <div className="text-center py-12 text-slate-400 italic text-xs">
-            No inventory products found matching these filters.
+          <div className="px-5 py-12 text-center text-[13px] text-slate-400">
+            {items.length === 0
+              ? "No products on the shelf yet."
+              : "Nothing in this category."}
           </div>
         )}
-      </Card>
+
+        <div className="border-t border-slate-100 px-5 py-3 text-[12px] text-[#777777] dark:border-[#17304a] dark:text-slate-400">
+          Showing {visibleItems.length} of {items.length} product
+          {items.length === 1 ? "" : "s"}
+        </div>
+      </TableCard>
 
       {/* View Details Modal */}
       {showViewModal && itemView && (
@@ -1358,6 +1503,6 @@ export default function InventoryPage() {
           </div>
         </Modal>
       )}
-    </div>
+    </ListPage>
   );
 }

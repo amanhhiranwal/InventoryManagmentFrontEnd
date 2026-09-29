@@ -16,10 +16,14 @@ import { hasPermission } from "@/features/auth/utils/permissions";
 import { useUIStore } from "@/lib/store/ui.store";
 import { FiPlus, FiMapPin, FiCheckCircle, FiBriefcase, FiEdit2, FiTrash2, FiMail, FiPhone } from "react-icons/fi";
 import Button from "@/components/ui/Button";
-import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import PageHeader from "@/components/ui/PageHeader";
+import {
+  ListPage,
+  ListToolbar,
+  PrimaryAction,
+} from "@/components/crm/ListPageShell";
 import Table from "@/components/ui/Table";
 
 export default function LocationsPage() {
@@ -39,6 +43,7 @@ export default function LocationsPage() {
 
   // Filter state
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string>("");
+  const [search, setSearch] = useState("");
 
   // Form states
   const [creating, setCreating] = useState(false);
@@ -202,50 +207,59 @@ export default function LocationsPage() {
     );
   }
 
-  const filteredLocations = selectedCompanyFilter
-    ? locations.filter((loc) => loc.company_id === selectedCompanyFilter)
-    : locations;
+  /* Company first, then the search box - every other list screen has one
+     and this page was the only directory you could not search. */
+  const term = search.trim().toLowerCase();
+
+  const filteredLocations = locations
+    .filter(
+      (loc) => !selectedCompanyFilter || loc.company_id === selectedCompanyFilter,
+    )
+    .filter(
+      (loc) =>
+        !term ||
+        [
+          loc.location_name,
+          loc.location_code,
+          loc.city,
+          loc.state,
+          loc.address_line_1,
+        ].some((field) => (field || "").toLowerCase().includes(term)),
+    );
 
   return (
-    <div className="space-y-6 relative">
+    <ListPage>
       <PageHeader
         title="Locations Directory"
         description="Monitor organizational warehouses, offices, and distribution nodes."
-        action={
-          showAddLocation && (
-            <Button onClick={handleOpenCreateModal} icon={<FiPlus />}>
-              Create Location
-            </Button>
-          )
-        }
       />
 
-      <Card className="p-0 overflow-visible" bodyClassName="p-0">
-        {/* Filtering & Search Bar */}
-        <div className="p-5 border-b border-slate-100 dark:border-[#0d2336]">
-          <div className="w-full sm:w-72">
-            <label className="block text-xs font-bold text-slate-405 dark:text-slate-400 uppercase tracking-wider mb-1.5">
-              Filter by Company
-            </label>
-            <div className="relative">
-              <select
-                className="w-full appearance-none rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2 text-sm text-slate-900 dark:text-white outline-none transition-all focus:border-primary focus:bg-white dark:focus:border-primary-hover dark:focus:bg-[#071929] cursor-pointer"
-                value={selectedCompanyFilter}
-                onChange={(e) => setSelectedCompanyFilter(e.target.value)}
-              >
-                <option value="">All Companies</option>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.company_name}
-                  </option>
-                ))}
-              </select>
-              <span className="absolute inset-y-0 right-3.5 flex items-center pointer-events-none text-slate-400 text-[10px]">
-                ▼
-              </span>
-            </div>
-          </div>
-        </div>
+      <ListToolbar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search locations by name or address"
+        trailing={
+          showAddLocation ? (
+            <PrimaryAction onClick={handleOpenCreateModal} icon={<FiPlus size={14} />}>
+              Create Location
+            </PrimaryAction>
+          ) : undefined
+        }
+      >
+        <select
+          aria-label="Filter by company"
+          className="h-[39px] shrink-0 rounded-lg border border-[#cccccc] bg-[#f3f3f3] px-3 text-[13px] text-[#141414] outline-none transition focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+          value={selectedCompanyFilter}
+          onChange={(e) => setSelectedCompanyFilter(e.target.value)}
+        >
+          <option value="">All Companies</option>
+          {companies.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.company_name}
+            </option>
+          ))}
+        </select>
+      </ListToolbar>
 
         <Table
           headers={["Location", "Company Assignment", "Address", "Status", "Actions"]}
@@ -320,7 +334,6 @@ export default function LocationsPage() {
             </tr>
           ))}
         </Table>
-      </Card>
 
       {/* Create & Edit Location Modal */}
       <Modal
@@ -458,6 +471,6 @@ export default function LocationsPage() {
           </div>
         )}
       </Modal>
-    </div>
+    </ListPage>
   );
 }

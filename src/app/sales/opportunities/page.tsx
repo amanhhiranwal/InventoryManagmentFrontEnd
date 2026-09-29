@@ -37,9 +37,13 @@ import FormPageHeader, {
 import {
   LIST_TABLE,
   Th,
+  ListPageHeader,
   ListToolbar,
   PrimaryAction,
 } from "@/components/crm/ListPageShell";
+import ListActionsMenu, {
+  ExportColumn,
+} from "@/components/crm/ListActions";
 import {
   OPPORTUNITY_STATUS,
   OPPORTUNITY_STATUS_LABEL,
@@ -64,7 +68,6 @@ import {
   FiSearch,
   FiGrid,
   FiList,
-  FiDownload,
   FiRefreshCw,
   FiPhone,
   FiMoreVertical,
@@ -179,6 +182,14 @@ type OpportunityStatus = "Active" | "Inactive";
 
 type Priority = "High" | "Medium" | "Low";
 
+/** The stages the pipeline chart is drawn across, in pipeline order. */
+const OPPORTUNITY_STAGES = [
+  "Qualified",
+  "Demo Scheduled",
+  "Proposal Sent",
+  "Negotiation",
+] as const;
+
 interface Opportunity {
   id: string;
   leadId: string;
@@ -223,6 +234,24 @@ interface Opportunity {
       lines, lead source - rather than only the handful mapped above. */
   raw?: Record<string, any>;
 }
+
+/** An opportunity as a spreadsheet row. */
+const OPPORTUNITY_COLUMNS: ExportColumn<Opportunity>[] = [
+  { header: "Lead ID", value: (row) => row.leadId },
+  { header: "Customer Name", value: (row) => row.customerName },
+  { header: "Email", value: (row) => row.email },
+  { header: "Phone", value: (row) => row.phone },
+  { header: "Company", value: (row) => row.company },
+  { header: "City", value: (row) => row.city },
+  { header: "State", value: (row) => row.state },
+  { header: "Customer Type", value: (row) => row.customerType },
+  { header: "Deal Value", value: (row) => row.dealValue },
+  { header: "Assigned To", value: (row) => row.owner },
+  { header: "Status", value: (row) => row.status },
+  { header: "Priority", value: (row) => row.priority },
+  { header: "Stage", value: (row) => row.stage },
+  { header: "Expected Closing Date", value: (row) => row.expectedClosingDate || "" },
+];
 
 interface SalesUser {
   id: string;
@@ -571,7 +600,6 @@ function OpportunitiesPageInner() {
   const PAGE_SIZE = 10;
 
   const [showFilters, setShowFilters] = useState(false);
-  const [showPageMenu, setShowPageMenu] = useState(false);
 
   const [filters, setFilters] = useState<OpportunityFilters>(DEFAULT_FILTERS);
 
@@ -603,7 +631,6 @@ function OpportunitiesPageInner() {
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [loggingActivity, setLoggingActivity] = useState(false);
 
-  const pageMenuRef = useRef<HTMLDivElement>(null);
 
   const fetchOpportunities = useCallback(
     async (silent = false) => {
@@ -770,21 +797,6 @@ function OpportunitiesPageInner() {
       }
     })();
   }, [searchParams, addToast]);
-
-  useEffect(() => {
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (
-        pageMenuRef.current &&
-        !pageMenuRef.current.contains(event.target as Node)
-      ) {
-        setShowPageMenu(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, []);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -1028,157 +1040,10 @@ function OpportunitiesPageInner() {
     }
   };
 
+  // The header raises the "refreshed" toast for every list screen, so
+  // this one no longer raises its own on top of it.
   const handleRefresh = async () => {
     await fetchOpportunities(true);
-
-    addToast("Opportunity list refreshed.", "success");
-  };
-
-  const handleExportData = () => {
-    const headers = [
-      "Lead ID",
-      "Customer Name",
-      "Email",
-      "Phone",
-      "Company",
-      "City",
-      "State",
-      "Customer Type",
-      "Deal Value",
-      "Assigned To",
-      "Status",
-      "Priority",
-      "Stage",
-      "Expected Closing Date",
-    ];
-
-    const rows = filtered.map((opp) => [
-      opp.leadId,
-      opp.customerName,
-      opp.email,
-      opp.phone,
-      opp.company,
-      opp.city,
-      opp.state,
-      opp.customerType,
-      opp.dealValue,
-      opp.owner,
-      opp.status,
-      opp.priority,
-      opp.stage,
-      opp.expectedClosingDate || "",
-    ]);
-
-    const csv = [headers, ...rows]
-      .map((row) =>
-        row
-          .map((cell) => {
-            const value = cell == null ? "" : String(cell);
-
-            return `"${value.replace(/"/g, '""')}"`;
-          })
-          .join(","),
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;",
-    });
-
-    const url = URL.createObjectURL(blob);
-
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = `opportunities-${new Date()
-      .toISOString()
-      .slice(0, 10)}.csv`;
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
-
-    setShowPageMenu(false);
-
-    addToast("Opportunity data exported.", "success");
-  };
-
-  const handleDownloadChart = () => {
-    const canvas = document.createElement("canvas");
-
-    canvas.width = 1200;
-    canvas.height = 700;
-
-    const ctx = canvas.getContext("2d");
-
-    if (!ctx) return;
-
-    ctx.fillStyle = "#f5f6f8";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = "#233353";
-    ctx.font = "700 32px Arial";
-
-    ctx.fillText("Opportunity Pipeline", 60, 70);
-
-    const chartData = [
-      {
-        label: "Qualified",
-        value: opps.filter((x) => x.stage === "Qualified").length,
-      },
-      {
-        label: "Demo Scheduled",
-        value: opps.filter((x) => x.stage === "Demo Scheduled").length,
-      },
-      {
-        label: "Proposal Sent",
-        value: opps.filter((x) => x.stage === "Proposal Sent").length,
-      },
-      {
-        label: "Negotiation",
-        value: opps.filter((x) => x.stage === "Negotiation").length,
-      },
-    ];
-
-    const max = Math.max(...chartData.map((x) => x.value), 1);
-
-    chartData.forEach((item, index) => {
-      const x = 100 + index * 260;
-
-      const barHeight = (item.value / max) * 400;
-
-      const y = 570 - barHeight;
-
-      ctx.fillStyle = "#233353";
-
-      ctx.fillRect(x, y, 120, barHeight);
-
-      ctx.fillStyle = "#475569";
-
-      ctx.font = "600 18px Arial";
-
-      ctx.fillText(item.label, x - 10, 620);
-
-      ctx.fillStyle = "#233353";
-
-      ctx.font = "700 24px Arial";
-
-      ctx.fillText(String(item.value), x + 45, y - 15);
-    });
-
-    const link = document.createElement("a");
-
-    link.download = "opportunity-pipeline.png";
-
-    link.href = canvas.toDataURL("image/png");
-
-    link.click();
-
-    setShowPageMenu(false);
-
-    addToast("Pipeline chart downloaded.", "success");
   };
 
   const loadActivities = useCallback(
@@ -1514,75 +1379,22 @@ function OpportunitiesPageInner() {
         {/* =========================================================
             PAGE HEADER
         ========================================================= */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
-              Opportunity
-            </h1>
-
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              title="Refresh opportunities"
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
-            >
-              <FiRefreshCw
-                className={refreshing ? "animate-spin" : ""}
-                size={13}
-              />
-            </button>
-          </div>
-
-          <div className="relative" ref={pageMenuRef}>
-            <div className="flex items-center gap-1">
-              {/* <button
-                type="button"
-                onClick={() =>
-                  setShowPageMenu(
-                    (value) => !value
-                  )
-                }
-                className="flex h-8 items-center gap-3 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white shadow-sm hover:bg-[#18243a]"
-              >
-                <span>Button CTA</span>
-                <FiChevronDown
-                  size={12}
-                />
-              </button> */}
-
-              <button
-                type="button"
-                onClick={() => setShowPageMenu((value) => !value)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:bg-[#071929] dark:text-slate-300"
-              >
-                <FiMoreVertical size={15} />
-              </button>
-            </div>
-
-            {showPageMenu && (
-              <div className="absolute right-0 top-10 z-[100] w-40 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
-                <button
-                  type="button"
-                  onClick={handleExportData}
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs font-medium hover:bg-slate-50 dark:hover:bg-[#0b2034]"
-                >
-                  <FiDownload size={14} />
-                  Export Data
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDownloadChart}
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-xs font-medium hover:bg-slate-50 dark:hover:bg-[#0b2034]"
-                >
-                  <FiGrid size={14} />
-                  Download Chart
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        <ListPageHeader
+          title="Opportunity"
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          actions={
+            <ListActionsMenu
+              name="Opportunities"
+              rows={filtered}
+              columns={OPPORTUNITY_COLUMNS}
+              chart={OPPORTUNITY_STAGES.map((stage) => ({
+                label: stage,
+                value: opps.filter((row) => row.stage === stage).length,
+              }))}
+            />
+          }
+        />
 
         {/* =========================================================
             KPI CARDS
