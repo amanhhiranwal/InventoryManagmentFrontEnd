@@ -531,6 +531,22 @@ export default function QuotationDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* The way back to the form, and the only place a discount can
+                be sent up the chain from. Without it a draft could be read
+                here but never finished or approved. */}
+            {editable && (
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(`/sales/quotations?edit=${quotation.id}`)
+                }
+                className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+              >
+                <FiEdit2 size={13} />
+                Edit Quotation
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => setPreviewing(true)}
