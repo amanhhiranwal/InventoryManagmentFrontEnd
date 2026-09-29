@@ -2466,7 +2466,20 @@ export default function QuotationPage() {
                           </button>
 
                           {rowMenuId === quotation.id && (
-                            <div className="absolute right-0 top-full z-40 mt-1 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#0d2336] dark:bg-[#051422]">
+                            <div className="absolute right-0 top-full z-40 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#0d2336] dark:bg-[#051422]">
+                              {quotation.status === QUOTATION_STATUS.DRAFT && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRowMenuId(null);
+                                    openForEdit(String(quotation.id));
+                                  }}
+                                  className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#071929]"
+                                >
+                                  Edit Quotation
+                                </button>
+                              )}
+
                               {nextQuotationStatuses(quotation.status).length ===
                                 0 && (
                                 <p className="px-3 py-2 text-[11px] text-slate-400">
@@ -2488,13 +2501,36 @@ export default function QuotationPage() {
                                         return;
                                       }
 
+                                      /* Pending Approval is not a status to
+                                         type. Raising the request is what
+                                         puts it there, and that needs the
+                                         price type and the discount - which
+                                         only the form knows - so this opens
+                                         it rather than setting the status and
+                                         leaving nobody asked. */
+                                      if (
+                                        status ===
+                                        QUOTATION_STATUS.PENDING_APPROVAL
+                                      ) {
+                                        setRowMenuId(null);
+                                        openForEdit(String(quotation.id));
+                                        addToast(
+                                          "Check the discount, then use Send For Approval at the bottom of the form.",
+                                          "info",
+                                        );
+                                        return;
+                                      }
+
                                       changeStatus(quotation, status);
                                     }}
                                     className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#071929]"
                                   >
                                     {status === QUOTATION_STATUS.SENT
                                       ? "Send to Client"
-                                      : `Mark as ${quotationStatusLabel(status)}`}
+                                      : status ===
+                                          QUOTATION_STATUS.PENDING_APPROVAL
+                                        ? "Send For Approval"
+                                        : `Mark as ${quotationStatusLabel(status)}`}
                                   </button>
                                 ),
                               )}
