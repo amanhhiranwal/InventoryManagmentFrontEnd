@@ -187,6 +187,7 @@ export interface SalesOrderModel {
   balance_expected?: number | null;
 
   commercial_terms?: string[] | null;
+  payment_terms?: string | null;
   technical_notes?: string | null;
   attachments?: Array<{ name: string; size?: number; type?: string }> | null;
 
@@ -251,6 +252,7 @@ export interface CreateSalesOrderPayload {
 
   advance_percent?: number;
   commercial_terms?: string[];
+  payment_terms?: string;
   technical_notes?: string;
   attachments?: Array<{ name: string; size?: number; type?: string }>;
 }
@@ -342,4 +344,14 @@ export const logSalesOrderActivityApi = async (
 ): Promise<{ activity: SalesOrderActivity; order: SalesOrderModel }> => {
   const { data } = await api.post(`/api/v1/orders/${id}/activities`, payload);
   return data.data || data;
+};
+
+/** The reference a new order would take, for showing on the form.
+
+    A preview, not a reservation: the number is only allocated when the
+    order is written, so two people drafting at once will see the same one
+    and whoever saves first keeps it. */
+export const getNextOrderNumberApi = async (): Promise<string> => {
+  const { data } = await api.get("/api/v1/orders/next-number");
+  return data?.data?.order_number || "";
 };

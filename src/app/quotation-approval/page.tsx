@@ -85,7 +85,7 @@ export default function QuotationApprovalPage() {
       );
 
       addToast(
-        "Approval bands saved. New quotations use them straight away.",
+        "Approval bands saved. New proposals use them straight away.",
         "success",
       );
     } catch (error) {
@@ -123,7 +123,7 @@ export default function QuotationApprovalPage() {
   return (
     <ListPage>
       <PageHeader
-        title="Quotation Approval"
+        title="Proposal Approval"
         description="How much discount each role can sign off. A discount travels up until it reaches someone whose ceiling covers it."
         action={
           <PrimaryAction onClick={save}>

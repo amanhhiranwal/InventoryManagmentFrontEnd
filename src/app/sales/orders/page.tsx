@@ -15,6 +15,7 @@ import AmountInput, {
   type AmountMode,
 } from "@/components/crm/AmountInput";
 import {
+  getNextOrderNumberApi,
   SALES_ORDER_STATUS,
   SALES_ORDER_STATUS_LABEL,
   SalesOrderStatus as CanonicalSalesOrderStatus,
@@ -204,10 +205,16 @@ const STATUS_OPTIONS = ["All", "Active", "Inactive"];
    than printed into the markup so the user can edit or remove any of them and
    what they end up with is what gets saved. */
 const DEFAULT_COMMERCIAL_TERMS = [
-  "Payment Terms: 30% advance against Proforma Invoice; 70% balance upon delivery challan verification.",
   "Delivery Lead Time: 15 to 20 working days from receipt of initial mobilization advance and confirmed delivery slot.",
   "Warranty & Support: Standard 3-year comprehensive on-site OEM warranty on IFP panels and Core OPS compute modules.",
 ];
+
+/* Payment terms sit in their own field rather than among the bullets
+   above. Accounts read this one clause on its own - it decides what the
+   proforma invoice asks for - and a bullet in a list is a poor place to
+   go looking for it. */
+const DEFAULT_PAYMENT_TERMS =
+  "Payment Terms: 30% advance against Proforma Invoice; 70% balance upon delivery challan verification.";
 
 /* =========================================================
    HELPERS
@@ -367,6 +374,17 @@ export default function OrdersListPage() {
      markup with nothing behind it. */
   const [advancePercent, setAdvancePercent] = useState(30);
 
+  /* The reference the next order would take, read once when the form
+     opens. A preview rather than a reservation - the number is allocated
+     on write - so the field says "next available" beside it. */
+  const [nextOrderNumber, setNextOrderNumber] = useState("");
+
+  useEffect(() => {
+    getNextOrderNumberApi()
+      .then(setNextOrderNumber)
+      .catch(() => setNextOrderNumber(""));
+  }, []);
+
   const [newOrder, setNewOrder] = useState({
     // Order Information
     salesOrderId: "",
@@ -376,6 +394,7 @@ export default function OrdersListPage() {
     poDate: "",
     assignedTo: "",
     salesExecutive: "",
+    paymentTerms: DEFAULT_PAYMENT_TERMS,
     technicalNotes: "",
 
     // Customer Information
@@ -620,7 +639,7 @@ export default function OrdersListPage() {
   ======================================================= */
 
   const kpis = useMemo(() => {
-    const totalProposal = orders.length;
+    const totalOrders = orders.length;
 
     const orderValue = orders.reduce(
       (sum, order) => sum + Number(order.grand_total || 0),
@@ -643,8 +662,8 @@ export default function OrdersListPage() {
     const createdAt = (order: Order) => order.created_at || order.order_date;
 
     return {
-      totalProposal,
-      totalProposalChange: monthOverMonth(orders, createdAt, (items) => items.length),
+      totalOrders,
+      totalOrdersChange: monthOverMonth(orders, createdAt, (items) => items.length),
       orderValue,
       orderValueChange: monthOverMonth(orders, createdAt, value),
       pendingOrders,
@@ -868,6 +887,7 @@ export default function OrdersListPage() {
           poDate: toDateInput(saved.po_date),
           assignedTo: saved.assigned_to || "",
           salesExecutive: saved.sales_executive || "",
+          paymentTerms: saved.payment_terms || DEFAULT_PAYMENT_TERMS,
           technicalNotes: saved.technical_notes || "",
 
           customerName: saved.customer_name || "",
@@ -961,6 +981,119 @@ export default function OrdersListPage() {
     },
     [addToast],
   );
+
+  /* -------------------------------------------------------
+     RAISE ONE FROM WHAT CAME BEFORE
+
+     A repeat customer's second order is mostly their first one again:
+     the same company, the same addresses, the same registration numbers,
+     the same terms. Re-keying all of it is how those fields end up
+     disagreeing between two orders for the same customer.
+
+     Two ways in, differing only in whether the products come too:
+
+       ?duplicate=<id>   the whole order again, lines and all
+       ?repeat=<name>    that customer's last order, without its products
+
+     Neither carries anything that identifies the original - its number,
+     the customer's PO, the dates or what has been paid - because this is
+     a new order, not a copy of an old one pretending to be new.
+  ------------------------------------------------------- */
+
+  const prefillFromOrder = useCallback(
+    async (id: string, withProducts: boolean) => {
+      await openOrderForEdit(id);
+
+      setEditingOrderId(null);
+
+      setNewOrder((current) => ({
+        ...current,
+        salesOrderId: "",
+        quotationId: "",
+        poNumber: "",
+        poDate: "",
+        orderDate: new Date().toISOString().slice(0, 10),
+        remarks: "",
+      }));
+
+      if (!withProducts) setSelectedProducts([]);
+
+      setAdvanceReceived(0);
+    },
+    [openOrderForEdit],
+  );
+
+  const duplicateParam = searchParams.get("duplicate");
+  const repeatParam = searchParams.get("repeat");
+
+  const duplicateHandled = useRef("");
+
+  useEffect(() => {
+    if (!duplicateParam || duplicateHandled.current === duplicateParam) return;
+
+    duplicateHandled.current = duplicateParam;
+
+    prefillFromOrder(duplicateParam, true)
+      .then(() =>
+        addToast(
+          "Copied from the previous order. Check the products and dates before saving.",
+          "info",
+        ),
+      )
+      .finally(() => router.replace("/sales/orders"));
+  }, [duplicateParam, prefillFromOrder, router, addToast]);
+
+  /* Guards against running twice for the same customer, which a re-render
+     would otherwise do. The parameter is cleared at the end rather than the
+     start: clearing it first re-renders, and the prefill was being thrown
+     away half-finished. */
+  const repeatHandled = useRef("");
+
+  useEffect(() => {
+    if (!repeatParam || repeatHandled.current === repeatParam) return;
+
+    repeatHandled.current = repeatParam;
+
+    (async () => {
+      try {
+        const all = await getSalesOrdersApi();
+
+        /* Their most recent order is the best record of who they are:
+           it already holds the addresses and registration numbers in the
+           shape this form wants. */
+        const theirs = (all || [])
+          .filter(
+            (order) =>
+              (order.company_name || order.customer_name || "")
+                .trim()
+                .toLowerCase() === repeatParam.trim().toLowerCase(),
+          )
+          .sort((a, b) => Number(b.id) - Number(a.id));
+
+        if (!theirs.length) {
+          addToast(
+            `No earlier order for ${repeatParam} — starting a blank one.`,
+            "info",
+          );
+          setShowCreateOrder(true);
+        } else {
+          await prefillFromOrder(String(theirs[0].id), false);
+
+          addToast(
+            `Details carried over from ${theirs[0].order_number}. Add the products for this order.`,
+            "info",
+          );
+        }
+      } catch (error) {
+        console.error(error);
+
+        addToast("Could not read this customer's earlier orders.", "error");
+        setShowCreateOrder(true);
+      } finally {
+        router.replace("/sales/orders");
+      }
+    })();
+  }, [repeatParam, prefillFromOrder, router, addToast]);
 
   const editParam = searchParams.get("edit");
 
@@ -1122,7 +1255,7 @@ export default function OrdersListPage() {
 
         addToast(
           error?.response?.data?.detail ||
-            "Unable to load the quotation details.",
+            "Unable to load the proposal details.",
           "error",
         );
       }
@@ -1327,6 +1460,7 @@ export default function OrdersListPage() {
           .map((term) => term.trim())
           .filter(Boolean),
 
+        payment_terms: newOrder.paymentTerms || undefined,
         technical_notes: newOrder.technicalNotes || undefined,
 
         /* Only the file metadata is stored; there is no upload endpoint yet,
@@ -1413,6 +1547,7 @@ export default function OrdersListPage() {
           poDate: "",
           assignedTo: "",
           salesExecutive: "",
+          paymentTerms: DEFAULT_PAYMENT_TERMS,
           technicalNotes: "",
 
           customerName: "",
@@ -1568,14 +1703,22 @@ export default function OrdersListPage() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
-                  {/* Sales Order ID - assigned by the backend on save. */}
+                  {/* The reference this order will take. Read from the
+                      backend so the form is not a blank where the number
+                      should be, and marked as a preview until it is saved -
+                      the number is only allocated on write, so a colleague
+                      saving first would take it. */}
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-[#777777]">
                       Sales Order ID:
                     </span>
 
                     <span className="text-[11px] font-medium text-[#141414] dark:text-white">
-                      {newOrder.salesOrderId || "Assigned on save"}
+                      {newOrder.salesOrderId
+                        ? `#${newOrder.salesOrderId}`
+                        : nextOrderNumber
+                          ? `#${nextOrderNumber}`
+                          : "Assigned on save"}
                     </span>
                   </div>
 
@@ -1605,7 +1748,7 @@ export default function OrdersListPage() {
                       Opportunity ID field, which asked for a numeric id the
                       user had no way of knowing. */}
                   <div>
-                    <label className="mb-1.5 block">Quotation ID:</label>
+                    <label className="mb-1.5 block">Proposal ID:</label>
 
                     <input
                       value={newOrder.quotationId}
@@ -2521,6 +2664,22 @@ export default function OrdersListPage() {
 
                 <div className="mt-4">
                   <p className="mb-2 text-[11px] font-medium text-slate-500">
+                    Payment Terms
+                  </p>
+
+                  <textarea
+                    rows={2}
+                    value={newOrder.paymentTerms}
+                    onChange={(e) =>
+                      updateNewOrder("paymentTerms", e.target.value)
+                    }
+                    placeholder={DEFAULT_PAYMENT_TERMS}
+                    className="field-compact w-full resize-none rounded-xl bg-slate-50 p-3 text-[11px] leading-5 text-slate-600 outline-none focus:ring-1 focus:ring-slate-300 dark:bg-[#0b2034] dark:text-slate-300"
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <p className="mb-2 text-[11px] font-medium text-slate-500">
                     Technical Scope & Deployment Notes
                   </p>
 
@@ -3076,10 +3235,10 @@ export default function OrdersListPage() {
 
       <StatGrid>
         <StatCard
-          label="Total Proposal"
-          value={kpis.totalProposal}
-          change={kpis.totalProposalChange.text}
-          positive={kpis.totalProposalChange.up}
+          label="Total Orders"
+          value={kpis.totalOrders}
+          change={kpis.totalOrdersChange.text}
+          positive={kpis.totalOrdersChange.up}
         />
 
         <StatCard
@@ -3522,6 +3681,22 @@ export default function OrdersListPage() {
                               >
                                 View Order
                               </Link>
+
+                              {/* A repeat order for the same customer: the
+                                  whole thing again, minus anything that
+                                  identified the original. */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenu(null);
+                                  router.push(
+                                    `/sales/orders?duplicate=${order._id}`,
+                                  );
+                                }}
+                                className="w-full px-3 py-2 text-left text-xs hover:bg-slate-50 dark:hover:bg-[#0b2034]"
+                              >
+                                Duplicate Order
+                              </button>
 
                               {nextSalesOrderStatuses(order.status).length >
                                 0 && (

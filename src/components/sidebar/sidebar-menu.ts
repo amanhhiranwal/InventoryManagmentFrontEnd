@@ -65,7 +65,7 @@ export const sidebarMenu: SidebarItemConfig[] = [
         permission: "opportunity.read",
       },
       {
-        title: "Quotation",
+        title: "Proposal",
         icon: LuQuote,
         path: "/sales/quotations",
         permission: "quotation.read",
