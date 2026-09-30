@@ -195,7 +195,7 @@ const DEFAULT_TERMS: TermState[] = [
   },
   {
     label:
-      "Offer Validity: This quotation remains firm for 30 calendar days from issue date. Subject to reconfirmation thereafter.",
+      "Offer Validity: This Proposal remains firm for 30 calendar days from issue date. Subject to reconfirmation thereafter.",
     checked: true,
   },
   {
@@ -213,7 +213,7 @@ const DEFAULT_TERMS: TermState[] = [
 /** Toggles in the Send Quotation dialog. */
 const SEND_OPTIONS: { key: SendOptionKey; label: string }[] = [
   { key: "track_opens", label: "Track Email Opens (Read Receipt)" },
-  { key: "alert_on_download", label: "Instant Alert on Quotation PDF Download" },
+  { key: "alert_on_download", label: "Instant Alert on Proposal PDF Download" },
   { key: "attach_gst_audit_trail", label: "Attach GST Digital Signature Audit Trail" },
   { key: "notify_lead_owner", label: "Notify Lead Owner upon Client Interaction" },
 ];
@@ -489,6 +489,17 @@ export default function QuotationPage() {
   const [orcInput, setOrcInput] = useState(0);
   const [freight, setFreight] = useState(0);
   const [installation, setInstallation] = useState(0);
+
+  /* Whether the client is being charged for delivery and for installation
+     at all. Both used to be plain amounts sitting at zero, which reads the
+     same as "included free" and the same as "not decided yet"; the tick
+     says which. The figure survives an untick, so changing your mind does
+     not cost you what you typed. */
+  const [includeFreight, setIncludeFreight] = useState(false);
+  const [includeInstallation, setIncludeInstallation] = useState(false);
+
+  const chargedFreight = includeFreight ? freight : 0;
+  const chargedInstallation = includeInstallation ? installation : 0;
   const [gstPercent, setGstPercent] = useState(18);
   const [advancePercent] = useState(30);
 
@@ -519,7 +530,7 @@ export default function QuotationPage() {
       setQuotations(data || []);
     } catch (error) {
       console.error(error);
-      addToast("Unable to load quotations.", "error");
+      addToast("Unable to load proposals.", "error");
     } finally {
       setLoading(false);
     }
@@ -713,8 +724,8 @@ export default function QuotationPage() {
         discountInput,
         orcMode,
         orcInput,
-        freight,
-        installation,
+        freight: chargedFreight,
+        installation: chargedInstallation,
         gstPercent,
         advancePercent,
       }),
@@ -724,8 +735,8 @@ export default function QuotationPage() {
       discountInput,
       orcMode,
       orcInput,
-      freight,
-      installation,
+      chargedFreight,
+      chargedInstallation,
       gstPercent,
       advancePercent,
     ],
@@ -836,6 +847,8 @@ export default function QuotationPage() {
     setOrcInput(0);
     setFreight(0);
     setInstallation(0);
+    setIncludeFreight(false);
+    setIncludeInstallation(false);
     setGstPercent(18);
     setAttachments([]);
     setTerms(DEFAULT_TERMS);
@@ -913,6 +926,9 @@ export default function QuotationPage() {
         setOrcInput(saved.orc_input || 0);
         setFreight(saved.freight_charges || 0);
         setInstallation(saved.installation_lumpsum || 0);
+        /* A saved charge is one that was being given; zero is not. */
+        setIncludeFreight(Number(saved.freight_charges || 0) > 0);
+        setIncludeInstallation(Number(saved.installation_lumpsum || 0) > 0);
         setGstPercent(
           saved.gst_percent === null || saved.gst_percent === undefined
             ? 18
@@ -935,7 +951,7 @@ export default function QuotationPage() {
       } catch (error) {
         console.error(error);
 
-        addToast("Unable to open this quotation.", "error");
+        addToast("Unable to open this proposal.", "error");
       }
     },
     [addToast],
@@ -1126,8 +1142,8 @@ export default function QuotationPage() {
     discount_input: discountInput,
     orc_mode: orcMode,
     orc_input: orcInput,
-    freight_charges: freight,
-    installation_lumpsum: installation,
+    freight_charges: chargedFreight,
+    installation_lumpsum: chargedInstallation,
     gst_percent: gstPercent,
     advance_percent: advancePercent,
 
@@ -1155,7 +1171,7 @@ export default function QuotationPage() {
     }
 
     if (!items.length) {
-      addToast("Add at least one product before saving the quotation.", "warning");
+      addToast("Add at least one product before saving the proposal.", "warning");
       return false;
     }
 
@@ -1179,8 +1195,8 @@ export default function QuotationPage() {
 
       addToast(
         editingId
-          ? `Quotation ${created.quote_number} updated.`
-          : `Quotation ${created.quote_number} saved as draft.`,
+          ? `Proposal ${created.quote_number} updated.`
+          : `Proposal ${created.quote_number} saved as draft.`,
         "success",
       );
 
@@ -1200,7 +1216,7 @@ export default function QuotationPage() {
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "Failed to save the quotation.";
+          ?.detail || "Failed to save the proposal.";
 
       console.error(error);
       addToast(detail, "error");
@@ -1220,7 +1236,7 @@ export default function QuotationPage() {
     try {
       const created = await createQuotationApi(toPayload(QUOTATION_STATUS.DRAFT));
 
-      addToast(`Quotation ${created.quote_number} saved as draft.`, "success");
+      addToast(`Proposal ${created.quote_number} saved as draft.`, "success");
 
       await fetchQuotations();
       setPageMode("list");
@@ -1230,7 +1246,7 @@ export default function QuotationPage() {
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "Failed to save the quotation.";
+          ?.detail || "Failed to save the proposal.";
 
       console.error(error);
       addToast(detail, "error");
@@ -1256,7 +1272,7 @@ export default function QuotationPage() {
 
       await downloadQuotationPdfApi(
         saved.id,
-        `${saved.quote_number || "Quotation"}.pdf`,
+        `${saved.quote_number || "Proposal"}.pdf`,
       );
 
       addToast(`${saved.quote_number} downloaded.`, "success");
@@ -1270,7 +1286,7 @@ export default function QuotationPage() {
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "The quotation PDF could not be generated.";
+          ?.detail || "The proposal PDF could not be generated.";
 
       console.error(error);
       addToast(detail, "error");
@@ -1360,7 +1376,7 @@ export default function QuotationPage() {
 
   const removeItem = (key: string) => {
     setItems((current) => current.filter((item) => item.key !== key));
-    addToast("Product removed from the quotation.", "info");
+    addToast("Product removed from the proposal.", "info");
   };
 
   /* --------------------------------------------------------------------------
@@ -1385,7 +1401,7 @@ export default function QuotationPage() {
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "Failed to update the quotation status.";
+          ?.detail || "Failed to update the proposal status.";
 
       console.error(error);
       addToast(detail, "error");
@@ -1396,8 +1412,8 @@ export default function QuotationPage() {
      level because the owner's name needs the users this page loaded. */
   const quotationColumns: ExportColumn<QuotationModel>[] = useMemo(
     () => [
-      { header: "Quote ID", value: (row) => row.quote_number || "" },
-      { header: "Customer Name", value: (row) => row.contact_name || "" },
+      { header: "Proposal ID", value: (row) => row.quote_number || "" },
+      { header: "Contact Person", value: (row) => row.contact_name || "" },
       { header: "Organization", value: (row) => row.organization_name || "" },
       { header: "Email", value: (row) => row.email || "" },
       { header: "Mobile", value: (row) => row.mobile_number || "" },
@@ -1423,8 +1439,8 @@ export default function QuotationPage() {
     return (
       <div className="min-h-full pb-8">
         <FormPageHeader
-          title={editingId ? "Edit Quotation" : "New Quotation"}
-          parentLabel="Quotation"
+          title={editingId ? "Edit Proposal" : "New Proposal"}
+          parentLabel="Proposal"
           currentLabel={editingId ? "Edit" : "New"}
           actions={
             <>
@@ -1444,7 +1460,7 @@ export default function QuotationPage() {
                 {saving
                   ? "Saving..."
                   : editingId
-                    ? "Save Quotation"
+                    ? "Save Proposal"
                     : "Save as Draft"}
               </DraftButton>
             </>
@@ -1586,7 +1602,7 @@ export default function QuotationPage() {
                 </Field>
 
                 <div className="grid grid-cols-2 gap-5">
-                  <Field label="Quotation Date">
+                  <Field label="Proposal Date">
                     <input
                       type="date"
                       value={quotationDate}
@@ -1845,15 +1861,36 @@ export default function QuotationPage() {
                 {/* The design has no summary-level Total Discount or ORC on a
                     quotation: discount is given per line, in the table's own
                     Discount column, and the totals below follow from that. */}
+                {/* Tick to charge for it. Both are optional on a proposal -
+                    a customer collecting their own panels pays no delivery,
+                    and one with their own AV contractor pays no
+                    installation - and an unticked row is plainly not being
+                    charged rather than silently sitting at zero. */}
                 <SummaryRow
                   label="Freight Charges"
-                  value={`+${money(totals.freight)}`}
+                  name="Freight Charges"
+                  value={
+                    includeFreight ? `+${money(totals.freight)}` : "Not charged"
+                  }
+                  include={{
+                    checked: includeFreight,
+                    onChange: setIncludeFreight,
+                  }}
                   edit={{ amount: freight, onChange: setFreight }}
                 />
 
                 <SummaryRow
                   label="Installation"
-                  value={`+${money(totals.installation)}`}
+                  name="Installation"
+                  value={
+                    includeInstallation
+                      ? `+${money(totals.installation)}`
+                      : "Not charged"
+                  }
+                  include={{
+                    checked: includeInstallation,
+                    onChange: setIncludeInstallation,
+                  }}
                   edit={{ amount: installation, onChange: setInstallation }}
                 />
 
@@ -2117,7 +2154,7 @@ export default function QuotationPage() {
                             to Proposal / Price Quote.
                           </>
                         ) : (
-                          "Select an opportunity above to link this quotation to the pipeline."
+                          "Select an opportunity above to link this proposal to the pipeline."
                         )}
                       </p>
                     </div>
@@ -2175,12 +2212,12 @@ export default function QuotationPage() {
   return (
     <ListPage>
       <ListPageHeader
-        title="Quotation"
+        title="Proposal"
         refreshing={refreshing}
         onRefresh={refresh}
         actions={
           <ListActionsMenu
-            name="Quotations"
+            name="Proposals"
             rows={filtered}
             columns={quotationColumns}
             chart={[
@@ -2198,7 +2235,7 @@ export default function QuotationPage() {
       <StatGrid cols={6}>
         <StatCard
           compact
-          label="Total Quotes"
+          label="Total Proposals"
           value={String(stats.total)}
           change={stats.totalChange.text}
           positive={stats.totalChange.up}
@@ -2243,7 +2280,7 @@ export default function QuotationPage() {
           }}
           trailing={
             <PrimaryAction onClick={openCreate} icon={<FiPlus size={14} />}>
-              Add New Quotation
+              Add New Proposal
             </PrimaryAction>
           }
         />
@@ -2258,7 +2295,7 @@ export default function QuotationPage() {
             onApply={() => {
               setFilters(draftFilters);
               setShowFilter(false);
-              addToast("Quotation filters applied.", "success");
+              addToast("Proposal filters applied.", "success");
             }}
             onClear={() => {
               setDraftFilters(EMPTY_FILTERS);
@@ -2300,10 +2337,14 @@ export default function QuotationPage() {
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300" />
                 </Th>
                 <Th className="px-3!">
-                  <SortLabel>Quote ID</SortLabel>
+                  <SortLabel>Proposal ID</SortLabel>
                 </Th>
+                {/* The organisation and where it is, and nothing else, as
+                    the design has it. The contact is on the proposal itself
+                    and on the opportunity beside this column; repeating it
+                    here only made the row taller. */}
                 <Th className="px-3!">
-                  <SortLabel>Customer Name</SortLabel>
+                  <SortLabel>Organization Name</SortLabel>
                 </Th>
                 <Th className="px-3!">
                   <SortLabel>Opportunity</SortLabel>
@@ -2339,7 +2380,7 @@ export default function QuotationPage() {
                     colSpan={9}
                     className="px-4 py-16 text-center text-xs text-slate-400"
                   >
-                    No quotations found. Use Add New Quotation to raise one.
+                    No quotations found. Use Add New Proposal to raise one.
                   </td>
                 </tr>
               )}
@@ -2375,14 +2416,10 @@ export default function QuotationPage() {
 
                     <td className="px-3 py-4">
                       <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
-                        {quotation.contact_name || "—"}
+                        {quotation.organization_name || "—"}
                       </p>
 
-                      <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
-                        {quotation.email || "No email"}
-                      </p>
-
-                      <p className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                      <p className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-400">
                         <FiMapPin size={9} />
                         {quotation.state_name ||
                           quotation.billing_address?.state ||
@@ -2439,7 +2476,7 @@ export default function QuotationPage() {
                       <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"
-                          title="Send Quotation"
+                          title="Send Proposal"
                           disabled={
                             !nextQuotationStatuses(quotation.status).includes(
                               QUOTATION_STATUS.SENT,
@@ -2551,7 +2588,7 @@ export default function QuotationPage() {
           totalItems={filtered.length}
           totalPages={Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE))}
           onPageChange={setCurrentPage}
-          noun="quotations"
+          noun="proposals"
         />
       </TableCard>
       </div>
@@ -2750,6 +2787,7 @@ function SummaryRow({
   value,
   tone,
   strong,
+  include,
   edit,
 }: {
   label: string;
@@ -2759,6 +2797,13 @@ function SummaryRow({
   value: string;
   tone?: "rose";
   strong?: boolean;
+  /** A charge the client can be given or not. Omit for a row that is
+      always counted. Unticked, the row is greyed and contributes nothing;
+      the figure is kept, so ticking it back restores what was typed. */
+  include?: {
+    checked: boolean;
+    onChange: (next: boolean) => void;
+  };
   /** Omit for a read-only row. */
   edit?: {
     amount: number;
@@ -2797,9 +2842,20 @@ function SummaryRow({
             : "text-slate-500 dark:text-slate-400"
         }`}
       >
+        {include && (
+          <input
+            type="checkbox"
+            checked={include.checked}
+            aria-label={`Include ${name || label}`}
+            onChange={(event) => include.onChange(event.target.checked)}
+            className="h-3.5 w-3.5 rounded border-slate-300 accent-[#233353]"
+          />
+        )}
+
         {label}
 
-        {edit && (
+        {/* Nothing to edit on a charge that is not being given. */}
+        {edit && (!include || include.checked) && (
           <button
             type="button"
             aria-label={`Edit ${name || label}`}
@@ -2813,7 +2869,7 @@ function SummaryRow({
 
       {/* Fixed width: the input replaces the figure without moving it. */}
       <div className="flex w-36 justify-end">
-        {edit && editing ? (
+        {edit && editing && (!include || include.checked) ? (
           edit.unit === "%" ? (
             /* A rate has no rupee alternative, so it gets a plain input
                rather than the ₹ / % selector the charges use. */
@@ -3456,7 +3512,7 @@ function SendQuotationModal({
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "The quotation could not be sent.";
+          ?.detail || "The proposal could not be sent.";
 
       console.error(error);
       onError(detail);
@@ -3771,7 +3827,7 @@ function SendQuotationModal({
               ) : (
                 <FiSend size={13} />
               )}
-              {sending ? "Sending..." : "Send Quotation Email (Ctrl+Enter)"}
+              {sending ? "Sending..." : "Send Proposal Email (Ctrl+Enter)"}
             </button>
           </div>
         </div>

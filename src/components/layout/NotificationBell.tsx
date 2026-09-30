@@ -34,7 +34,7 @@ const MODULE_ICON: Record<string, React.ReactNode> = {
 const MODULE_LABEL: Record<string, string> = {
   lead: "Lead",
   opportunity: "Opportunity",
-  quotation: "Quotation",
+  quotation: "Proposal",
   sales_order: "Sales Order",
   proforma_invoice: "Proforma Invoice",
 };

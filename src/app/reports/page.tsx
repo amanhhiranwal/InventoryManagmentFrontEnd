@@ -28,7 +28,7 @@ const REPORT_COLUMNS: ExportColumn<Lead>[] = [
   { header: "Status", value: (lead) => lead.status },
   { header: "Owner", value: (lead) => lead.assigned_to_name || lead.creator_name || "" },
   {
-    header: "Quoted Value",
+    header: "Proposed Value",
     value: (lead) =>
       (lead.quotation_items || []).reduce(
         (total, item) => total + (item.qty || 1) * (item.price || 0),

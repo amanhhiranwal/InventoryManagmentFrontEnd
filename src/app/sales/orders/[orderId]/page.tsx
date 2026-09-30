@@ -586,7 +586,7 @@ export default function SalesOrderDetailPage() {
               </div>
 
               <Field
-                label="Quotation ID"
+                label="Proposal ID"
                 value={order.quotation_id ? `#${order.quotation_id}` : ""}
               />
               <Field label="Order Date" value={formatDate(order.order_date)} />
@@ -939,6 +939,21 @@ export default function SalesOrderDetailPage() {
               )}
             </div>
 
+            {/* Its own block, not a bullet among the conditions: this is
+                the clause accounts read on its own, because it decides what
+                the proforma invoice asks for. */}
+            {order.payment_terms && (
+              <div className="mt-4">
+                <p className="mb-2 text-[11px] font-medium text-slate-500">
+                  Payment Terms
+                </p>
+
+                <p className="rounded-xl bg-slate-50 p-3 text-[11px] leading-5 text-slate-600 dark:bg-[#0b2034] dark:text-slate-300">
+                  {order.payment_terms}
+                </p>
+              </div>
+            )}
+
             {order.technical_notes && (
               <div className="mt-4">
                 <p className="mb-2 text-[11px] font-medium text-slate-500">
@@ -1009,11 +1024,11 @@ export default function SalesOrderDetailPage() {
                   of one, so a step is only ticked once it has happened. */}
               <ProcessStep
                 state={order.quotation_id ? "done" : "todo"}
-                title="Quotation Approved"
+                title="Proposal Approved"
                 caption={
                   order.quotation_id
                     ? `${order.quotation_id} linked`
-                    : "No quotation linked"
+                    : "No proposal linked"
                 }
               />
 
@@ -1113,8 +1128,8 @@ export default function SalesOrderDetailPage() {
               <LinkedDocument
                 title={
                   order.quotation_id
-                    ? `Quotation ${order.quotation_id}`
-                    : "Quotation"
+                    ? `Proposal ${order.quotation_id}`
+                    : "Proposal"
                 }
                 subtitle={order.quotation_id ? "Approved" : "Not linked"}
                 href={order.quotation_id ? "/sales/quotations" : undefined}

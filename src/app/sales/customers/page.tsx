@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AxiosError } from "axios";
 
 import Modal from "@/components/ui/Modal";
+import { getSalesOrdersApi } from "@/features/salesOrders/api/salesOrders.api";
 import CustomerContactDrawer from "@/components/ui/CustomerContactDrawer";
 import Pagination from "@/components/crm/Pagination";
 import {
@@ -44,6 +45,7 @@ import {
   FiActivity,
   FiCalendar,
   FiChevronDown,
+  FiCopy,
   FiEdit2,
   FiFile,
   FiLink,
@@ -52,6 +54,7 @@ import {
   FiPhone,
   FiPlus,
   FiRotateCcw,
+  FiShoppingBag,
   FiSlash,
   FiUserPlus,
 } from "react-icons/fi";
@@ -182,6 +185,47 @@ export default function CustomersPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 10;
+
+  /* Who has already bought, and the last order they placed.
+
+     Somebody who has bought is not a lead again: their next order starts
+     from the last one rather than from a blank form or a fresh lead. Read
+     once when the page loads and keyed on the customer's name, which is
+     what the order carries - orders hold no customer id. */
+  const [lastOrderByCustomer, setLastOrderByCustomer] = useState<
+    Record<string, { id: string; number: string }>
+  >({});
+
+  useEffect(() => {
+    getSalesOrdersApi()
+      .then((orders) => {
+        const latest: Record<string, { id: string; number: string }> = {};
+
+        for (const order of [...(orders || [])].sort(
+          (a, b) => Number(a.id) - Number(b.id),
+        )) {
+          const key = (order.company_name || order.customer_name || "")
+            .trim()
+            .toLowerCase();
+
+          if (key) {
+            latest[key] = {
+              id: String(order.id),
+              number: order.order_number || "",
+            };
+          }
+        }
+
+        setLastOrderByCustomer(latest);
+      })
+      .catch(() => setLastOrderByCustomer({}));
+  }, []);
+
+  const lastOrderFor = useCallback(
+    (name?: string | null) =>
+      lastOrderByCustomer[(name || "").trim().toLowerCase()] || null,
+    [lastOrderByCustomer],
+  );
 
   /* Contact Details */
   const [drawerCustomer, setDrawerCustomer] = useState<CustomerModel | null>(null);
@@ -906,6 +950,44 @@ export default function CustomersPage() {
                                     View Activities
                                   </MenuItem>
 
+                                  {/* Somebody who has bought before is not a
+                                      lead again. Their next order starts from
+                                      the last one - same company, addresses
+                                      and registration numbers - with either
+                                      the products left to choose, or the same
+                                      ones again. */}
+                                  {lastOrderFor(customer.name) && (
+                                    <>
+                                      <MenuItem
+                                        icon={<FiShoppingBag />}
+                                        onClick={() => {
+                                          setOpenRowMenu(null);
+                                          router.push(
+                                            `/sales/orders?repeat=${encodeURIComponent(
+                                              customer.name,
+                                            )}`,
+                                          );
+                                        }}
+                                      >
+                                        New Sales Order
+                                      </MenuItem>
+
+                                      <MenuItem
+                                        icon={<FiCopy />}
+                                        onClick={() => {
+                                          setOpenRowMenu(null);
+                                          router.push(
+                                            `/sales/orders?duplicate=${
+                                              lastOrderFor(customer.name)!.id
+                                            }`,
+                                          );
+                                        }}
+                                      >
+                                        Duplicate Last Order
+                                      </MenuItem>
+                                    </>
+                                  )}
+
                                   {customer.status === "Inactive" ? (
                                     <MenuItem
                                       icon={<FiRotateCcw />}
@@ -962,6 +1044,20 @@ export default function CustomersPage() {
       )}
 
       <CustomerContactDrawer
+        lastOrder={lastOrderFor(drawerCustomer?.name)}
+        onRepeatOrder={(mode) => {
+          const order = lastOrderFor(drawerCustomer?.name);
+
+          if (!order) return;
+
+          router.push(
+            mode === "duplicate"
+              ? `/sales/orders?duplicate=${order.id}`
+              : `/sales/orders?repeat=${encodeURIComponent(
+                  drawerCustomer?.name || "",
+                )}`,
+          );
+        }}
         customer={drawerCustomer}
         activities={activities}
         loading={activitiesLoading}

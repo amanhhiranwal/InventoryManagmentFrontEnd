@@ -41,6 +41,8 @@ export default function CustomerContactDrawer({
   onMarkDead,
   onReactivate,
   onConvertToLead,
+  lastOrder,
+  onRepeatOrder,
 }: {
   customer: CustomerModel | null;
   activities: CustomerActivity[];
@@ -58,6 +60,9 @@ export default function CustomerContactDrawer({
   onMarkDead: (customer: CustomerModel, reason: string) => Promise<boolean>;
   onReactivate: (customer: CustomerModel) => void;
   onConvertToLead: (customer: CustomerModel) => void;
+  /** Their most recent order, when they have bought before. */
+  lastOrder?: { id: string; number: string } | null;
+  onRepeatOrder?: (mode: "repeat" | "duplicate") => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
@@ -128,7 +133,33 @@ export default function CustomerContactDrawer({
             </h2>
           </div>
 
-          {customer.converted_lead_id ? (
+          {/* Somebody who has bought is not a lead again. Once there is an
+              order behind them the header offers the next one instead -
+              either their details with the products left to choose, or the
+              same order over again. */}
+          {lastOrder && onRepeatOrder ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={busy || inactive}
+                title={inactive ? "Reactivate the customer first" : undefined}
+                onClick={() => onRepeatOrder("duplicate")}
+                className="h-[35px] rounded-lg border border-[#d1d1d1] bg-white px-3 text-[12px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+              >
+                Duplicate {lastOrder.number || "Last Order"}
+              </button>
+
+              <button
+                type="button"
+                disabled={busy || inactive}
+                title={inactive ? "Reactivate the customer first" : undefined}
+                onClick={() => onRepeatOrder("repeat")}
+                className="h-[35px] rounded-lg bg-[#273756] px-4 text-[12px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                New Sales Order
+              </button>
+            </div>
+          ) : customer.converted_lead_id ? (
             <Link
               href={`/leads?open=${customer.converted_lead_id}`}
               className="flex h-[35px] items-center rounded-lg border border-[#d1d1d1] bg-white px-4 text-[12px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"

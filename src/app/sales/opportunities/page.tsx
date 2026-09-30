@@ -237,19 +237,29 @@ interface Opportunity {
 
 /** An opportunity as a spreadsheet row. */
 const OPPORTUNITY_COLUMNS: ExportColumn<Opportunity>[] = [
+  /* The table's own columns first, in the table's order, so the sheet opens
+     reading like the screen it came from. The opportunity's name was missing
+     from the export altogether - the one column a reader looks for first. */
   { header: "Lead ID", value: (row) => row.leadId },
-  { header: "Customer Name", value: (row) => row.customerName },
+  { header: "Opportunity Name", value: (row) => row.name },
+  { header: "Organization Name", value: (row) => row.company },
+  { header: "Contact Person", value: (row) => row.customerName },
+  { header: "Est. Deal Value", value: (row) => row.dealValue },
+  { header: "Assigned To", value: (row) => row.owner },
+  /* The stage, because that is what the screen's Status column shows. The
+     export used to put `status` here - Active or Inactive, a different
+     thing entirely - and carry the stage in a separate column further
+     along, so the two disagreed on what "Status" meant. */
+  { header: "Status", value: (row) => row.stage },
+  { header: "Priority", value: (row) => row.priority },
+
+  /* The rest of the record, in the order it was already in. */
   { header: "Email", value: (row) => row.email },
   { header: "Phone", value: (row) => row.phone },
-  { header: "Company", value: (row) => row.company },
   { header: "City", value: (row) => row.city },
   { header: "State", value: (row) => row.state },
   { header: "Customer Type", value: (row) => row.customerType },
-  { header: "Deal Value", value: (row) => row.dealValue },
-  { header: "Assigned To", value: (row) => row.owner },
-  { header: "Status", value: (row) => row.status },
-  { header: "Priority", value: (row) => row.priority },
-  { header: "Stage", value: (row) => row.stage },
+  { header: "Active / Inactive", value: (row) => row.status },
   { header: "Expected Closing Date", value: (row) => row.expectedClosingDate || "" },
 ];
 
@@ -608,6 +618,15 @@ function OpportunitiesPageInner() {
 
   const [showAddModal, setShowAddModal] = useState(false);
 
+  /* A stage change waiting on its reason. The row menus set this instead
+     of moving the deal, so the history never gets an entry nobody can
+     account for. */
+  const [stageMove, setStageMove] = useState<{
+    opportunity: Opportunity;
+    next: CanonicalOpportunityStatus;
+  } | null>(null);
+  const [movingStage, setMovingStage] = useState(false);
+
   /* Lead-driven creation: pick a lead, then open the prefilled form. */
   const [showLeadPicker, setShowLeadPicker] = useState(false);
   const [convertibleLeads, setConvertibleLeads] = useState<Lead[]>([]);
@@ -957,10 +976,10 @@ function OpportunitiesPageInner() {
       await createOpportunityApi({
         ...(payload.leadId ? { lead_id: Number(payload.leadId) } : {}),
 
-        title:
-          payload.opportunityName ||
-          payload.contactName ||
-          payload.organizationName,
+        /* Exactly what was typed. It used to fall back to the contact or
+           the organisation, which is how a deal ended up named after its
+           own company; the form now insists on a name of its own. */
+        title: payload.opportunityName,
         description: payload.organizationName,
 
         organization_name: payload.organizationName,
@@ -1158,8 +1177,13 @@ function OpportunitiesPageInner() {
   };
 
   /* Advance an opportunity one step along the canonical pipeline.
-     This is what previously never reached the backend. */
-  const handleAdvanceStage = async (opp: Opportunity) => {
+     This is what previously never reached the backend.
+
+     It no longer moves anything on its own: a stage change goes on the
+     deal's permanent history, and the row menu was writing those entries
+     with nothing to explain them. It opens the same question the drawer's
+     stage picker asks, and the answer travels with the move. */
+  const handleAdvanceStage = (opp: Opportunity) => {
     const current = STAGE_TO_STATUS[opp.stage];
     const next = nextStatusOf(current);
 
@@ -1181,8 +1205,21 @@ function OpportunitiesPageInner() {
       return;
     }
 
+    setOpenActionMenu(null);
+    setStageMove({ opportunity: opp, next });
+  };
+
+  const confirmStageMove = async (remarks: string) => {
+    if (!stageMove) return;
+
+    const { opportunity: opp, next } = stageMove;
+
+    setMovingStage(true);
+
     try {
-      const updated = await updateOpportunityStatusApi(opp.id, next);
+      const updated = await updateOpportunityStatusApi(opp.id, next, {
+        remarks,
+      });
 
       setOpps((current) =>
         current.map((item) =>
@@ -1197,6 +1234,7 @@ function OpportunitiesPageInner() {
       );
 
       setOpenActionMenu(null);
+      setStageMove(null);
 
       /* The move is now part of the opportunity's history, so an open drawer
          has to pick it up rather than keep showing the timeline as it was. */
@@ -1212,6 +1250,8 @@ function OpportunitiesPageInner() {
         error?.response?.data?.detail || "Failed to update opportunity stage.",
         "error",
       );
+    } finally {
+      setMovingStage(false);
     }
   };
 
@@ -1270,10 +1310,10 @@ function OpportunitiesPageInner() {
 
     try {
       const updated = await updateOpportunityApi(editingOpportunity.id, {
-        title:
-          payload.opportunityName ||
-          payload.contactName ||
-          payload.organizationName,
+        /* Exactly what was typed. It used to fall back to the contact or
+           the organisation, which is how a deal ended up named after its
+           own company; the form now insists on a name of its own. */
+        title: payload.opportunityName,
         description: payload.organizationName,
 
         organization_name: payload.organizationName,
@@ -1537,6 +1577,18 @@ function OpportunitiesPageInner() {
             loading={loadingLeads}
             onClose={() => setShowLeadPicker(false)}
             onSelect={startFromLead}
+          />
+        )}
+
+        {/* Asked by the row menus, which used to move a deal on a single
+            click and leave the history with no account of why. */}
+        {stageMove && (
+          <StageRemarksModal
+            from={stageMove.opportunity.stage}
+            to={statusToStage(stageMove.next)}
+            saving={movingStage}
+            onCancel={() => setStageMove(null)}
+            onConfirm={confirmStageMove}
           />
         )}
 
@@ -2073,7 +2125,7 @@ function ListView({
 
               <TableHeader>Opportunity Name</TableHeader>
 
-              <TableHeader>Customer Name</TableHeader>
+              <TableHeader>Contact Person</TableHeader>
 
               <TableHeader>Est. Deal Value</TableHeader>
 
@@ -2110,9 +2162,12 @@ function ListView({
                   </span>
                 </td>
 
-                {/* Opportunity name on top, its company underneath. Plain
-                    markup now the row is clickable - a nested button would
-                    fire the same handler a second time. */}
+                {/* The deal, then the company it belongs to, then where that
+                    company is - the three things needed to place a row at a
+                    glance, which is why Figma keeps the territory here and
+                    leaves the contact cell to the person. Plain markup now
+                    the row is clickable: a nested button would fire the same
+                    handler a second time. */}
                 <td className="max-w-[170px] px-3 py-3.5">
                   <p className="text-[12px] font-bold text-slate-900 dark:text-white">
                     {opp.name}
@@ -2121,6 +2176,13 @@ function ListView({
                   <p className="mt-0.5 text-[10px] text-slate-500">
                     {opp.company}
                   </p>
+
+                  {(opp.state || opp.city) && (
+                    <p className="mt-0.5 flex items-center gap-1 text-[9px] text-slate-500">
+                      <FiMapPin size={9} />
+                      {opp.state || opp.city}
+                    </p>
+                  )}
                 </td>
 
                 <td className="px-3 py-3.5">
@@ -2128,16 +2190,9 @@ function ListView({
                     {opp.customerName}
                   </p>
 
-                  <p className="mt-0.5 text-[9px] text-slate-500">
+                  <p className="mt-0.5 text-[10px] text-slate-500 [overflow-wrap:anywhere]">
                     {opp.email}
                   </p>
-
-                  {opp.city && (
-                    <p className="mt-0.5 flex items-center gap-1 text-[8px] text-slate-500">
-                      <FiMapPin size={8} />
-                      {opp.city}
-                    </p>
-                  )}
                 </td>
 
                 <td className="px-3 py-3.5">
@@ -2320,11 +2375,102 @@ function ActionMenu({
   );
 }
 
+/** The same question the drawer's stage picker asks, as a dialog.
+
+    The row menus on the list and the board move a deal in one click, and
+    that click writes an entry on a history somebody reads months later.
+    So they ask here first, in the same words, and the answer goes on the
+    entry instead of a line saying only what the status already says. */
+function StageRemarksModal({
+  from,
+  to,
+  saving,
+  onCancel,
+  onConfirm,
+}: {
+  from: string;
+  to: string;
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: (remarks: string) => Promise<void>;
+}) {
+  const [remarks, setRemarks] = useState("");
+  const [error, setError] = useState("");
+
+  const confirm = () => {
+    if (!remarks.trim()) {
+      setError("Say why it is moving — this goes on the deal's history.");
+      return;
+    }
+
+    void onConfirm(remarks.trim());
+  };
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl dark:bg-[#051422]">
+        <h3 className="text-[13px] font-bold text-slate-900 dark:text-white">
+          Move to {to}
+        </h3>
+
+        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+          Why is it moving from {from} to {to}? *
+        </p>
+
+        <textarea
+          value={remarks}
+          autoFocus
+          rows={4}
+          placeholder="e.g. Demo went well, they have asked for a formal proposal by Friday."
+          onChange={(event) => {
+            setRemarks(event.target.value);
+            if (error) setError("");
+          }}
+          className={`mt-2.5 w-full rounded-lg border bg-white px-3 py-2 text-[11px] outline-none placeholder:text-slate-400 dark:bg-[#071929] dark:text-white ${
+            error
+              ? "border-rose-400 focus:border-rose-500 dark:border-rose-500/70"
+              : "border-slate-200 focus:border-[#233353] dark:border-[#17304a]"
+          }`}
+        />
+
+        {error && <p className="mt-1 text-[10px] text-rose-500">{error}</p>}
+
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="rounded-lg px-4 py-2 text-[11px] font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-[#0b2034]"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={confirm}
+            disabled={saving}
+            className="rounded-lg bg-[#233353] px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-[#18243a] disabled:opacity-50"
+          >
+            {saving ? "Moving..." : `Move to ${to}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** The stage picker on the opportunity detail drawer.
 
     Only stages ahead of the current one are offered, plus Closed Won and
     Dead: moving a deal backwards would leave its history meaningless. The
-    backend enforces the same rule. */
+    backend enforces the same rule.
+
+    Picking a stage does not move it. A deal rarely walks the pipeline a
+    step at a time, and a jump - Qualification straight to Proposal, or
+    anything to Closed Won - is the part of the history somebody will ask
+    about later. So the move is held until a reason is given, and that
+    reason is what lands on the timeline instead of the canned line this
+    used to write. */
 function StageSelect({
   opportunity,
   saving,
@@ -2332,44 +2478,118 @@ function StageSelect({
 }: {
   opportunity: Opportunity;
   saving: boolean;
-  onMove: (status: CanonicalOpportunityStatus) => Promise<boolean>;
+  onMove: (
+    status: CanonicalOpportunityStatus,
+    remarks: string,
+  ) => Promise<boolean>;
 }) {
   const current = STAGE_TO_STATUS[opportunity.stage];
   const ahead = OPPORTUNITY_TRANSITIONS[current] || [];
 
+  const [target, setTarget] = useState<CanonicalOpportunityStatus | "">("");
+  const [remarks, setRemarks] = useState("");
+  const [error, setError] = useState("");
+
   if (!ahead.length) return null;
 
+  const close = () => {
+    setTarget("");
+    setRemarks("");
+    setError("");
+  };
+
+  const move = async () => {
+    if (!target) return;
+
+    if (!remarks.trim()) {
+      setError("Say why it is moving — this goes on the deal's history.");
+      return;
+    }
+
+    const moved = await onMove(target, remarks.trim());
+
+    if (moved) close();
+  };
+
   return (
-    <div className="flex items-center gap-2 border-t border-slate-200 px-5 py-2.5 dark:border-[#17304a]">
-      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-        Move to stage
-      </span>
+    <div className="border-t border-slate-200 px-5 py-2.5 dark:border-[#17304a]">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+          Move to stage
+        </span>
 
-      <div className="relative flex-1">
-        <select
-          value=""
-          disabled={saving}
-          onChange={(event) => {
-            const next = event.target.value as CanonicalOpportunityStatus;
-            if (next) void onMove(next);
-            event.target.value = "";
-          }}
-          className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-8 text-[11px] text-slate-700 outline-none focus:border-[#233353] disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-        >
-          <option value="">Currently {opportunity.stage}</option>
+        <div className="relative flex-1">
+          <select
+            value={target}
+            disabled={saving}
+            onChange={(event) => {
+              setTarget(event.target.value as CanonicalOpportunityStatus);
+              setError("");
+            }}
+            className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-8 text-[11px] text-slate-700 outline-none focus:border-[#233353] disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+          >
+            <option value="">Currently {opportunity.stage}</option>
 
-          {ahead.map((status) => (
-            <option key={status} value={status}>
-              {statusToStage(status)}
-            </option>
-          ))}
-        </select>
+            {ahead.map((status) => (
+              <option key={status} value={status}>
+                {statusToStage(status)}
+              </option>
+            ))}
+          </select>
 
-        <FiChevronDown
-          size={12}
-          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-        />
+          <FiChevronDown
+            size={12}
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+        </div>
       </div>
+
+      {target && (
+        <div className="mt-2.5 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-[#17304a] dark:bg-[#071929]">
+          <label className="mb-1.5 block text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+            Why is it moving from {opportunity.stage} to{" "}
+            {statusToStage(target)}? *
+          </label>
+
+          <textarea
+            value={remarks}
+            autoFocus
+            rows={3}
+            placeholder="e.g. Demo went well, they have asked for a formal proposal by Friday."
+            onChange={(event) => {
+              setRemarks(event.target.value);
+              if (error) setError("");
+            }}
+            className={`w-full rounded-lg border bg-white px-3 py-2 text-[11px] outline-none placeholder:text-slate-400 dark:bg-[#051422] dark:text-white ${
+              error
+                ? "border-rose-400 focus:border-rose-500 dark:border-rose-500/70"
+                : "border-slate-200 focus:border-[#233353] dark:border-[#17304a]"
+            }`}
+          />
+
+          {error && <p className="mt-1 text-[9px] text-rose-500">{error}</p>}
+
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={close}
+              disabled={saving}
+              className="rounded-lg px-3 py-1.5 text-[10px] font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-[#0b2034]"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void move()}
+              disabled={saving}
+              className="rounded-lg bg-[#233353] px-3 py-1.5 text-[10px] font-semibold text-white transition hover:bg-[#18243a] disabled:opacity-50"
+            >
+              {saving ? "Moving..." : `Move to ${statusToStage(target)}`}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2441,7 +2661,7 @@ function LeadDetailsDrawer({
               }
               className="rounded-lg bg-[#233353] px-4 py-2 text-[11px] font-semibold text-white"
             >
-              Create Quotation
+              Create Proposal
             </button>
           </div>
 
@@ -2498,12 +2718,7 @@ function LeadDetailsDrawer({
           <StageSelect
             opportunity={opportunity}
             saving={saving}
-            onMove={(status) =>
-              onLogActivity({
-                status,
-                remarks: `Stage moved to ${statusToStage(status)}.`,
-              })
-            }
+            onMove={(status, remarks) => onLogActivity({ status, remarks })}
           />
         </div>
 
@@ -3026,11 +3241,14 @@ function NewOpportunityPage({
   );
   const [sameAsBilling, setSameAsBilling] = useState(false);
 
-  /* Names the opportunity itself; previously the title was silently
-     derived from the contact or organisation name. */
-  const [opportunityName, setOpportunityName] = useState(
-    seed.title || seed.organization_name || "",
-  );
+  /* Names the opportunity itself. Seeded from the saved title when editing
+     and left empty otherwise - pre-filling it with the organisation meant
+     every converted lead opened a deal called after its own company, and
+     the list then printed that name twice, once as the deal and once as
+     the company under it. */
+  const [opportunityName, setOpportunityName] = useState(seed.title || "");
+
+  const [opportunityNameError, setOpportunityNameError] = useState("");
 
   const [gstNumber, setGstNumber] = useState(seed.gst_number || "");
 
@@ -3156,6 +3374,27 @@ function NewOpportunityPage({
   const productsTotal =
     productTotals.subtotal - productTotals.discount + productTotals.tax;
 
+  /* The estimate follows the Total Amount. Adding a line, changing a
+     quantity or a discount restates it, so the two figures cannot drift
+     apart the way they did when it was typed by hand and then forgotten.
+
+     The first render is skipped: opening a saved opportunity shows the
+     value it was saved with rather than quietly restating it from lines
+     that may since have been repriced. Only an edit moves it.
+
+     It stays editable afterwards, because a deal with no lines yet still
+     needs a ballpark figure - clearing the table empties the field rather
+     than forcing a zero over what was typed. */
+  const lastProductsTotal = useRef(productsTotal);
+
+  useEffect(() => {
+    if (lastProductsTotal.current === productsTotal) return;
+
+    lastProductsTotal.current = productsTotal;
+
+    setTotalEstValue(productsTotal ? String(Math.round(productsTotal)) : "");
+  }, [productsTotal]);
+
   const filteredProducts = PRODUCT_CATALOG.filter((product) => {
     if (productCategory !== "All" && product.category !== productCategory) {
       return false;
@@ -3217,6 +3456,27 @@ function NewOpportunityPage({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+
+    /* The name has to be given, and has to say something the organisation
+       does not. The list prints the deal over the company it belongs to,
+       and two identical lines tell a reader nothing - which is what came
+       of accepting the organisation's own name here. */
+    const name = opportunityName.trim();
+    const organisation = organizationName.trim();
+
+    if (!name) {
+      setOpportunityNameError("Give this opportunity a name.");
+      return;
+    }
+
+    if (name.toLowerCase() === organisation.toLowerCase()) {
+      setOpportunityNameError(
+        `"${organisation}" is the organisation. Name the deal itself — what they are buying, or the project it is for.`,
+      );
+      return;
+    }
+
+    setOpportunityNameError("");
 
     if (
       !organizationName.trim() ||
@@ -3352,8 +3612,13 @@ function NewOpportunityPage({
                 <FormInput
                   label="Opportunity Name *"
                   value={opportunityName}
-                  onChange={setOpportunityName}
-                  placeholder="Enter name here"
+                  onChange={(value) => {
+                    setOpportunityName(value);
+                    if (opportunityNameError) setOpportunityNameError("");
+                  }}
+                  placeholder="e.g. Interactive Panel Setup, Campus Wi-Fi Refresh"
+                  error={opportunityNameError}
+                  hint="What the deal is for — not the organisation's name, which the list already shows underneath."
                 />
               </FormSectionBlock>
 
@@ -3836,9 +4101,10 @@ function NewOpportunityPage({
                   </table>
                 </div>
 
-                {/* Total Estimated Value. Defaults to the products total but
-                    stays editable, since the deal value quoted to the client
-                    is a commercial decision, not just the line sum. */}
+                {/* Restated from the Total Amount above whenever the lines
+                    change, but still editable: the figure quoted to a client
+                    is a commercial decision, and a deal at Qualification
+                    often has an estimate before it has any products. */}
                 <div className="mt-3">
                   <FormInput
                     label="Total Est. Value *"
@@ -3846,6 +4112,13 @@ function NewOpportunityPage({
                     onChange={setTotalEstValue}
                     placeholder="₹ 0.00"
                     type="number"
+                    hint={
+                      lineItems.length
+                        ? `Taken from the Total Amount above (${formatRupees(
+                            productsTotal,
+                          )}). Change it if the deal is worth something else.`
+                        : "Add products above and this follows their total."
+                    }
                   />
                 </div>
 
@@ -4396,12 +4669,18 @@ function FormInput({
   onChange,
   placeholder,
   type = "text",
+  error,
+  hint,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
+  /** Said under the field in red, and reddens its border. */
+  error?: string;
+  /** Said under the field in grey, when there is nothing wrong. */
+  hint?: string;
 }) {
   return (
     <div>
@@ -4414,8 +4693,22 @@ function FormInput({
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+        className={`h-10 w-full rounded-lg border bg-white px-3 text-[10px] outline-none placeholder:text-slate-400 dark:bg-[#071929] dark:text-white ${
+          error
+            ? "border-rose-400 focus:border-rose-500 dark:border-rose-500/70"
+            : "border-slate-200 focus:border-[#233353] dark:border-[#17304a]"
+        }`}
       />
+
+      {(error || hint) && (
+        <p
+          className={`mt-1 text-[9px] ${
+            error ? "text-rose-500" : "text-slate-400"
+          }`}
+        >
+          {error || hint}
+        </p>
+      )}
     </div>
   );
 }

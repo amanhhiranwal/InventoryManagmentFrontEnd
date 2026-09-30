@@ -207,7 +207,7 @@ export default function QuotationDetailPage() {
       console.error(error);
 
       addToast(
-        error?.response?.data?.detail || "Unable to load this quotation.",
+        error?.response?.data?.detail || "Unable to load this proposal.",
         "error",
       );
     } finally {
@@ -373,7 +373,7 @@ export default function QuotationDetailPage() {
 
       addToast(
         payload.status
-          ? `Quotation moved to ${QUOTATION_STATUS_LABEL[result.quotation.status]}.`
+          ? `Proposal moved to ${QUOTATION_STATUS_LABEL[result.quotation.status]}.`
           : "Activity logged.",
         "success",
       );
@@ -543,7 +543,7 @@ export default function QuotationDetailPage() {
                 className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
               >
                 <FiEdit2 size={13} />
-                Edit Quotation
+                Edit Proposal
               </button>
             )}
 
@@ -1014,7 +1014,7 @@ export default function QuotationDetailPage() {
             <div className="space-y-4">
               <ProcessStep
                 state={processState(0)}
-                title="Quotation Approved"
+                title="Proposal Approved"
                 caption={
                   quotation.status === QUOTATION_STATUS.ACCEPTED
                     ? `${quotation.quote_number} accepted by the client`
