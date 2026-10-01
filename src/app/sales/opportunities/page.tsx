@@ -115,6 +115,9 @@ interface OpportunityLineItem {
   product: string;
   model: string;
   sku: string;
+  /** HSN for goods, SAC for a service. Carried from the product so it
+      survives the trip to the proposal and on to the order. */
+  hsn: string;
   quantity: number;
   unitPrice: number;
   discount: number;
@@ -1025,6 +1028,7 @@ function OpportunitiesPageInner() {
             product: item.product,
             model: item.model,
             sku: item.sku,
+            hsn: item.hsn,
             quantity: item.quantity,
             unit_price: item.unitPrice,
             discount: item.discount,
@@ -1355,6 +1359,7 @@ function OpportunitiesPageInner() {
             product: item.product,
             model: item.model,
             sku: item.sku,
+            hsn: item.hsn,
             quantity: item.quantity,
             unit_price: item.unitPrice,
             discount: item.discount,
@@ -3308,6 +3313,7 @@ function NewOpportunityPage({
       product: item.product || "",
       model: item.model || "",
       sku: item.sku || "",
+      hsn: item.hsn || item.hsn_code || "",
       quantity: Number(item.quantity) || 1,
       unitPrice: Number(item.unit_price ?? item.unitPrice) || 0,
       discount: Number(item.discount) || 0,
@@ -3424,6 +3430,7 @@ function NewOpportunityPage({
           product: product.category,
           model: product.name,
           sku: productSku(product.id),
+          hsn: product.hsn || "",
           quantity: 1,
           unitPrice: product.price,
           discount: 0,
@@ -3883,14 +3890,27 @@ function NewOpportunityPage({
                   ref={productsRef}
                   className="overflow-x-auto rounded-lg border border-slate-200 dark:border-[#17304a]"
                 >
-                  <table className="w-full min-w-[680px] table-fixed">
+                  {/* No min-width: the design has this table fit its panel, and the
+                      floor was what made a scrollbar appear once the HSN
+                      column arrived. table-fixed shares the room out. */}
+                  <table className="w-full table-fixed">
+                    {/* Shared out explicitly rather than left to the browser.
+                        Fixed layout gives the first row's cells the say, which
+                        handed Product 293px and squeezed Unit Price to 44 -
+                        its input then overflowed and the panel grew a
+                        scrollbar the design does not have. */}
+                    {/* The table already had its columns shared out here;
+                        HSN joins them and the rest give up a little room, so
+                        the eight still add up to the panel and it does not
+                        grow the scrollbar the design has no room for. */}
                     <colgroup>
-                      <col className="w-[26%]" />
-                      <col className="w-[19%]" />
-                      <col className="w-[13%]" />
-                      <col className="w-[13%]" />
+                      <col className="w-[23%]" />
+                      <col className="w-[17%]" />
+                      <col className="w-[11%]" />
                       <col className="w-[12%]" />
-                      <col className="w-[13%]" />
+                      <col className="w-[11%]" />
+                      <col className="w-[12%]" />
+                      <col className="w-[14%]" />
                       <col className="w-[44px]" />
                     </colgroup>
 
@@ -3898,6 +3918,7 @@ function NewOpportunityPage({
                       <tr>
                         <Th>Product</Th>
                         <Th>Model / Variant</Th>
+                        <Th>HSN / SAC</Th>
                         <Th>Qty</Th>
                         <Th>Discount</Th>
                         <Th>Tax</Th>
@@ -3910,7 +3931,7 @@ function NewOpportunityPage({
                       {lineItems.length === 0 && (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={8}
                             className="px-3 py-8 text-center text-[11px] text-slate-400"
                           >
                             No products added yet. Use Add Product to build the
@@ -3934,7 +3955,7 @@ function NewOpportunityPage({
                                 : "hover:bg-slate-50/60 dark:hover:bg-[#071929]/50"
                             }`}
                           >
-                            <td className="px-3 py-2.5">
+                            <td className="px-2 py-2.5">
                               <p className="text-[11px] font-bold text-slate-900 dark:text-white">
                                 {item.product}
                               </p>
@@ -3944,7 +3965,7 @@ function NewOpportunityPage({
                               </p>
                             </td>
 
-                            <td className="px-3 py-2.5">
+                            <td className="px-2 py-2.5">
                               {editing ? (
                                 <input
                                   value={item.model}
@@ -3962,7 +3983,28 @@ function NewOpportunityPage({
                               )}
                             </td>
 
-                            <td className="px-3 py-2.5">
+                            {/* Set here so it carries to the proposal and the
+                                order rather than being typed again on each. */}
+                            <td className="px-2 py-2.5">
+                              {editing ? (
+                                <input
+                                  value={item.hsn}
+                                  placeholder="e.g. 8528"
+                                  onChange={(event) =>
+                                    updateLineItem(item.key, {
+                                      hsn: event.target.value,
+                                    })
+                                  }
+                                  className={LINE_CELL_MODEL}
+                                />
+                              ) : (
+                                <span className="font-mono text-[10px] text-slate-600 dark:text-slate-300">
+                                  {item.hsn || "—"}
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="px-2 py-2.5">
                               {editing ? (
                                 <div className="flex items-center gap-1">
                                   <button
@@ -4004,7 +4046,7 @@ function NewOpportunityPage({
                               )}
                             </td>
 
-                            <td className="px-3 py-2.5">
+                            <td className="px-2 py-2.5">
                               {editing ? (
                                 <div className="flex items-center gap-1">
                                   <LineNumberInput
@@ -4027,7 +4069,7 @@ function NewOpportunityPage({
                               )}
                             </td>
 
-                            <td className="px-3 py-2.5">
+                            <td className="px-2 py-2.5">
                               {editing ? (
                                 <div className="flex items-center gap-1">
                                   <LineNumberInput
@@ -4048,12 +4090,28 @@ function NewOpportunityPage({
                               )}
                             </td>
 
-                            {/* Unit price comes from the catalogue via Add
-                                Product and is not edited on the line. */}
-                            <td className="px-3 py-2.5">
-                              <span className="text-[10px] text-slate-600 dark:text-slate-300">
-                                {item.unitPrice.toLocaleString("en-IN")}
-                              </span>
+                            {/* Seeded from the catalogue by Add Product, then
+                                the salesperson's to change: a negotiated price
+                                is the whole point of the line, and the totals
+                                below follow whatever it is set to. */}
+                            <td className="px-2 py-2.5">
+                              {editing ? (
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={item.unitPrice}
+                                  onChange={(event) =>
+                                    updateLineItem(item.key, {
+                                      unitPrice: parseAmount(event.target.value),
+                                    })
+                                  }
+                                  className={LINE_CELL_MODEL}
+                                />
+                              ) : (
+                                <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                                  {item.unitPrice.toLocaleString("en-IN")}
+                                </span>
+                              )}
                             </td>
 
                             <td className="px-3 py-2.5 text-right">
@@ -4515,6 +4573,7 @@ function OpportunityProductModal({
                           category: item.product,
                           price: item.unitPrice,
                           available: 0,
+                          hsn: item.hsn,
                         })
                       }
                       className="text-rose-400 transition hover:text-rose-600"

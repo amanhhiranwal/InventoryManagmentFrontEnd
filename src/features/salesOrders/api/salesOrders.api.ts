@@ -166,6 +166,8 @@ export interface SalesOrderModel {
   discount_mode?: "AMOUNT" | "PERCENT" | null;
   discount_input?: number | null;
   freight_charges?: number | null;
+  shifting_charges?: number | null;
+  total_revenue?: number | null;
   installation_lumpsum?: number | null;
   gst_percent?: number | null;
   advance_received?: number | null;
@@ -237,6 +239,7 @@ export interface CreateSalesOrderPayload {
   orc_input?: number;
 
   freight_charges?: number;
+  shifting_charges?: number;
   installation_lumpsum?: number;
   gst_percent?: number;
   advance_received?: number;

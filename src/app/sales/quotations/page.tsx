@@ -121,6 +121,8 @@ interface LineItem {
   product: string;
   model: string;
   sku: string;
+  /** HSN for goods, SAC for a service, carried from the product. */
+  hsn: string;
   quantity: number;
   unitPrice: number;
   discount: number;
@@ -501,7 +503,11 @@ export default function QuotationPage() {
   const chargedFreight = includeFreight ? freight : 0;
   const chargedInstallation = includeInstallation ? installation : 0;
   const [gstPercent, setGstPercent] = useState(18);
-  const [advancePercent] = useState(30);
+  /* The split the client is asked to pay on. One number decides all of
+     it: the two figures below, the terms printed on the PDF, and the
+     covering email - which is why it is a field rather than a constant.
+     It used to be fixed at 30 with no way to quote anything else. */
+  const [advancePercent, setAdvancePercent] = useState(30);
 
   const [attachments, setAttachments] = useState<AttachmentState[]>([]);
 
@@ -771,6 +777,14 @@ export default function QuotationPage() {
     };
   }, [priceType, discountPercent]);
 
+  /* True while a discount on this proposal is still with an approver.
+     Read from the saved status rather than the chain preview: the preview
+     says what *would* need signing, this says what actually is. */
+  const awaitingApproval =
+    editingId !== null &&
+    quotations.find((row) => row.id === editingId)?.status ===
+      QUOTATION_STATUS.PENDING_APPROVAL;
+
   /** Saves the quotation, then sends the discount up for approval. */
   const sendForApproval = async () => {
     if (!validate()) return;
@@ -850,6 +864,7 @@ export default function QuotationPage() {
     setIncludeFreight(false);
     setIncludeInstallation(false);
     setGstPercent(18);
+    setAdvancePercent(30);
     setAttachments([]);
     setTerms(DEFAULT_TERMS);
     setRemarks("");
@@ -911,6 +926,7 @@ export default function QuotationPage() {
             product: item.product || "",
             model: item.model || "",
             sku: item.sku || "",
+            hsn: item.hsn || "",
             quantity: Number(item.quantity) || 1,
             unitPrice: Number(item.unit_price) || 0,
             discount: Number(item.discount) || 0,
@@ -933,6 +949,12 @@ export default function QuotationPage() {
           saved.gst_percent === null || saved.gst_percent === undefined
             ? 18
             : saved.gst_percent,
+        );
+
+        setAdvancePercent(
+          saved.advance_percent === null || saved.advance_percent === undefined
+            ? 30
+            : saved.advance_percent,
         );
 
         setAttachments(
@@ -1041,6 +1063,7 @@ export default function QuotationPage() {
         product: text("product", "name"),
         model: text("model"),
         sku: text("sku"),
+        hsn: text("hsn", "hsn_code"),
         quantity: num("quantity", "qty") || 1,
         unitPrice: num("unit_price", "unitPrice", "price"),
         discount: num("discount"),
@@ -1132,6 +1155,7 @@ export default function QuotationPage() {
       product: item.product,
       model: item.model,
       sku: item.sku,
+      hsn: item.hsn,
       quantity: item.quantity,
       unit_price: item.unitPrice,
       discount: item.discount,
@@ -1340,6 +1364,7 @@ export default function QuotationPage() {
           product: product.category,
           model: product.name,
           sku: productSku(product.id),
+          hsn: product.hsn || "",
           quantity: 1,
           unitPrice: product.price,
           discount: 0,
@@ -1463,6 +1488,29 @@ export default function QuotationPage() {
                     ? "Save Proposal"
                     : "Save as Draft"}
               </DraftButton>
+
+              {/* The design puts this in the header, where the other two
+                  actions are. It only lived at the foot of the summary
+                  panel, which is a long way to scroll for the one button
+                  that moves the proposal on. Shown only when there is in
+                  fact something to approve. */}
+              {approvalChain.length > 0 && (
+                <button
+                  type="button"
+                  onClick={sendForApproval}
+                  disabled={requestingApproval || saving}
+                  className="flex h-[39px] items-center gap-2 rounded-lg bg-[#233353] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:opacity-50"
+                >
+                  {requestingApproval ? (
+                    <CgSpinner className="animate-spin" size={14} />
+                  ) : (
+                    <FiSend size={13} />
+                  )}
+                  {requestingApproval
+                    ? "Sending..."
+                    : `Send To ${approvalChain[0]} For Approval`}
+                </button>
+              )}
             </>
           }
         />
@@ -1672,6 +1720,7 @@ export default function QuotationPage() {
                     <tr>
                       <Th>Product</Th>
                       <Th>Model / Variant</Th>
+                      <Th>HSN / SAC</Th>
                       <Th>Qty</Th>
                       <Th>Discount</Th>
                       <Th>Tax</Th>
@@ -1684,7 +1733,7 @@ export default function QuotationPage() {
                     {items.length === 0 && (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={8}
                           className="px-4 py-10 text-center text-xs text-slate-400"
                         >
                           No products added yet. Use Add Product to build the
@@ -1730,6 +1779,26 @@ export default function QuotationPage() {
                             ) : (
                               <span className="text-[11px] text-slate-600 dark:text-slate-300">
                                 {item.model}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Comes from the product, but stays editable: a
+                              line can be classified differently from the
+                              catalogue's default when the supply is. */}
+                          <td className="px-4 py-3">
+                            {editing ? (
+                              <input
+                                value={item.hsn}
+                                placeholder="e.g. 8528"
+                                onChange={(event) =>
+                                  updateItem(item.key, { hsn: event.target.value })
+                                }
+                                className={CELL_INPUT}
+                              />
+                            ) : (
+                              <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                                {item.hsn || "—"}
                               </span>
                             )}
                           </td>
@@ -2004,31 +2073,9 @@ export default function QuotationPage() {
                     Pricing &amp; Approval
                   </p>
 
-                  {/* Whose letterhead the proposal carries. Only worth
-                      asking when the salesperson sells for more than one. */}
-                  {sellingCompanies.length > 1 && (
-                    <>
-                      <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-                        Selling Company
-                      </label>
-
-                      <select
-                        value={sellingCompanyId}
-                        onChange={(event) =>
-                          setSellingCompanyId(event.target.value)
-                        }
-                        className="mb-3 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-                      >
-                        <option value="">Use the default profile</option>
-                        {sellingCompanies.map((company) => (
-                          <option key={company.id} value={company.id}>
-                            {company.company_name}
-                          </option>
-                        ))}
-                      </select>
-                    </>
-                  )}
-
+                  {/* The letterhead comes from the company profile. It used
+                      to be a picker here, which asked the salesperson a
+                      question the profile already answers. */}
                   <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
                     Price Type
                   </label>
@@ -2108,9 +2155,37 @@ export default function QuotationPage() {
                   )}
                 </div>
 
-                <p className="mt-5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                  Payment Terms:
-                </p>
+                <div className="mt-5 flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    Payment Terms:
+                  </p>
+
+                  {/* Change this and the two figures below, the terms on the
+                      PDF and the covering email all follow - they are all
+                      read from this one number. */}
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      aria-label="Advance percentage"
+                      value={advancePercent}
+                      onChange={(event) =>
+                        setAdvancePercent(
+                          Math.min(
+                            100,
+                            Math.max(
+                              0,
+                              Number(event.target.value.replace(/[^\d.]/g, "")) || 0,
+                            ),
+                          ),
+                        )
+                      }
+                      className="h-7 w-12 rounded-md border border-slate-200 px-1.5 text-right text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                    />
+
+                    <span className="text-[11px] text-slate-500">% advance</span>
+                  </div>
+                </div>
 
                 <div className="mt-2.5 space-y-2">
                   <div className="flex items-center justify-between">
@@ -2172,16 +2247,32 @@ export default function QuotationPage() {
                     Download PDF
                   </button>
 
+                  {/* Nothing goes to a client on a discount nobody has
+                      signed for yet. The chain exists so a price leaves the
+                      building only once somebody with the authority has
+                      agreed to it, and an email cannot be recalled. */}
                   <button
                     type="button"
                     onClick={saveAndEmail}
-                    disabled={saving}
-                    className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#233353] text-xs font-semibold text-white transition hover:bg-[#18243a] disabled:opacity-50"
+                    disabled={saving || awaitingApproval}
+                    title={
+                      awaitingApproval
+                        ? "Waiting on approval — the proposal can be emailed once the discount is signed off."
+                        : undefined
+                    }
+                    className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#233353] text-xs font-semibold text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <FiMail size={13} />
                     Email Draft
                   </button>
                 </div>
+
+                {awaitingApproval && (
+                  <p className="mt-2 text-[10px] leading-4 text-amber-600 dark:text-amber-400">
+                    Waiting on approval. The proposal can be emailed to the
+                    client once the discount has been signed off.
+                  </p>
+                )}
               </FormSectionBlock>
             </FormCard>
           </div>
@@ -3248,6 +3339,7 @@ function ProductPickerModal({
                           category: item.product,
                           price: item.unitPrice,
                           available: 0,
+                          hsn: item.hsn,
                         })
                       }
                       className="text-rose-400 transition hover:text-rose-600"

@@ -10,6 +10,10 @@ export interface CatalogProduct {
   category: string;
   price: number;
   available: number;
+  /** HSN for goods, SAC for a service. Every line of a GST invoice has to
+      carry one, so it travels with the product rather than being typed
+      onto each document. */
+  hsn: string;
 }
 
 export const PRODUCT_CATEGORIES = [
@@ -24,6 +28,7 @@ export const PRODUCT_CATEGORIES = [
 export const PRODUCT_CATALOG: CatalogProduct[] = [
   {
     id: "QIFP75",
+    hsn: "8528",
     name: "Qonevo IFP 75 – Core – 8/128",
     category: "Interactive Flat Panel",
     price: 185000,
@@ -31,6 +36,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
   },
   {
     id: "QIFP86",
+    hsn: "8528",
     name: "Qonevo IFP 86 – Core – 8/128",
     category: "Interactive Flat Panel",
     price: 265000,
@@ -38,6 +44,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
   },
   {
     id: "QLED25",
+    hsn: "8528",
     name: "Qonevo Active LED Indoor P2.5",
     category: "Active LED Display",
     price: 1850000,
@@ -45,6 +52,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
   },
   {
     id: "QADV55",
+    hsn: "8528",
     name: "Qonevo Advertising Display 55",
     category: "Advertising Display",
     price: 95000,
@@ -52,6 +60,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
   },
   {
     id: "QKIOSK22",
+    hsn: "8471",
     name: "Qonevo Smart Kiosk 22",
     category: "Kiosk",
     price: 125000,
@@ -59,6 +68,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
   },
   {
     id: "QSMART65",
+    hsn: "8528",
     name: "Qonevo Smart Display 65",
     category: "Smart Display",
     price: 145000,
