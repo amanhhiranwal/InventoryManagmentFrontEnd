@@ -149,12 +149,50 @@ interface Product {
   category: string;
   price: number;
   available: number;
+  hsn?: string;
+}
+
+/** One line of the revenue working. Read-only by design: every figure on
+    it is entered somewhere above, and two places to edit one number is how
+    the two end up disagreeing. */
+function RevenueLine({
+  label,
+  value,
+  minus,
+  muted,
+}: {
+  label: string;
+  value: string;
+  minus?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between py-0.5">
+      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+        {label}
+      </span>
+
+      <span
+        className={`text-[11px] ${
+          muted
+            ? "italic text-slate-400"
+            : minus
+              ? "font-medium text-rose-500"
+              : "font-semibold text-slate-700 dark:text-slate-200"
+        }`}
+      >
+        {value}
+      </span>
+    </div>
+  );
 }
 
 interface SelectedProduct {
   id: string;
   name: string;
   category: string;
+  /** HSN for goods, SAC for a service, carried from the product. */
+  hsn: string;
   price: number;
   quantity: number;
   discount: number;
@@ -373,6 +411,11 @@ export default function OrdersListPage() {
      the summary shows, which used to be a fixed 30/70 printed into the
      markup with nothing behind it. */
   const [advancePercent, setAdvancePercent] = useState(30);
+
+  /* What it costs us to shift the goods. A cost we carry rather than a
+     charge the customer is billed, so it never touches the taxable amount
+     - it only comes off what the order actually earns. */
+  const [shiftingCharges, setShiftingCharges] = useState(0);
 
   /* The reference the next order would take, read once when the form
      opens. A preview rather than a reservation - the number is allocated
@@ -935,6 +978,7 @@ export default function OrdersListPage() {
               name: item.model || item.description || item.item || "Product",
               category:
                 item.product || catalogued?.category || item.category || "",
+              hsn: item.hsn || catalogued?.hsn || "",
               price: Number(item.price ?? item.rate) || 0,
               quantity: Number(item.quantity_case ?? item.qty) || 1,
               discount: Number(item.discount) || 0,
@@ -950,6 +994,7 @@ export default function OrdersListPage() {
         setOrcMode((saved.orc_mode as AmountMode) || "AMOUNT");
         setOrcInput(saved.orc_input || 0);
         setFreightCharges(saved.freight_charges || 0);
+        setShiftingCharges(saved.shifting_charges || 0);
         setInstallationLumpsum(saved.installation_lumpsum || 0);
         setAdvanceReceived(saved.advance_received || 0);
         setGstPercent(
@@ -1214,6 +1259,7 @@ export default function OrdersListPage() {
               id: catalogued?.id || `line-${index}`,
               name: item.model || catalogued?.name || "Product",
               category: item.product || catalogued?.category || "",
+              hsn: item.hsn || catalogued?.hsn || "",
               price: Number(item.unit_price) || 0,
               quantity: Number(item.quantity) || 1,
               discount: Number(item.discount) || 0,
@@ -1310,6 +1356,7 @@ export default function OrdersListPage() {
           id: product.id,
           name: product.name,
           category: product.category,
+          hsn: product.hsn || "",
           price: product.price,
           quantity: 1,
           discount: 0,
@@ -1321,15 +1368,18 @@ export default function OrdersListPage() {
 
   const updateSelectedProduct = (
     id: string,
-    field: "quantity" | "discount" | "tax",
-    value: number,
+    field: "quantity" | "discount" | "tax" | "hsn",
+    value: number | string,
   ) => {
     setSelectedProducts((current) =>
       current.map((item) =>
         item.id === id
           ? {
               ...item,
-              [field]: Math.max(0, value),
+              /* HSN is a code, not a quantity: it is kept as typed rather
+                 than floored at zero. */
+              [field]:
+                field === "hsn" ? String(value) : Math.max(0, Number(value)),
             }
           : item,
       ),
@@ -1422,6 +1472,7 @@ export default function OrdersListPage() {
           product: item.category,
           model: item.name,
           sku: productSku(item.id),
+          hsn: item.hsn,
 
           description: item.name,
           rate: item.price,
@@ -1447,6 +1498,7 @@ export default function OrdersListPage() {
         orc_mode: orcMode,
         orc_input: orcInput,
         freight_charges: freightCharges,
+        shifting_charges: shiftingCharges,
         installation_lumpsum: installationLumpsum,
         gst_percent: gstPercent,
         advance_received: advanceReceived,
@@ -1623,9 +1675,12 @@ export default function OrdersListPage() {
     ? (orderOrc / orderSubtotal) * 100
     : 0;
 
+  /* The ORC comes off, as it does on the server. It was being added here,
+     so the form showed one total and the saved order held another on every
+     order that carried a commission. */
   const orderTaxableAmount =
     orderSubtotal -
-    orderDiscount +
+    orderDiscount -
     orderOrc +
     freightCharges +
     installationLumpsum;
@@ -1633,6 +1688,18 @@ export default function OrdersListPage() {
   const orderGst = (orderTaxableAmount * gstPercent) / 100;
 
   const orderGrandTotal = orderTaxableAmount + orderGst;
+
+  /* What the customer pays, and what the order leaves us, are two
+     different questions. Delivery and installation pass straight through,
+     the GST goes to the government, and shifting is ours to carry. The ORC
+     is already out of the grand total - it came off the taxable amount
+     above - so taking it off again would count the commission twice. */
+  const orderRevenue =
+    orderGrandTotal -
+    freightCharges -
+    installationLumpsum -
+    shiftingCharges -
+    orderGst;
 
   /* An advance cannot exceed the order, so the balance never goes negative. */
   const orderAdvance = Math.max(0, Math.min(advanceReceived, orderGrandTotal));
@@ -2304,6 +2371,10 @@ export default function OrdersListPage() {
                         </th>
 
                         <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
+                          HSN / SAC
+                        </th>
+
+                        <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
                           Qty
                         </th>
 
@@ -2357,6 +2428,24 @@ export default function OrdersListPage() {
 
                             <td className="px-3 py-3 text-[10px] text-slate-600 max-w-[150px]">
                               {item.name}
+                            </td>
+
+                            {/* From the product, but editable: a line can be
+                                classified differently from the catalogue's
+                                default when the supply is. */}
+                            <td className="px-3 py-3">
+                              <input
+                                value={item.hsn}
+                                placeholder="e.g. 8528"
+                                onChange={(event) =>
+                                  updateSelectedProduct(
+                                    item.id,
+                                    "hsn",
+                                    event.target.value,
+                                  )
+                                }
+                                className="w-20 rounded border border-slate-200 px-2 py-1 font-mono text-[10px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                              />
                             </td>
 
                             <td className="px-3 py-3">
@@ -2478,7 +2567,8 @@ export default function OrdersListPage() {
                       <OrderSummaryRow
                         label={`ORC (${orderOrcPercent.toFixed(2)}%)`}
                         name="ORC"
-                        value={`+${money(orderOrc)}`}
+                        value={`-${money(orderOrc)}`}
+                        tone="rose"
                         edit={{
                           amount: orcInput,
                           mode: orcMode,
@@ -2503,6 +2593,20 @@ export default function OrdersListPage() {
                         edit={{
                           amount: installationLumpsum,
                           onChange: setInstallationLumpsum,
+                        }}
+                      />
+
+                      {/* A cost we carry, not a charge the customer is
+                          billed, so it is outside the taxable amount and
+                          only shows up against the revenue below. */}
+                      <OrderSummaryRow
+                        label="Shifting (our cost)"
+                        name="Shifting"
+                        value={`-${money(shiftingCharges)}`}
+                        tone="rose"
+                        edit={{
+                          amount: shiftingCharges,
+                          onChange: setShiftingCharges,
                         }}
                       />
 
@@ -2539,12 +2643,65 @@ export default function OrdersListPage() {
                       the advance and the balance. */}
                   <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-[#17304a]">
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                      Total Payable:
+                      Sales Order Value:
                     </span>
 
                     <span className="text-sm font-bold text-slate-900 dark:text-white">
                       {money(orderGrandTotal)}
                     </span>
+                  </div>
+
+                  {/* And what it leaves us, which is the figure the business
+                      is actually measured on. Every deduction is listed
+                      rather than netted into one number, because a revenue
+                      figure nobody can reproduce is a figure nobody trusts.
+                      Read-only here: each of these is set above, and two
+                      places to edit one number is how they end up
+                      disagreeing. */}
+                  <div className="mt-3 rounded-xl bg-slate-50 p-3 dark:bg-[#0b2034]">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Revenue Calculation
+                    </p>
+
+                    <RevenueLine
+                      label="Sales Order Value"
+                      value={money(orderGrandTotal)}
+                    />
+                    <RevenueLine
+                      label="Less Delivery"
+                      value={`-${money(freightCharges)}`}
+                      minus
+                    />
+                    <RevenueLine
+                      label="Less Installation"
+                      value={`-${money(installationLumpsum)}`}
+                      minus
+                    />
+                    <RevenueLine
+                      label="Less Shifting"
+                      value={`-${money(shiftingCharges)}`}
+                      minus
+                    />
+                    <RevenueLine
+                      label={`Less GST (${gstPercent}%)`}
+                      value={`-${money(orderGst)}`}
+                      minus
+                    />
+                    <RevenueLine
+                      label="Less ORC"
+                      value={`already deducted above`}
+                      muted
+                    />
+
+                    <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 dark:border-[#17304a]">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        Total Revenue:
+                      </span>
+
+                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                        {money(orderRevenue)}
+                      </span>
+                    </div>
                   </div>
 
                   {/* What has come in against the order, and what is still
