@@ -60,6 +60,7 @@ const INVENTORY_COLUMNS: ExportColumn<InventoryItem>[] = [
   { header: "Unit", value: (item) => String(item.attributes?.unit ?? "") },
   { header: "Wholesale Rate", value: (item) => Number(item.attributes?.rate ?? 0) },
   { header: "Case Size", value: (item) => Number(item.attributes?.case_size ?? 1) },
+  { header: "HSN / SAC", value: (item) => String(item.attributes?.hsn_code ?? "") },
   {
     header: "Stock Value",
     value: (item) =>
@@ -105,6 +106,9 @@ export default function InventoryPage() {
   const [unit, setUnit] = useState("");
   const [instock, setInstock] = useState("");
   const [caseSize, setCaseSize] = useState("");
+  /* HSN for goods, SAC for a service. Kept as text: it is a code, and a
+     leading zero in it is not a rounding error. */
+  const [hsnCode, setHsnCode] = useState("");
 
   // Dynamic template fields loaded for selected product type (Create Modal)
   const [activeTemplate, setActiveTemplate] = useState<InventoryTemplate | null>(null);
@@ -128,6 +132,7 @@ export default function InventoryPage() {
   const [editUnit, setEditUnit] = useState("");
   const [editInstock, setEditInstock] = useState("");
   const [editCaseSize, setEditCaseSize] = useState("");
+  const [editHsnCode, setEditHsnCode] = useState("");
 
   const [editDynamicValues, setEditDynamicValues] = useState<Record<string, any>>({});
   const [editActiveTemplate, setEditActiveTemplate] = useState<InventoryTemplate | null>(null);
@@ -350,6 +355,7 @@ export default function InventoryPage() {
     setEditUnit(item.attributes?.unit || (unitsList.length > 0 ? unitsList[0] : ""));
     setEditInstock((item.attributes?.instock ?? item.attributes?.stock ?? "").toString());
     setEditCaseSize(item.attributes?.case_size?.toString() || "");
+    setEditHsnCode(item.attributes?.hsn_code?.toString() || "");
 
     setEditDynamicValues(item.attributes || {});
     setShowEditModal(true);
@@ -419,7 +425,8 @@ export default function InventoryPage() {
         unit: unit,
         instock: instockVal,
         stock: instockVal,
-        case_size: caseSizeVal
+        case_size: caseSizeVal,
+        hsn_code: hsnCode.trim()
       };
 
       await createInventoryItemApi({
@@ -438,6 +445,7 @@ export default function InventoryPage() {
       setRate("");
       setInstock("");
       setCaseSize("");
+      setHsnCode("");
       setDynamicValues({});
       setImageBase64(null);
       setShowCreateModal(false);
@@ -496,7 +504,8 @@ export default function InventoryPage() {
         unit: editUnit,
         instock: instockVal,
         stock: instockVal,
-        case_size: caseSizeVal
+        case_size: caseSizeVal,
+        hsn_code: editHsnCode.trim()
       };
 
       await updateInventoryItemApi(itemToEdit._id, {
@@ -665,6 +674,7 @@ export default function InventoryPage() {
                   <th className="px-5 py-3">Serial Number</th>
                   <th className="px-5 py-3">Category Group</th>
                   <th className="px-5 py-3">Company</th>
+                  <th className="px-5 py-3">HSN / SAC</th>
                   <th className="px-5 py-3">In Stock</th>
                   <th className="px-5 py-3">Wholesale Rate</th>
                   <th className="px-5 py-3 text-right">Actions</th>
@@ -677,6 +687,7 @@ export default function InventoryPage() {
               const unitVal = item.attributes?.unit ?? "Unit";
               const stockVal = item.attributes?.instock ?? item.attributes?.stock ?? 0;
               const caseSizeVal = item.attributes?.case_size ?? 1;
+              const hsnVal = item.attributes?.hsn_code ?? "";
 
               /* The one number the warehouse acts on, so it is the one
                  thing on the row that carries a colour. */
@@ -728,6 +739,15 @@ export default function InventoryPage() {
                       </span>
                     ) : (
                       <span className="text-[13px] text-slate-400">All companies</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3">
+                    {hsnVal ? (
+                      <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700 dark:bg-[#0d2336] dark:text-slate-200">
+                        {hsnVal}
+                      </span>
+                    ) : (
+                      <span className="text-[12px] text-slate-400">—</span>
                     )}
                   </td>
                   <td className="px-5 py-3">
@@ -1123,6 +1143,17 @@ export default function InventoryPage() {
                 />
               </div>
 
+              {/* Every line of a GST invoice has to carry one, and it is a
+                  property of the product rather than of the sale - so it is
+                  captured here once and travels onto every document the
+                  product appears on. */}
+              <Input
+                label="HSN / SAC Code"
+                placeholder="e.g. 8528"
+                value={hsnCode}
+                onChange={(e) => setHsnCode(e.target.value)}
+              />
+
               {/* DYNAMIC FORM SECTION */}
               <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">
                 <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
@@ -1382,6 +1413,13 @@ export default function InventoryPage() {
                     onChange={(e) => setEditCaseSize(e.target.value)}
                   />
                 </div>
+
+                <Input
+                  label="HSN / SAC Code"
+                  placeholder="e.g. 8528"
+                  value={editHsnCode}
+                  onChange={(e) => setEditHsnCode(e.target.value)}
+                />
 
                 {/* DYNAMIC FORM SECTION */}
                 <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">
