@@ -850,6 +850,12 @@ export function BankingDetails({
               value={bank.account_number || notSet}
             />
             <InfoRow label="IFSC Code" labelWidth="w-[120px]" value={bank.ifsc || notSet} />
+            {/* Only when there is one. An inward remittance needs it; a
+                domestic transfer does not, and a blank SWIFT line on a
+                document reads as a bank that has none. */}
+            {bank.swift && (
+              <InfoRow label="SWIFT Code" labelWidth="w-[120px]" value={bank.swift} />
+            )}
           </div>
         </div>
 
@@ -861,7 +867,19 @@ export function BankingDetails({
 
             <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-200/60 px-3 py-3 dark:bg-[#071929]">
               <div className="flex min-w-0 items-center gap-3">
-                <LuQrCode size={20} className="shrink-0 text-slate-700 dark:text-slate-300" />
+                {/* The bank's own code when one is uploaded, so the customer
+                    can scan the invoice. The icon is only a placeholder for
+                    an installation that has not uploaded one - a QR drawn
+                    from a mistyped VPA would scan cleanly and pay nobody. */}
+                {bank.upi_qr_url ? (
+                  <img
+                    src={`${process.env.NEXT_PUBLIC_API_URL || ""}${bank.upi_qr_url}`}
+                    alt="UPI QR code"
+                    className="h-[72px] w-[72px] shrink-0 rounded bg-white object-contain p-1"
+                  />
+                ) : (
+                  <LuQrCode size={20} className="shrink-0 text-slate-700 dark:text-slate-300" />
+                )}
                 <div className="min-w-0">
                   <p className="text-[12px] font-medium text-slate-800 dark:text-white">
                     UPI Corporate VPA
@@ -1230,7 +1248,18 @@ export function ProductPickerModal({
                         {product.name}
                       </p>
                       <p className="mt-1 text-[10px] text-slate-500">
-                        {money(product.price)} • {product.available} available
+                        {/* A catalogue line the price list leaves blank says
+                            so. Showing it as Rs 0.00 reads like a free
+                            product, and it reaches a customer's document
+                            that way. */}
+                        {product.price > 0 ? (
+                          money(product.price)
+                        ) : (
+                          <span className="font-medium text-amber-600">
+                            Price not set
+                          </span>
+                        )}{" "}
+                        • {product.available} available
                       </p>
                     </div>
                   </div>

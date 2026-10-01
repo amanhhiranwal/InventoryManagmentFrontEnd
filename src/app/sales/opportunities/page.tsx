@@ -4513,8 +4513,17 @@ function OpportunityProductModal({
                       </p>
 
                       <p className="mt-1 text-[10px] text-slate-500">
-                        {formatShortCurrency(product.price)} ·{" "}
-                        {product.available} available
+                        {/* A catalogue line the price list leaves blank says so.
+                            Rs 0.00 reads like a free product, and it reaches
+                            a customer's document that way. */}
+                        {product.price > 0 ? (
+                          formatShortCurrency(product.price)
+                        ) : (
+                          <span className="font-medium text-amber-600">
+                            Price not set
+                          </span>
+                        )}{" "}
+                        · {product.available} available
                       </p>
                     </div>
                   </div>

@@ -36,9 +36,11 @@ import {
   createProformaInvoiceApi,
   generateProformaInvoiceApi,
   getCompanyProfileApi,
+  getPaymentTermOptionsApi,
   getProformaInvoiceApi,
   updateProformaInvoiceApi,
   type CompanyProfile,
+  type PaymentTermOption,
   type ProformaAddress,
   type ProformaInvoicePayload,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
@@ -141,6 +143,8 @@ function GenerateProformaInvoice() {
   const [gstPercent, setGstPercent] = useState(18);
   const [amountPaid, setAmountPaid] = useState(0);
   const [advancePercent, setAdvancePercent] = useState(30);
+  const [paymentTerms, setPaymentTerms] = useState("");
+  const [termOptions, setTermOptions] = useState<PaymentTermOption[]>([]);
 
   const [terms, setTerms] = useState<string[]>(DEFAULT_TERMS);
   const [notes, setNotes] = useState("");
@@ -174,6 +178,10 @@ function GenerateProformaInvoice() {
     setLumpsum(order.installation_lumpsum || 0);
     setGstPercent(order.gst_percent ?? 18);
     setAdvancePercent(order.advance_percent ?? 30);
+    /* The split the client accepted on the proposal, carried through the
+       order. The invoice asks for what was offered rather than for a
+       default sentence that can quietly contradict it. */
+    setPaymentTerms(order.payment_terms || "");
     setTerms(order.commercial_terms?.length ? order.commercial_terms : DEFAULT_TERMS);
     setNotes(order.technical_notes || "");
   };
@@ -185,6 +193,12 @@ function GenerateProformaInvoice() {
       getCompanyProfileApi()
         .then(setProfile)
         .catch(() => setProfile(null));
+
+      /* Alongside, not awaited: the form is usable without the list, and
+         the split carried from the order is already in hand. */
+      getPaymentTermOptionsApi()
+        .then(setTermOptions)
+        .catch(() => setTermOptions([]));
 
       if (editingId) {
         const invoice = await getProformaInvoiceApi(editingId);
@@ -227,6 +241,7 @@ function GenerateProformaInvoice() {
         setGstPercent(invoice.gst_percent);
         setAmountPaid(invoice.amount_paid);
         setAdvancePercent(invoice.advance_percent);
+        setPaymentTerms(invoice.payment_terms || "");
         setTerms(invoice.commercial_terms?.length ? invoice.commercial_terms : DEFAULT_TERMS);
         setNotes(invoice.technical_notes || "");
 
@@ -323,6 +338,7 @@ function GenerateProformaInvoice() {
       gst_percent: gstPercent,
       amount_paid: amountPaid,
       advance_percent: advancePercent,
+      payment_terms: paymentTerms,
       commercial_terms: terms.map((term) => term.trim()).filter(Boolean),
       technical_notes: notes,
     };
@@ -576,6 +592,53 @@ function GenerateProformaInvoice() {
                   )
                 }
               />
+
+              {/* ONE CHOICE, NOT TWO FIELDS
+
+                  Picking a split sets both the percentage the figures are
+                  worked out from and the sentence printed on the document,
+                  so the wording and the arithmetic cannot drift apart. */}
+              <div className="mt-5 max-w-xl">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Payment Terms
+                </label>
+
+                <select
+                  value={advancePercent}
+                  onChange={(event) => {
+                    const percent = Number(event.target.value);
+                    setAdvancePercent(percent);
+
+                    const option = termOptions.find(
+                      (candidate) => candidate.advance_percent === percent,
+                    );
+                    if (option) setPaymentTerms(option.label);
+                  }}
+                  className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                >
+                  {/* A split carried from the proposal that is not on the
+                      list is still offered, rather than silently replaced
+                      with the nearest one. */}
+                  {!termOptions.some(
+                    (option) => option.advance_percent === advancePercent,
+                  ) && (
+                    <option value={advancePercent}>
+                      {paymentTerms || `${advancePercent}% advance`}
+                    </option>
+                  )}
+
+                  {termOptions.map((option) => (
+                    <option key={option.advance_percent} value={option.advance_percent}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <p className="mt-1.5 text-[10px] text-slate-400">
+                  Carried from the proposal. Changing it changes the advance
+                  expected, the balance due and the sentence on the invoice.
+                </p>
+              </div>
 
               <TotalsBlock
                 figures={{

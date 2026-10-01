@@ -3156,7 +3156,17 @@ export default function OrdersListPage() {
 
                               <div className="flex items-center gap-2 mt-1">
                                 <span className="text-[10px] text-slate-500">
-                                  {money(product.price)}
+                                  {/* A catalogue line the price list leaves
+                                      blank says so. Rs 0.00 reads like a free
+                                      product, and reaches the customer that
+                                      way. */}
+                                  {product.price > 0 ? (
+                                    money(product.price)
+                                  ) : (
+                                    <span className="font-medium text-amber-600">
+                                      Price not set
+                                    </span>
+                                  )}
                                 </span>
 
                                 <span className="text-slate-300">•</span>

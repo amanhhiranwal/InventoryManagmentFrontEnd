@@ -40,6 +40,7 @@ import {
   FiDatabase,
   FiEye,
   FiEdit2,
+  FiPrinter,
   FiUploadCloud,
   FiImage,
   FiX
@@ -341,6 +342,38 @@ export default function InventoryPage() {
       loadEditFormTemplate();
     }
   }, [editSelectedTypeCode, showEditModal, itemToEdit, addToast]);
+
+  /* The label is drawn on the server, so the barcode a scanner reads is
+     the same one the PDF would carry. Fetched rather than linked, because
+     the endpoint needs the auth header the axios client already holds -
+     a plain window.open would arrive signed out. */
+  const printLabel = async (item: InventoryItem) => {
+    try {
+      const { data } = await api.get(
+        `/api/v1/inventory/items/${item._id}/label`,
+        { responseType: "text" },
+      );
+
+      const sheet = window.open("", "_blank");
+
+      if (!sheet) {
+        addToast("Allow pop-ups to print the label.", "warning");
+        return;
+      }
+
+      sheet.document.write(
+        `<!doctype html><title>${item.serial_number || "Label"}</title>` +
+          `<style>body{margin:0;display:flex;align-items:center;` +
+          `justify-content:center;height:100vh}svg{width:75mm}` +
+          `@media print{body{height:auto}}</style>${data}` +
+          `<script>window.onload=function(){window.print()}<\/script>`,
+      );
+      sheet.document.close();
+    } catch (error) {
+      console.error(error);
+      addToast("Could not build the label for this product.", "error");
+    }
+  };
 
   const handleOpenEditModal = (item: InventoryItem) => {
     setItemToEdit(item);
@@ -776,6 +809,18 @@ export default function InventoryPage() {
                       >
                         <FiEye className="text-sm" />
                       </button>
+                      {/* The sticker for the box: a Code128 of the SKU for
+                          a desk scanner and a QR a phone can read. Opened
+                          in a tab so the browser's own print dialog does
+                          the printing. */}
+                      <button
+                        onClick={() => printLabel(item)}
+                        className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 hover:text-primary"
+                        title="Print label (barcode and QR)"
+                      >
+                        <FiPrinter className="text-sm" />
+                      </button>
+
                       <button
                         onClick={() => handleOpenEditModal(item)}
                         className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 hover:text-primary"

@@ -10,41 +10,36 @@
  * differently from how it previewed.
  */
 
-import { ReactNode, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { LuFingerprint, LuReceiptText, LuTruck } from "react-icons/lu";
+import { LuFingerprint } from "react-icons/lu";
 
 import {
   BankingDetails,
-  PrintedAddress,
-  ProductsTable,
   TermsBlock,
-  TotalsBlock,
   daysBetween,
   formatDate,
-  itemToLine,
 } from "@/features/proformaInvoices/components/ProformaParts";
+import {
+  AmountsInWords,
+  GoodsTable,
+  HsnTaxSummary,
+  InvoiceTotals,
+  PartyBlock,
+  ReferencePanel,
+} from "@/features/proformaInvoices/components/TaxInvoiceParts";
 import type {
   CompanyProfile,
   ProformaInvoiceModel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
 
-type ChargeField = "freight" | "lumpsum" | "gstPercent" | "paid";
-
 export default function ProformaInvoiceDocument({
   invoice,
   profile,
-  editable,
-  onEdit,
-  saving,
   onCopied,
 }: {
   invoice: ProformaInvoiceModel;
   profile: CompanyProfile | null;
-  /** Rows that carry a pencil; omit for a read-only copy. */
-  editable?: Partial<Record<ChargeField, boolean>>;
-  onEdit?: (field: ChargeField, value: number) => void;
-  saving?: boolean;
   onCopied?: (message: string) => void;
 }) {
   const reference = invoice.pi_number || `PI-${invoice.id}`;
@@ -57,8 +52,20 @@ export default function ProformaInvoiceDocument({
 
   const signatory = profile?.signatory?.name || invoice.creator_name;
 
+  /* A GSTIN is held on the account rather than on the invoice, so it is
+     read from whichever the document carries. Absent, the line is left
+     off rather than printed empty - a blank registration on a tax
+     document reads as a claim that there is none. */
+  const billGstin =
+    (invoice.customer_information as Record<string, unknown> | undefined)?.gst as
+      | string
+      | undefined;
+  const shipGstin = billGstin;
+
+  const summary = invoice.tax_summary;
+
   return (
-    <div className="pi-paper bg-white px-10 py-8 text-slate-800">
+    <div className="pi-paper @container bg-white px-10 py-8 text-slate-800">
       {/* HEADER */}
       <div className="pi-keep flex flex-row justify-between gap-6 border-b border-slate-200 pb-6">
         <div>
@@ -93,46 +100,62 @@ export default function ProformaInvoiceDocument({
         </div>
       </div>
 
-      {/* BILLED / SHIPPED */}
-      <div className="pi-keep mt-6 grid grid-cols-2 gap-5">
-        <AddressCard icon={<LuReceiptText size={16} />} title="Billed To">
-          <PrintedAddress
-            name={invoice.company_name || invoice.customer_name}
-            address={invoice.billing_address}
-          />
-        </AddressCard>
+      {/* THE PARTIES AND THE REFERENCES
 
-        <AddressCard icon={<LuTruck size={16} />} title="Shipped To">
-          <PrintedAddress
-            name={invoice.company_name || invoice.customer_name}
-            address={invoice.shipping_address}
-          />
-        </AddressCard>
+          Three panels in the design's own card language. A GST document
+          identifies both sides by registration and state, because that
+          pair is what decides how the tax splits - so the panels carry
+          the GSTIN and the state code rather than the address alone. */}
+      <div className="pi-keep mt-6 grid grid-cols-1 gap-4 @min-[640px]:grid-cols-2">
+        <PartyBlock
+          title="Buyer (Bill To)"
+          name={invoice.company_name || invoice.customer_name}
+          lines={addressLines(invoice.billing_address)}
+          gstin={billGstin}
+          stateName={invoice.billing_address?.state}
+          stateCode={invoice.buyer_state_code}
+        />
+
+        <PartyBlock
+          title="Consignee (Ship To)"
+          name={invoice.company_name || invoice.customer_name}
+          lines={addressLines(invoice.shipping_address)}
+          gstin={shipGstin}
+          stateName={invoice.shipping_address?.state}
+          stateCode={invoice.buyer_state_code}
+        />
       </div>
 
-      {/* PRODUCTS */}
+      <div className="pi-keep mt-4">
+        <ReferencePanel
+          invoice={invoice}
+          orderNumber={orderNumber}
+          reference={reference}
+          issueDate={formatDate(invoice.issue_date)}
+        />
+      </div>
+
+      {/* THE GOODS, AND THE ARITHMETIC THAT FOLLOWS THEM */}
       <div className="mt-6">
-        <ProductsTable lines={invoice.items.map(itemToLine)} variant="document" />
+        <GoodsTable invoice={invoice} summary={summary} />
       </div>
 
-      <TotalsBlock
-        figures={{
-          subtotal: invoice.total_amount,
-          discount: invoice.discount_amount,
-          orc: invoice.orc_amount,
-          freight: invoice.freight_charges,
-          lumpsum: invoice.installation_lumpsum,
-          taxable: invoice.taxable_amount,
-          gstPercent: invoice.gst_percent,
-          gst: invoice.gst_amount,
-          total: invoice.grand_total,
-          paid: invoice.amount_paid,
-          balance: invoice.balance_due,
-        }}
-        editable={editable}
-        onEdit={onEdit}
-        saving={saving}
-      />
+      <InvoiceTotals invoice={invoice} summary={summary} />
+
+      {/* THE TAX, SHOWN RATHER THAN STATED
+
+          A GST document carries the taxable value and the tax under each
+          HSN, so a reader can check the arithmetic rather than take the
+          total on trust. Both figures also appear in words: digits can be
+          altered with a pen and words cannot. */}
+      {summary && summary.rows.length > 0 && (
+        <div className="pi-keep mt-6 space-y-4">
+          <HsnTaxSummary summary={summary} />
+          <AmountsInWords invoice={invoice} />
+        </div>
+      )}
+
+      <p className="mt-2 text-right text-[10px] italic text-slate-500">E. &amp; O.E</p>
 
       <div className="mt-6">
         <BankingDetails profile={profile} reference={reference} onCopied={onCopied} />
@@ -156,21 +179,29 @@ export default function ProformaInvoiceDocument({
       {/* FOOTER */}
       <div className="pi-keep mt-10 flex flex-row items-end justify-between gap-8 border-t border-slate-200 pt-8">
         <div>
-          <p className="text-[12px] text-slate-700">Generated by: Synergy SalesCRM</p>
+          <p className="text-[12px] text-slate-700">
+            This is a Computer Generated Document
+          </p>
+          <p className="mt-1 text-[10px] text-slate-600">Generated by Synergy SalesCRM</p>
           <p className="mt-1 text-[10px] font-medium text-slate-700">
             Doc Ref: DOC-{String(invoice.id).padStart(5, "0")}-PI-V1
           </p>
         </div>
 
-        <div className="ml-auto w-[210px] text-center">
+        <div className="ml-auto w-[230px] text-center">
+          {/* "for <COMPANY>" above the signature, as a company signs a
+              document rather than a person signing on their own account. */}
+          {profile?.legal_name && (
+            <p className="text-[10px] font-semibold text-slate-700">
+              for {profile.legal_name}
+            </p>
+          )}
+
           <p className="font-serif text-[20px] text-slate-800">{signatory || " "}</p>
           <div className="my-2 border-t border-slate-300" />
           <p className="text-[12px] font-medium text-slate-700">
             {profile?.signatory?.title || "Authorised Signatory"}
           </p>
-          {profile?.legal_name && (
-            <p className="text-[10px] text-slate-600">{profile.legal_name}</p>
-          )}
           {issued && (
             <p className="mt-1 flex items-center justify-center gap-1 text-[9px] text-blue-500">
               <LuFingerprint size={11} />
@@ -183,24 +214,21 @@ export default function ProformaInvoiceDocument({
   );
 }
 
-function AddressCard({
-  icon,
-  title,
-  children,
-}: {
-  icon: ReactNode;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="rounded-xl bg-slate-100 px-4 pb-4 pt-3">
-      <div className="mb-3 flex items-center gap-2 border-b border-slate-200 pb-2 text-slate-600">
-        {icon}
-        <span className="text-[13px] font-medium">{title}</span>
-      </div>
-      {children}
-    </div>
-  );
+/** An address as the printed form sets it: one line per line. */
+function addressLines(address?: {
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pin?: string | null;
+  country?: string | null;
+}): string[] {
+  if (!address) return [];
+
+  return [
+    address.street,
+    [address.city, address.pin].filter(Boolean).join(" "),
+    [address.state, address.country].filter(Boolean).join(", "),
+  ].filter(Boolean) as string[];
 }
 
 /* =========================================================
