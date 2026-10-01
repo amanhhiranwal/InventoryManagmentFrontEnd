@@ -19,6 +19,7 @@ import {
   quotationBrandLogoUrl,
 } from "@/features/quotations/api/quotations.api";
 import type { QuotationBrand } from "@/features/quotations/api/quotations.api";
+import { amountInWords } from "@/features/quotations/amountInWords";
 
 const NAVY = "#1f477b";
 
@@ -80,14 +81,31 @@ export default function QuotationDocument({
      standing signatory. */
   const sender = brand?.sender;
 
-  const submittedBy = (
+  /* A name and a designation that read the same - "Super Admin" over
+     "Super Admin" - is a line the reader has to think about for no gain,
+     so a repeat is dropped rather than printed twice. */
+  const withoutRepeats = (lines: (string | null | undefined)[]) => {
+    const seen = new Set<string>();
+
+    return lines.filter((line) => {
+      const value = (line || "").trim();
+
+      if (!value || seen.has(value.toLowerCase())) return false;
+
+      seen.add(value.toLowerCase());
+
+      return true;
+    }) as string[];
+  };
+
+  const submittedBy = withoutRepeats(
     sender
       ? [sender.name, sender.title, company, sender.email, sender.phone]
       : [
           brand?.signatory || company,
           ...(brand?.signatory ? [brand.signatory_title, company] : []),
-        ]
-  ).filter(Boolean) as string[];
+        ],
+  );
 
   /* What the company sells. Falls back to what is on this quotation when
      no range has been configured, as the PDF does. */
@@ -225,7 +243,8 @@ export default function QuotationDocument({
         <table className="mt-6 w-full border-collapse text-[10px]">
           <thead>
             <tr style={{ background: NAVY }} className="text-white">
-              {["Sr. No", "Category", "Model", "Description", "Qty", "Price", "GST", "Amount"].map(
+              {/* HSN sits beside the description, as a tax invoice has it. */}
+              {["Sr. No", "Category", "Model", "Description", "HSN / SAC", "Qty", "Price", "GST", "Amount"].map(
                 (heading) => (
                   <th
                     key={heading}
@@ -242,7 +261,7 @@ export default function QuotationDocument({
             {items.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="border border-[#c9d2e0] px-2 py-6 text-center italic text-slate-400"
                 >
                   No items on this quotation.
@@ -274,6 +293,9 @@ export default function QuotationDocument({
                     </td>
                     <td className="border border-[#c9d2e0] px-2 py-2">
                       {item.sku || "—"}
+                    </td>
+                    <td className="border border-[#c9d2e0] px-2 py-2 text-center">
+                      {item.hsn || "—"}
                     </td>
                     <td className="border border-[#c9d2e0] px-2 py-2 text-center">
                       {quantity}
@@ -318,6 +340,13 @@ export default function QuotationDocument({
           </table>
         </div>
 
+        {/* The same figure in words, from the same number. Both appear
+            because digits can be altered with a pen and words cannot. */}
+        <div className="mt-3 border border-[#c9d2e0] bg-[#f3f6fa] px-3 py-2 text-[10px]">
+          <span className="font-bold">Amount in words:</span>{" "}
+          {amountInWords(quotation.total_payable)}
+        </div>
+
         <h3 className="mt-8 text-[13px] font-bold">
           General Terms &amp; Conditions:
         </h3>
@@ -342,13 +371,14 @@ export default function QuotationDocument({
 
         <div className="mt-10 text-[12px] font-bold leading-[19px]">
           <p>Best Regards</p>
-          {(sender?.name || brand?.signatory) && (
-            <p>{sender?.name || brand?.signatory}</p>
-          )}
-          {(sender?.title || brand?.signatory_title) && (
-            <p>{sender?.title || brand?.signatory_title}</p>
-          )}
-          <p>{company}</p>
+
+          {withoutRepeats([
+            sender?.name || brand?.signatory,
+            sender?.title || brand?.signatory_title,
+            company,
+          ]).map((line) => (
+            <p key={line}>{line}</p>
+          ))}
 
           {[sender?.phone || brand?.phone, sender?.email || brand?.email, brand?.website]
             .filter(Boolean)
