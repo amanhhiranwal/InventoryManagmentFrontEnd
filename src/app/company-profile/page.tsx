@@ -20,10 +20,7 @@ import {
   LuBuilding2,
   LuFileText,
   LuImage,
-  LuLandmark,
   LuPenLine,
-  LuQrCode,
-  LuReceiptText,
   LuSave,
 } from "react-icons/lu";
 
@@ -34,9 +31,7 @@ import {
   getCompanyProfileApi,
   removeCompanyCoverApi,
   saveCompanyProfileApi,
-  removeUpiQrApi,
   uploadCompanyCoverApi,
-  uploadUpiQrApi,
   uploadCompanyLogoApi,
 } from "@/features/settings/api/companyProfile.api";
 
@@ -56,7 +51,6 @@ export default function CompanyProfilePage() {
   const [saving, setSaving] = useState(false);
   const logoInput = useRef<HTMLInputElement | null>(null);
   const coverInput = useRef<HTMLInputElement | null>(null);
-  const qrInput = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -95,16 +89,7 @@ export default function CompanyProfilePage() {
         signatory_name: profile.signatory_name,
         signatory_title: profile.signatory_title,
 
-        company_state_name: profile.company_state_name,
-        company_state_code: profile.company_state_code,
 
-        bank_account_name: profile.bank_account_name,
-        bank_name: profile.bank_name,
-        bank_account_number: profile.bank_account_number,
-        bank_branch: profile.bank_branch,
-        bank_ifsc: profile.bank_ifsc,
-        bank_swift: profile.bank_swift,
-        upi_vpa: profile.upi_vpa,
       });
 
       setProfile(saved);
@@ -132,16 +117,6 @@ export default function CompanyProfilePage() {
         (error as { response?: { data?: { detail?: string } } })?.response?.data
           ?.detail || "That image could not be uploaded.";
       addToast(detail, "error");
-    }
-  };
-
-  const clearQr = async () => {
-    try {
-      setProfile(await removeUpiQrApi());
-      addToast("UPI QR removed.", "info");
-    } catch (error) {
-      console.error(error);
-      addToast("The UPI QR could not be removed.", "error");
     }
   };
 
@@ -322,176 +297,11 @@ export default function CompanyProfilePage() {
             </div>
           </Section>
 
-          {/* WHERE THE MONEY GOES, AND WHAT TAX APPLIES
-
-              Both printed on documents a customer pays against, which is
-              exactly why they are edited here rather than set once in the
-              deployment's environment: an account number changes, and a
-              proforma invoice still carrying the old one is how a payment
-              goes astray with nobody noticing for a month. */}
-          <Section icon={<LuLandmark size={16} />} title="Banking Details">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field
-                label="Beneficiary Account Name"
-                hint="The name the bank holds the account under. Blank falls back to the legal name."
-              >
-                <input
-                  value={profile.bank_account_name}
-                  onChange={(event) => set("bank_account_name", event.target.value)}
-                  placeholder={profile.company_legal_name || "Account name"}
-                  className={INPUT}
-                />
-              </Field>
-
-              <Field label="Bank Name">
-                <input
-                  value={profile.bank_name}
-                  onChange={(event) => set("bank_name", event.target.value)}
-                  placeholder="HDFC Bank"
-                  className={INPUT}
-                />
-              </Field>
-
-              <Field label="Account Number">
-                <input
-                  value={profile.bank_account_number}
-                  onChange={(event) => set("bank_account_number", event.target.value)}
-                  placeholder="Current account"
-                  className={INPUT}
-                />
-              </Field>
-
-              <Field label="Branch">
-                <input
-                  value={profile.bank_branch}
-                  onChange={(event) => set("bank_branch", event.target.value)}
-                  placeholder="Branch and city"
-                  className={INPUT}
-                />
-              </Field>
-
-              <Field label="IFSC Code">
-                <input
-                  value={profile.bank_ifsc}
-                  onChange={(event) => set("bank_ifsc", event.target.value)}
-                  placeholder="HDFC0000123"
-                  className={INPUT}
-                />
-              </Field>
-
-              <Field
-                label="SWIFT Code"
-                hint="Only needed for inward remittances. Left blank it is not printed."
-              >
-                <input
-                  value={profile.bank_swift}
-                  onChange={(event) => set("bank_swift", event.target.value)}
-                  placeholder="Optional"
-                  className={INPUT}
-                />
-              </Field>
-
-              <Field label="UPI VPA">
-                <input
-                  value={profile.upi_vpa}
-                  onChange={(event) => set("upi_vpa", event.target.value)}
-                  placeholder="company@bank"
-                  className={INPUT}
-                />
-              </Field>
-            </div>
-
-            {/* The bank's own image, not a code we draw from the VPA above:
-                a QR generated from a mistyped VPA scans perfectly and pays
-                nobody. */}
-            <div className="mt-2 flex flex-wrap items-start gap-5 border-t border-slate-100 pt-4 dark:border-[#17304a]">
-              {profile.upi_qr_path ? (
-                <img
-                  src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/company-profile/upi-qr/image?v=${encodeURIComponent(profile.upi_qr_path)}`}
-                  alt="UPI QR"
-                  className="h-28 w-28 rounded-lg border border-slate-200 bg-white object-contain p-1.5 dark:border-[#17304a]"
-                  onError={(event) => {
-                    (event.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              ) : (
-                <div className="flex h-28 w-28 items-center justify-center rounded-lg border border-dashed border-slate-300 text-center text-[10px] text-slate-400 dark:border-[#17304a]">
-                  No UPI QR
-                </div>
-              )}
-
-              <div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => qrInput.current?.click()}
-                    className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
-                  >
-                    <LuQrCode size={13} />
-                    {profile.upi_qr_path ? "Replace UPI QR" : "Upload UPI QR"}
-                  </button>
-
-                  {profile.upi_qr_path && (
-                    <button
-                      type="button"
-                      onClick={clearQr}
-                      className="h-9 rounded-lg border border-rose-200 px-4 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900/40"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-
-                <p className="mt-1.5 max-w-sm text-[10px] leading-relaxed text-slate-400">
-                  Upload the code your bank issued for the VPA above. It is
-                  printed on every proforma invoice for the customer to scan.
-                </p>
-
-                <input
-                  ref={qrInput}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  hidden
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) {
-                      void sendImage(file, uploadUpiQrApi, "UPI QR uploaded.");
-                    }
-                    event.target.value = "";
-                  }}
-                />
-              </div>
-            </div>
-          </Section>
-
-          <Section icon={<LuReceiptText size={16} />} title="GST Registration">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field
-                label="State Name"
-                hint="Our place of business, as the GST registration records it."
-              >
-                <input
-                  value={profile.company_state_name}
-                  onChange={(event) => set("company_state_name", event.target.value)}
-                  placeholder="Uttar Pradesh"
-                  className={INPUT}
-                />
-              </Field>
-
-              <Field
-                label="State Code"
-                hint="The two digits that open the GSTIN. Matched against the customer's state to decide CGST + SGST or IGST, so a wrong code taxes every invoice the wrong way."
-              >
-                <input
-                  value={profile.company_state_code}
-                  onChange={(event) => set("company_state_code", event.target.value)}
-                  placeholder="09"
-                  className={INPUT}
-                />
-              </Field>
-            </div>
-          </Section>
-
+          {/* Banking and the GST registration live on their own Masters
+              page. They were here, under a heading about proposals and
+              emails, which is not where anyone looks for an account
+              number - and this page is long enough that they were below
+              the fold. */}
           <Section icon={<LuImage size={16} />} title="Logo">
             <div className="flex flex-wrap items-center gap-5">
               <img
