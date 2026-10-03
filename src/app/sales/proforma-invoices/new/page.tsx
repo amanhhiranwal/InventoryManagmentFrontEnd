@@ -36,11 +36,10 @@ import {
   createProformaInvoiceApi,
   generateProformaInvoiceApi,
   getCompanyProfileApi,
-  getPaymentTermOptionsApi,
+  getNextPiNumberApi,
   getProformaInvoiceApi,
   updateProformaInvoiceApi,
   type CompanyProfile,
-  type PaymentTermOption,
   type ProformaAddress,
   type ProformaInvoicePayload,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
@@ -127,6 +126,10 @@ function GenerateProformaInvoice() {
   const [source, setSource] = useState<Source | null>(null);
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
 
+  /* What the next invoice would be numbered. Held beside the source so
+     the field and the banking panel read the same figure. */
+  const [nextPiNumber, setNextPiNumber] = useState<string | null>(null);
+
   const [assignedTo, setAssignedTo] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -144,7 +147,6 @@ function GenerateProformaInvoice() {
   const [amountPaid, setAmountPaid] = useState(0);
   const [advancePercent, setAdvancePercent] = useState(30);
   const [paymentTerms, setPaymentTerms] = useState("");
-  const [termOptions, setTermOptions] = useState<PaymentTermOption[]>([]);
 
   const [terms, setTerms] = useState<string[]>(DEFAULT_TERMS);
   const [notes, setNotes] = useState("");
@@ -194,11 +196,21 @@ function GenerateProformaInvoice() {
         .then(setProfile)
         .catch(() => setProfile(null));
 
-      /* Alongside, not awaited: the form is usable without the list, and
-         the split carried from the order is already in hand. */
-      getPaymentTermOptionsApi()
-        .then(setTermOptions)
-        .catch(() => setTermOptions([]));
+      /* Shown on the form before anything is saved, so the PI ID and the
+         remittance reference are not two blanks reading "Assigned on
+         save" on the one page whose job is to tell a customer what to
+         quote on their transfer. Only for a new invoice - editing one
+         already has its own number. */
+      if (!editingId) {
+        getNextPiNumberApi()
+          .then((next) => {
+            if (next) setNextPiNumber(next);
+          })
+          .catch(() => {
+            /* The form works without it; the field falls back to saying
+               the number is assigned on save. */
+          });
+      }
 
       if (editingId) {
         const invoice = await getProformaInvoiceApi(editingId);
@@ -446,7 +458,22 @@ function GenerateProformaInvoice() {
               <div className="grid grid-cols-1 gap-x-10 gap-y-4 md:grid-cols-2">
                 <InfoRow
                   label="PI ID"
-                  value={source.piNumber ? `#${source.piNumber}` : <span className="font-normal text-slate-400">Assigned on save</span>}
+                  value={
+                    source.piNumber ? (
+                      `#${source.piNumber}`
+                    ) : nextPiNumber ? (
+                      <>
+                        #{nextPiNumber}{" "}
+                        <span className="font-normal text-slate-400">
+                          (next available)
+                        </span>
+                      </>
+                    ) : (
+                      <span className="font-normal text-slate-400">
+                        Assigned on save
+                      </span>
+                    )
+                  }
                 />
 
                 <div className="flex items-center">
@@ -593,53 +620,6 @@ function GenerateProformaInvoice() {
                 }
               />
 
-              {/* ONE CHOICE, NOT TWO FIELDS
-
-                  Picking a split sets both the percentage the figures are
-                  worked out from and the sentence printed on the document,
-                  so the wording and the arithmetic cannot drift apart. */}
-              <div className="mt-5 max-w-xl">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Payment Terms
-                </label>
-
-                <select
-                  value={advancePercent}
-                  onChange={(event) => {
-                    const percent = Number(event.target.value);
-                    setAdvancePercent(percent);
-
-                    const option = termOptions.find(
-                      (candidate) => candidate.advance_percent === percent,
-                    );
-                    if (option) setPaymentTerms(option.label);
-                  }}
-                  className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-                >
-                  {/* A split carried from the proposal that is not on the
-                      list is still offered, rather than silently replaced
-                      with the nearest one. */}
-                  {!termOptions.some(
-                    (option) => option.advance_percent === advancePercent,
-                  ) && (
-                    <option value={advancePercent}>
-                      {paymentTerms || `${advancePercent}% advance`}
-                    </option>
-                  )}
-
-                  {termOptions.map((option) => (
-                    <option key={option.advance_percent} value={option.advance_percent}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-
-                <p className="mt-1.5 text-[10px] text-slate-400">
-                  Carried from the proposal. Changing it changes the advance
-                  expected, the balance due and the sentence on the invoice.
-                </p>
-              </div>
-
               <TotalsBlock
                 figures={{
                   subtotal: totals.subtotal,
@@ -666,13 +646,23 @@ function GenerateProformaInvoice() {
 
             <BankingDetails
               profile={profile}
-              reference={source.piNumber}
+              reference={source.piNumber || nextPiNumber}
+              provisional={!source.piNumber}
               onCopied={(message) => addToast(message, "success")}
             />
 
             <TermsBlock
               terms={terms}
               notes={notes}
+              /* Read-only, and stated here rather than as a field higher up.
+                 The split is the one the client accepted on the proposal and
+                 carried through the order; an invoice that let its own terms
+                 be retyped would stop being a record of what was agreed. To
+                 change them, change the order. */
+              paymentTerms={
+                paymentTerms ||
+                `${advancePercent}% advance against this Proforma Invoice.`
+              }
               onTermsChange={setTerms}
               onNotesChange={setNotes}
             />
