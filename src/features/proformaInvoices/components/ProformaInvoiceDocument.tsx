@@ -33,6 +33,56 @@ import type {
   ProformaInvoiceModel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
 
+/**
+ * Who is selling, as a GST document has to identify them: the registered
+ * name, the registered address, the registration itself and the state it
+ * is held in. The state is what the buyer's is compared against to decide
+ * how the tax splits, so it is printed rather than assumed.
+ */
+function SellerBlock({ profile }: { profile: CompanyProfile | null }) {
+  return (
+    <div className="rounded-xl bg-slate-100 px-4 pb-4 pt-3">
+      <p className="text-[13px] font-bold text-slate-800">
+        {profile?.legal_name || "Company name not configured"}
+      </p>
+
+      {profile?.address_lines?.length ? (
+        profile.address_lines.map((line) => (
+          <p key={line} className="text-[11px] leading-[16px] text-slate-600">
+            {line}
+          </p>
+        ))
+      ) : (
+        <p className="text-[11px] text-slate-400">Company address not configured</p>
+      )}
+
+      {profile?.gstin && (
+        <p className="mt-2 text-[11px] text-slate-700">
+          <span className="text-slate-500">GSTIN/UIN:</span>{" "}
+          <span className="font-medium">{profile.gstin}</span>
+        </p>
+      )}
+
+      {(profile?.state_name || profile?.state_code) && (
+        <p className="text-[11px] text-slate-700">
+          <span className="text-slate-500">State:</span>{" "}
+          <span className="font-medium">
+            {profile?.state_name || "-"}
+            {profile?.state_code ? ` (${profile.state_code})` : ""}
+          </span>
+        </p>
+      )}
+
+      {profile?.email && (
+        <p className="text-[11px] text-slate-700">
+          <span className="text-slate-500">E-Mail:</span>{" "}
+          <span className="font-medium">{profile.email}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function ProformaInvoiceDocument({
   invoice,
   profile,
@@ -66,56 +116,35 @@ export default function ProformaInvoiceDocument({
 
   return (
     <div className="pi-paper @container bg-white px-10 py-8 text-slate-800">
-      {/* HEADER */}
-      <div className="pi-keep flex flex-row justify-between gap-6 border-b border-slate-200 pb-6">
-        <div>
-          <img src="/logo-light.png" alt="Synergy" className="h-11 w-auto" />
+      {/* THE HEAD OF THE DOCUMENT
 
-          <div className="mt-3 text-[12px] leading-[17px] text-slate-700">
-            {profile?.legal_name && <p className="font-medium">{profile.legal_name}</p>}
-            {profile?.address_lines?.length ? (
-              profile.address_lines.map((line) => <p key={line}>{line}</p>)
-            ) : (
-              <p className="text-slate-400">Company address not configured</p>
-            )}
-            {profile?.gstin && <p>GSTIN: {profile.gstin}</p>}
-          </div>
-        </div>
+          Laid out as the reference invoice has it: who is selling on the
+          left, the document's own references on the right, then the two
+          parties beneath. The references appeared twice before - once in
+          a banner by the title and again in a panel below it - so the
+          voucher number, the date and the order number were each printed
+          two ways on one page. They are stated once, here. */}
+      <div className="pi-keep flex items-start justify-between gap-6">
+        <img src="/logo-light.png" alt="Synergy" className="h-11 w-auto" />
 
-        <div className="text-right">
-          <p className="text-[24px] font-medium tracking-wide text-slate-800">
-            PROFORMA INVOICE
-          </p>
-
-          <div className="mt-1 inline-grid grid-cols-[auto_auto_auto_auto] gap-x-3 gap-y-1 text-[10px]">
-            <span className="text-slate-500">Sales Order ID:</span>
-            <span className="font-semibold">{orderNumber ? `#${orderNumber}` : "-"}</span>
-            <span className="text-slate-500">PI ID:</span>
-            <span className="font-semibold">#{reference}</span>
-            <span className="text-slate-500">PI Date (Issue)</span>
-            <span className="font-semibold">{formatDate(invoice.issue_date)}</span>
-            <span className="text-slate-500">PI Date (Due)</span>
-            <span className="font-semibold">{formatDate(invoice.due_date)}</span>
-          </div>
-        </div>
+        <p className="text-[22px] font-medium tracking-wide text-slate-800">
+          PROFORMA INVOICE
+        </p>
       </div>
 
-      {/* THE PARTIES AND THE REFERENCES
+      <div className="pi-keep mt-5 grid grid-cols-1 gap-4 @min-[640px]:grid-cols-2">
+        <SellerBlock profile={profile} />
 
-          Three panels in the design's own card language. A GST document
-          identifies both sides by registration and state, because that
-          pair is what decides how the tax splits - so the panels carry
-          the GSTIN and the state code rather than the address alone. */}
-      <div className="pi-keep mt-6 grid grid-cols-1 gap-4 @min-[640px]:grid-cols-2">
-        <PartyBlock
-          title="Buyer (Bill To)"
-          name={invoice.company_name || invoice.customer_name}
-          lines={addressLines(invoice.billing_address)}
-          gstin={billGstin}
-          stateName={invoice.billing_address?.state}
-          stateCode={invoice.buyer_state_code}
+        <ReferencePanel
+          invoice={invoice}
+          orderNumber={orderNumber}
+          reference={reference}
+          issueDate={formatDate(invoice.issue_date)}
+          dueDate={formatDate(invoice.due_date)}
         />
+      </div>
 
+      <div className="pi-keep mt-4 grid grid-cols-1 gap-4 @min-[640px]:grid-cols-2">
         <PartyBlock
           title="Consignee (Ship To)"
           name={invoice.company_name || invoice.customer_name}
@@ -124,14 +153,14 @@ export default function ProformaInvoiceDocument({
           stateName={invoice.shipping_address?.state}
           stateCode={invoice.buyer_state_code}
         />
-      </div>
 
-      <div className="pi-keep mt-4">
-        <ReferencePanel
-          invoice={invoice}
-          orderNumber={orderNumber}
-          reference={reference}
-          issueDate={formatDate(invoice.issue_date)}
+        <PartyBlock
+          title="Buyer (Bill To)"
+          name={invoice.company_name || invoice.customer_name}
+          lines={addressLines(invoice.billing_address)}
+          gstin={billGstin}
+          stateName={invoice.billing_address?.state}
+          stateCode={invoice.buyer_state_code}
         />
       </div>
 
@@ -165,6 +194,10 @@ export default function ProformaInvoiceDocument({
         <TermsBlock
           terms={invoice.commercial_terms}
           notes={invoice.technical_notes}
+          paymentTerms={
+            invoice.payment_terms ||
+            `${invoice.advance_percent ?? 30}% advance against this Proforma Invoice.`
+          }
           showHeading={false}
         />
       </div>

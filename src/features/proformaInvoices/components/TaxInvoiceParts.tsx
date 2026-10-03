@@ -126,16 +126,16 @@ export function ReferencePanel({
   orderNumber,
   reference,
   issueDate,
+  dueDate,
 }: {
   invoice: ProformaInvoiceModel;
   orderNumber?: string | null;
   reference: string;
   issueDate: string;
+  dueDate?: string;
 }) {
   return (
     <div className={PANEL}>
-      <p className={PANEL_TITLE}>Invoice References</p>
-
       <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
         <HeaderCell label="Voucher No." value={`#${reference}`} />
         <HeaderCell label="Dated" value={issueDate} />
@@ -146,14 +146,19 @@ export function ReferencePanel({
         />
         <HeaderCell label="Other References" value={invoice.sales_order?.po_number} />
 
-        <HeaderCell label="Place of Supply" value={invoice.place_of_supply} />
+        <HeaderCell label="Dispatched through" value={null} />
         <HeaderCell label="Destination" value={invoice.shipping_address?.city} />
 
-        {/* Carried from the proposal the client accepted, not a default
-            sentence that can quietly contradict the offer. */}
+        <HeaderCell label="Place of Supply" value={invoice.place_of_supply} />
+        <HeaderCell label="Valid Until" value={dueDate} />
+
+        {/* The split only, not the sentence. The terms themselves are set
+            out in full with the other conditions at the foot of the
+            document, and printing them in both places left one page
+            stating the same agreement two ways. */}
         <HeaderCell
           label="Mode / Terms of Payment"
-          value={invoice.payment_terms || `${invoice.advance_percent ?? 30}% advance`}
+          value={`${invoice.advance_percent ?? 30}% advance`}
           className="col-span-2"
         />
       </div>
@@ -191,6 +196,19 @@ export function GoodsTable({
 
   const th = "px-3 py-3 text-[11px] font-normal text-white";
   const td = "px-3 py-3 text-[11px] text-slate-700";
+
+  const totalQuantity = items.reduce(
+    (sum, item) => sum + Number(item.qty || item.quantity_case || 0),
+    0,
+  );
+
+  const goodsTotal = items.reduce((sum, item) => {
+    const quantity = Number(item.qty || item.quantity_case || 0);
+    const rate = Number(item.rate || item.price || 0);
+    const discount = Number(item.discount || 0);
+
+    return sum + quantity * rate * (1 - discount / 100);
+  }, 0);
 
   return (
     <table className="w-full border-collapse">
@@ -235,6 +253,14 @@ export function GoodsTable({
                   {item.model && (
                     <p className="text-[10px] text-slate-500">{item.model}</p>
                   )}
+                  {/* The specification, as the reference sets it: under the
+                      name, smaller and in italic. It is what distinguishes
+                      two panels of the same size from each other. */}
+                  {item.description && item.description !== item.product && (
+                    <p className="text-[9px] italic leading-[13px] text-slate-500">
+                      {item.description}
+                    </p>
+                  )}
                   {item.sku && (
                     <p className="text-[9px] text-slate-400">SKU: {item.sku}</p>
                   )}
@@ -261,6 +287,23 @@ export function GoodsTable({
               </tr>
             );
           })
+        )}
+
+        {/* The quantity totalled, as the reference invoice ends its table.
+            It is what a storeman counts against when the goods arrive, and
+            it is the only column where a sum of the rows means anything -
+            rates and codes do not add up. */}
+        {items.length > 0 && (
+          <tr className="font-bold text-slate-900">
+            <td className={td} />
+            <td className={`${td} text-right`}>Total</td>
+            <td className={td} />
+            <td className={td} />
+            <td className={`${td} text-right`}>{totalQuantity}</td>
+            <td className={`${td} text-center font-normal text-slate-400`}>Nos</td>
+            <td className={td} />
+            <td className={`${td} text-right`}>{money(goodsTotal)}</td>
+          </tr>
         )}
       </tbody>
     </table>

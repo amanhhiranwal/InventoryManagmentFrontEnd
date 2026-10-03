@@ -240,6 +240,7 @@ export interface CompanyProfile {
   legal_name?: string | null;
   address_lines: string[];
   gstin?: string | null;
+  email?: string | null;
   state_name?: string | null;
   state_code?: string | null;
   bank: {
@@ -314,6 +315,19 @@ export interface PaymentTermOption {
 export const getPaymentTermOptionsApi = async (): Promise<PaymentTermOption[]> => {
   const { data } = await api.get(`${BASE}/payment-terms`);
   return data.data || [];
+};
+
+/**
+ * The reference a new invoice would take.
+ *
+ * A preview, not a reservation. The counter is read rather than moved, so
+ * opening the form never burns a number and two people opening one at the
+ * same moment both see the same figure. The number is only theirs once the
+ * record is written, which is why the form says "next available".
+ */
+export const getNextPiNumberApi = async (): Promise<string | null> => {
+  const { data } = await api.get(`${BASE}/next-number`);
+  return data?.data?.pi_number || null;
 };
 
 export const createProformaInvoiceApi = async (
