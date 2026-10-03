@@ -219,6 +219,25 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     available: 0,
   },
 
+  /* Bare units with stock on the shelf. They were left out of the picker
+     while they had no price; now that they have one they can be quoted. */
+  {
+    id: "SG-OPS-I5-NA",
+    hsn: "85291029",
+    name: "OPS i5 Non Assembled",
+    category: "OPS Module",
+    price: 30000,
+    available: 11,
+  },
+  {
+    id: "SG-OPS-I7-NA",
+    hsn: "85291029",
+    name: "OPS i7 Non Assembled",
+    category: "OPS Module",
+    price: 30000,
+    available: 15,
+  },
+
   /* Standees, priced by the panel inside rather than by cabinet size. */
   {
     id: "SG-STD-TOUCH",
@@ -237,15 +256,16 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     available: 6,
   },
 
-  /* Named on the dashboard, none of them priced. They carry 0 until a
-     rate is set on the Product List - a quotation showing "price not set"
-     is a question somebody answers, an invented figure is not. */
+  /* The cameras, the array mic and the stand. Named on the dashboard
+     without a figure and carried at 0 until the rates came through - an
+     invented price on a customer's quotation is worse than a visible
+     blank, so they showed as "Price not set" in the meantime. */
   {
     id: "SG-CAM-UHDBAR",
     hsn: "85258900",
     name: "UHD All in One USB Video Bar 12V 5A",
     category: "Camera & Audio",
-    price: 0,
+    price: 1949,
     available: 4,
   },
   {
@@ -253,7 +273,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     hsn: "85258900",
     name: "Camera 360 Degree",
     category: "Camera & Audio",
-    price: 0,
+    price: 2500,
     available: 4,
   },
   {
@@ -261,7 +281,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     hsn: "85258900",
     name: "4K Business Webcam HF0V-120 Degree",
     category: "Camera & Audio",
-    price: 0,
+    price: 3000,
     available: 6,
   },
   {
@@ -269,7 +289,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     hsn: "85184000",
     name: "Cascading Omnidirectional Digital Array Mic",
     category: "Camera & Audio",
-    price: 0,
+    price: 50000,
     available: 1,
   },
   {
@@ -277,7 +297,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     hsn: "84733099",
     name: "Panel Stand",
     category: "Accessories",
-    price: 0,
+    price: 11000,
     available: 0,
   },
 ];
