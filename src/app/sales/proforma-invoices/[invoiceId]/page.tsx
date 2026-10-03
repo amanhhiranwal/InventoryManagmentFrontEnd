@@ -30,6 +30,7 @@ import {
   LuPencil,
   LuPlay,
   LuSend,
+
   LuX,
 } from "react-icons/lu";
 import { CgSpinner } from "react-icons/cg";
@@ -590,7 +591,14 @@ function ProformaInvoiceDetail() {
             onCopied={(message) => addToast(message, "success")}
           />
 
-          <TermsBlock terms={invoice.commercial_terms} notes={invoice.technical_notes} />
+          <TermsBlock
+            terms={invoice.commercial_terms}
+            notes={invoice.technical_notes}
+            paymentTerms={
+              invoice.payment_terms ||
+              `${invoice.advance_percent ?? 30}% advance against this Proforma Invoice.`
+            }
+          />
         </div>
 
         {/* RIGHT */}

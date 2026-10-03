@@ -32,6 +32,10 @@ import {
   getQuotationsApi,
 } from "@/features/quotations/api/quotations.api";
 import { getOpportunityApi } from "@/features/opportunities/api/opportunities.api";
+import {
+  getPaymentTermOptionsApi,
+  type PaymentTermOption,
+} from "@/features/proformaInvoices/api/proformaInvoices.api";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
 import StatCard from "@/components/crm/StatCard";
 import { FORM_FIELDS } from "@/components/crm/FormCard";
@@ -251,8 +255,48 @@ const DEFAULT_COMMERCIAL_TERMS = [
    above. Accounts read this one clause on its own - it decides what the
    proforma invoice asks for - and a bullet in a list is a poor place to
    go looking for it. */
+/* Only a placeholder now. The terms an order carries are derived from the
+   split it is on, so a sentence typed here cannot contradict the figures
+   beside it - which is exactly what it was doing: a proposal accepted at
+   60/40 converted into an order still reading "30% advance". */
 const DEFAULT_PAYMENT_TERMS =
-  "Payment Terms: 30% advance against Proforma Invoice; 70% balance upon delivery challan verification.";
+  "30% advance against Proforma Invoice; 70% balance upon delivery challan verification.";
+
+/**
+ * The advance a sentence is asking for.
+ *
+ * The terms are one piece of text and the percentage inside it is the
+ * only part that varies, so it is read back out rather than kept as a
+ * second control beside it. Null when there is no percentage to read, in
+ * which case the split already in hand stands - a half-typed sentence
+ * must not reset the figures to zero.
+ */
+const advanceFromTerms = (terms: string): number | null => {
+  const match = /(\d+(?:\.\d+)?)\s*%/.exec(terms || "");
+
+  if (!match) return null;
+
+  const value = Number(match[1]);
+
+  return Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
+};
+
+/** The sentence that matches a split. Mirrors wording_for() on the server,
+    which is what writes it onto the saved order. */
+const wordingFor = (advancePercent: number, options: PaymentTermOption[]) => {
+  const option = options.find(
+    (candidate) => Math.abs(candidate.advance_percent - advancePercent) < 0.01,
+  );
+
+  if (option) return option.label;
+
+  const balance = 100 - advancePercent;
+
+  return (
+    `${advancePercent}% advance against Proforma Invoice; ` +
+    `${balance}% balance upon delivery challan verification.`
+  );
+};
 
 /* =========================================================
    HELPERS
@@ -411,6 +455,13 @@ export default function OrdersListPage() {
      the summary shows, which used to be a fixed 30/70 printed into the
      markup with nothing behind it. */
   const [advancePercent, setAdvancePercent] = useState(30);
+
+  /* The splits a document can be issued on, served from one place so the
+     proposal, this order and the proforma invoice all word them the same
+     way. Held only in a ref: nothing renders the list - it is read when a
+     proposal is converted, to turn the split it was accepted on into the
+     sentence this order carries. */
+  const termOptionsRef = useRef<PaymentTermOption[]>([]);
 
   /* What it costs us to shift the goods. A cost we carry rather than a
      charge the customer is billed, so it never touches the taxable amount
@@ -1155,6 +1206,18 @@ export default function OrdersListPage() {
   /* Convert To Sales Order on a quotation lands here with ?quotation=QT-####.
      Opening the form with that reference already filled is what ties the new
      order back to the quotation - and through it to the opportunity. */
+  /* Loaded once. The form is usable without it - an unlisted split is
+     still offered rather than silently replaced with the nearest one. */
+  useEffect(() => {
+    getPaymentTermOptionsApi()
+      .then((options) => {
+        termOptionsRef.current = options;
+      })
+      .catch(() => {
+        /* The sentence is derived without the list when it is missing. */
+      });
+  }, []);
+
   const quotationParam = searchParams.get("quotation");
   const quotationIdParam = searchParams.get("quotationId");
 
@@ -1284,12 +1347,23 @@ export default function OrdersListPage() {
             ? ORDER_GST_PERCENT
             : quotation.gst_percent,
         );
-        setAdvancePercent(
+        /* The split the client accepted, and the sentence that describes
+           it. Previously only the number came across and the sentence was
+           left at a hardcoded 30/70, so a proposal accepted at 60/40
+           converted into an order that said one thing and charged
+           another. */
+        const quotedAdvance =
           quotation.advance_percent === null ||
-            quotation.advance_percent === undefined
+          quotation.advance_percent === undefined
             ? 30
-            : quotation.advance_percent,
-        );
+            : quotation.advance_percent;
+
+        setAdvancePercent(quotedAdvance);
+
+        setNewOrder((current) => ({
+          ...current,
+          paymentTerms: wordingFor(quotedAdvance, termOptionsRef.current),
+        }));
 
         const agreedTerms = (quotation.terms || [])
           .filter((term) => term.checked && term.label?.trim())
@@ -2819,6 +2893,13 @@ export default function OrdersListPage() {
                   </div>
                 </div>
 
+                {/* PAYMENT TERMS
+
+                    One field. The advance is the only thing that varies in
+                    the sentence, so it is read back out of what is written
+                    rather than entered a second time beside it: a split and
+                    a sentence kept as two controls is how an order comes to
+                    say 60% and charge 30%. */}
                 <div className="mt-4">
                   <p className="mb-2 text-[11px] font-medium text-slate-500">
                     Payment Terms
@@ -2827,12 +2908,22 @@ export default function OrdersListPage() {
                   <textarea
                     rows={2}
                     value={newOrder.paymentTerms}
-                    onChange={(e) =>
-                      updateNewOrder("paymentTerms", e.target.value)
-                    }
+                    onChange={(event) => {
+                      const text = event.target.value;
+                      updateNewOrder("paymentTerms", text);
+
+                      const advance = advanceFromTerms(text);
+                      if (advance !== null) setAdvancePercent(advance);
+                    }}
                     placeholder={DEFAULT_PAYMENT_TERMS}
                     className="field-compact w-full resize-none rounded-xl bg-slate-50 p-3 text-[11px] leading-5 text-slate-600 outline-none focus:ring-1 focus:ring-slate-300 dark:bg-[#0b2034] dark:text-slate-300"
                   />
+
+                  <p className="mt-1.5 text-[10px] text-slate-400">
+                    The advance written here is what the Proforma Invoice
+                    asks for and what the summary splits on — currently{" "}
+                    <b className="text-slate-500">{advancePercent}%</b>.
+                  </p>
                 </div>
 
                 <div className="mt-4">
@@ -3156,7 +3247,17 @@ export default function OrdersListPage() {
 
                               <div className="flex items-center gap-2 mt-1">
                                 <span className="text-[10px] text-slate-500">
-                                  {money(product.price)}
+                                  {/* A catalogue line the price list leaves
+                                      blank says so. Rs 0.00 reads like a free
+                                      product, and reaches the customer that
+                                      way. */}
+                                  {product.price > 0 ? (
+                                    money(product.price)
+                                  ) : (
+                                    <span className="font-medium text-amber-600">
+                                      Price not set
+                                    </span>
+                                  )}
                                 </span>
 
                                 <span className="text-slate-300">•</span>

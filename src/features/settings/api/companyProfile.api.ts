@@ -22,6 +22,22 @@ export interface CompanyProfile {
   signatory_name: string;
   signatory_title: string;
 
+  /** The seller's state. Its code is what decides whether a sale is taxed
+      as CGST + SGST or as IGST, so it is a tax setting, not an address. */
+  company_state_name: string;
+  company_state_code: string;
+
+  /** Where customers remit. Printed on every proforma invoice, which is
+      why it is editable here rather than fixed in the deployment. */
+  bank_account_name: string;
+  bank_name: string;
+  bank_account_number: string;
+  bank_branch: string;
+  bank_ifsc: string;
+  bank_swift: string;
+  upi_vpa: string;
+  upi_qr_path: string;
+
   /** The multi-line fields, already split by the backend. */
   company_address_lines: string[];
   company_about_paragraphs: string[];
@@ -58,6 +74,14 @@ const upload = async (path: string, file: File): Promise<CompanyProfile> => {
 };
 
 export const uploadCompanyLogoApi = (file: File) => upload("logo", file);
+
+/** The bank's own UPI code, shown on the proforma invoice for scanning. */
+export const uploadUpiQrApi = (file: File) => upload("upi-qr", file);
+
+export const removeUpiQrApi = async (): Promise<CompanyProfile> => {
+  const { data } = await api.delete("/api/v1/company-profile/upi-qr");
+  return data.data;
+};
 
 /** The picture on the proposal cover, under the addresses. Optional. */
 export const uploadCompanyCoverApi = (file: File) => upload("cover", file);
