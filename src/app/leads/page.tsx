@@ -376,18 +376,12 @@ function getLeadCompany(lead: Lead) {
   return details.organizationName || lead.title?.match(/\((.*?)\)/)?.[1] || "—";
 }
 
-/* Shown under the email in the Customer Name column: the most specific
-   place we hold for the lead, widening out to the country. */
+/* Shown under the organisation name: where this company is, as one word.
+   Figma prints the state and nothing else - a list scanned for territory
+   does not want a full postal address in every row - so the city and the
+   country are only there for a lead whose state we never captured. */
 function formatLeadLocation(details: LeadDetails) {
-  const parts = [details.city, details.state, details.zipCode].filter(Boolean);
-
-  if (parts.length) return parts.join(", ");
-
-  return details.address || details.country || "No address";
-}
-
-function getLeadCustomerType(lead: Lead) {
-  return getLeadDetails(lead).customerType || "—";
+  return details.state || details.city || details.country || "No address";
 }
 
 function formatDate(value?: string) {
@@ -469,9 +463,23 @@ function getUserName(user: User) {
  * out with an ID, an owner, a status and eighteen empty cells.
  */
 const LEAD_COLUMNS: ExportColumn<Lead>[] = [
+  /* The table's own columns first, in the table's order, so the sheet opens
+     reading like the screen it came from. Everything else the record holds
+     follows, which is what makes the export worth having over a screenshot. */
   { header: "Lead ID", value: (lead) => formatLeadId(lead.id) },
-  { header: "Customer Name", value: (lead) => getLeadDetails(lead).contactName },
-  { header: "Organization", value: (lead) => getLeadDetails(lead).organizationName },
+  {
+    header: "Organization Name",
+    value: (lead) => getLeadDetails(lead).organizationName,
+  },
+  {
+    header: "Contact Person",
+    value: (lead) => getLeadDetails(lead).contactName,
+  },
+  { header: "Assigned To", value: (lead) => lead.assigned_to_name || "" },
+  { header: "Status", value: (lead) => lead.status },
+  { header: "Created At", value: (lead) => formatDate(lead.created_at) },
+
+  /* The rest of the record, in the order it was already in. */
   { header: "Customer Type", value: (lead) => getLeadDetails(lead).customerType },
   { header: "Website", value: (lead) => getLeadDetails(lead).website },
   { header: "Email", value: (lead) => getLeadDetails(lead).email },
@@ -490,10 +498,7 @@ const LEAD_COLUMNS: ExportColumn<Lead>[] = [
   { header: "Requirements", value: (lead) => lead.requirements || "" },
   { header: "Remarks", value: (lead) => getLeadDetails(lead).remarks },
   { header: "Created By", value: (lead) => lead.creator_name || "" },
-  { header: "Assigned To", value: (lead) => lead.assigned_to_name || "" },
-  { header: "Status", value: (lead) => lead.status },
   { header: "Stage", value: (lead) => lead.stage },
-  { header: "Created At", value: (lead) => formatDate(lead.created_at) },
 ];
 
 function getInitials(value?: string) {
@@ -2084,12 +2089,16 @@ export default function LeadsPage() {
                       <TableHeader label="Lead ID" />
                     </th>
 
+                    {/* The organisation leads, and the person second. A list
+                        of leads is read company by company - "who is this
+                        from?" before "who do I call?" - which is the order
+                        Figma settled on. */}
                     <th className="px-4 py-4">
-                      <TableHeader label="Customer Name" />
+                      <TableHeader label="Organization Name" />
                     </th>
 
                     <th className="px-4 py-4">
-                      <TableHeader label="Company" />
+                      <TableHeader label="Contact Person" />
                     </th>
 
                     <th className="px-4 py-4">
@@ -2147,31 +2156,27 @@ export default function LeadsPage() {
                           </span>
                         </td>
 
+                        {/* Plain markup now the row itself is clickable - a
+                            nested button would fire the same handler a second
+                            time. */}
                         <td className="px-4 py-4">
-                          {/* Plain markup now the row itself is clickable -
-                              a nested button would fire the same handler a
-                              second time. */}
                           <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
-                            {getLeadDisplayName(lead)}
+                            {getLeadCompany(lead)}
                           </p>
 
-                          <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
-                            {details.email || "No email"}
-                          </p>
-
-                          <p className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                          <p className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-400">
                             <FiMapPin size={9} />
                             {formatLeadLocation(details)}
                           </p>
                         </td>
 
                         <td className="px-4 py-4">
-                          <p className="text-[12px] text-slate-700 dark:text-slate-300">
-                            {getLeadCompany(lead)}
+                          <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
+                            {getLeadDisplayName(lead)}
                           </p>
 
-                          <p className="text-[10px] text-slate-500">
-                            {getLeadCustomerType(lead)}
+                          <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
+                            {details.email || "No email"}
                           </p>
                         </td>
 

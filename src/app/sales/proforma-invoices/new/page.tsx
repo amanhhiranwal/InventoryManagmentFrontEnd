@@ -36,6 +36,7 @@ import {
   createProformaInvoiceApi,
   generateProformaInvoiceApi,
   getCompanyProfileApi,
+  getNextPiNumberApi,
   getProformaInvoiceApi,
   updateProformaInvoiceApi,
   type CompanyProfile,
@@ -125,6 +126,10 @@ function GenerateProformaInvoice() {
   const [source, setSource] = useState<Source | null>(null);
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
 
+  /* What the next invoice would be numbered. Held beside the source so
+     the field and the banking panel read the same figure. */
+  const [nextPiNumber, setNextPiNumber] = useState<string | null>(null);
+
   const [assignedTo, setAssignedTo] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -141,6 +146,7 @@ function GenerateProformaInvoice() {
   const [gstPercent, setGstPercent] = useState(18);
   const [amountPaid, setAmountPaid] = useState(0);
   const [advancePercent, setAdvancePercent] = useState(30);
+  const [paymentTerms, setPaymentTerms] = useState("");
 
   const [terms, setTerms] = useState<string[]>(DEFAULT_TERMS);
   const [notes, setNotes] = useState("");
@@ -174,6 +180,10 @@ function GenerateProformaInvoice() {
     setLumpsum(order.installation_lumpsum || 0);
     setGstPercent(order.gst_percent ?? 18);
     setAdvancePercent(order.advance_percent ?? 30);
+    /* The split the client accepted on the proposal, carried through the
+       order. The invoice asks for what was offered rather than for a
+       default sentence that can quietly contradict it. */
+    setPaymentTerms(order.payment_terms || "");
     setTerms(order.commercial_terms?.length ? order.commercial_terms : DEFAULT_TERMS);
     setNotes(order.technical_notes || "");
   };
@@ -185,6 +195,22 @@ function GenerateProformaInvoice() {
       getCompanyProfileApi()
         .then(setProfile)
         .catch(() => setProfile(null));
+
+      /* Shown on the form before anything is saved, so the PI ID and the
+         remittance reference are not two blanks reading "Assigned on
+         save" on the one page whose job is to tell a customer what to
+         quote on their transfer. Only for a new invoice - editing one
+         already has its own number. */
+      if (!editingId) {
+        getNextPiNumberApi()
+          .then((next) => {
+            if (next) setNextPiNumber(next);
+          })
+          .catch(() => {
+            /* The form works without it; the field falls back to saying
+               the number is assigned on save. */
+          });
+      }
 
       if (editingId) {
         const invoice = await getProformaInvoiceApi(editingId);
@@ -227,6 +253,7 @@ function GenerateProformaInvoice() {
         setGstPercent(invoice.gst_percent);
         setAmountPaid(invoice.amount_paid);
         setAdvancePercent(invoice.advance_percent);
+        setPaymentTerms(invoice.payment_terms || "");
         setTerms(invoice.commercial_terms?.length ? invoice.commercial_terms : DEFAULT_TERMS);
         setNotes(invoice.technical_notes || "");
 
@@ -323,6 +350,7 @@ function GenerateProformaInvoice() {
       gst_percent: gstPercent,
       amount_paid: amountPaid,
       advance_percent: advancePercent,
+      payment_terms: paymentTerms,
       commercial_terms: terms.map((term) => term.trim()).filter(Boolean),
       technical_notes: notes,
     };
@@ -430,7 +458,22 @@ function GenerateProformaInvoice() {
               <div className="grid grid-cols-1 gap-x-10 gap-y-4 md:grid-cols-2">
                 <InfoRow
                   label="PI ID"
-                  value={source.piNumber ? `#${source.piNumber}` : <span className="font-normal text-slate-400">Assigned on save</span>}
+                  value={
+                    source.piNumber ? (
+                      `#${source.piNumber}`
+                    ) : nextPiNumber ? (
+                      <>
+                        #{nextPiNumber}{" "}
+                        <span className="font-normal text-slate-400">
+                          (next available)
+                        </span>
+                      </>
+                    ) : (
+                      <span className="font-normal text-slate-400">
+                        Assigned on save
+                      </span>
+                    )
+                  }
                 />
 
                 <div className="flex items-center">
@@ -603,13 +646,23 @@ function GenerateProformaInvoice() {
 
             <BankingDetails
               profile={profile}
-              reference={source.piNumber}
+              reference={source.piNumber || nextPiNumber}
+              provisional={!source.piNumber}
               onCopied={(message) => addToast(message, "success")}
             />
 
             <TermsBlock
               terms={terms}
               notes={notes}
+              /* Read-only, and stated here rather than as a field higher up.
+                 The split is the one the client accepted on the proposal and
+                 carried through the order; an invoice that let its own terms
+                 be retyped would stop being a record of what was agreed. To
+                 change them, change the order. */
+              paymentTerms={
+                paymentTerms ||
+                `${advancePercent}% advance against this Proforma Invoice.`
+              }
               onTermsChange={setTerms}
               onNotesChange={setNotes}
             />

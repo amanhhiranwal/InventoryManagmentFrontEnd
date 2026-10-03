@@ -40,6 +40,7 @@ import {
   FiDatabase,
   FiEye,
   FiEdit2,
+  FiPrinter,
   FiUploadCloud,
   FiImage,
   FiX
@@ -60,6 +61,7 @@ const INVENTORY_COLUMNS: ExportColumn<InventoryItem>[] = [
   { header: "Unit", value: (item) => String(item.attributes?.unit ?? "") },
   { header: "Wholesale Rate", value: (item) => Number(item.attributes?.rate ?? 0) },
   { header: "Case Size", value: (item) => Number(item.attributes?.case_size ?? 1) },
+  { header: "HSN / SAC", value: (item) => String(item.attributes?.hsn_code ?? "") },
   {
     header: "Stock Value",
     value: (item) =>
@@ -105,6 +107,9 @@ export default function InventoryPage() {
   const [unit, setUnit] = useState("");
   const [instock, setInstock] = useState("");
   const [caseSize, setCaseSize] = useState("");
+  /* HSN for goods, SAC for a service. Kept as text: it is a code, and a
+     leading zero in it is not a rounding error. */
+  const [hsnCode, setHsnCode] = useState("");
 
   // Dynamic template fields loaded for selected product type (Create Modal)
   const [activeTemplate, setActiveTemplate] = useState<InventoryTemplate | null>(null);
@@ -128,6 +133,7 @@ export default function InventoryPage() {
   const [editUnit, setEditUnit] = useState("");
   const [editInstock, setEditInstock] = useState("");
   const [editCaseSize, setEditCaseSize] = useState("");
+  const [editHsnCode, setEditHsnCode] = useState("");
 
   const [editDynamicValues, setEditDynamicValues] = useState<Record<string, any>>({});
   const [editActiveTemplate, setEditActiveTemplate] = useState<InventoryTemplate | null>(null);
@@ -337,6 +343,38 @@ export default function InventoryPage() {
     }
   }, [editSelectedTypeCode, showEditModal, itemToEdit, addToast]);
 
+  /* The label is drawn on the server, so the barcode a scanner reads is
+     the same one the PDF would carry. Fetched rather than linked, because
+     the endpoint needs the auth header the axios client already holds -
+     a plain window.open would arrive signed out. */
+  const printLabel = async (item: InventoryItem) => {
+    try {
+      const { data } = await api.get(
+        `/api/v1/inventory/items/${item._id}/label`,
+        { responseType: "text" },
+      );
+
+      const sheet = window.open("", "_blank");
+
+      if (!sheet) {
+        addToast("Allow pop-ups to print the label.", "warning");
+        return;
+      }
+
+      sheet.document.write(
+        `<!doctype html><title>${item.serial_number || "Label"}</title>` +
+          `<style>body{margin:0;display:flex;align-items:center;` +
+          `justify-content:center;height:100vh}svg{width:75mm}` +
+          `@media print{body{height:auto}}</style>${data}` +
+          `<script>window.onload=function(){window.print()}<\/script>`,
+      );
+      sheet.document.close();
+    } catch (error) {
+      console.error(error);
+      addToast("Could not build the label for this product.", "error");
+    }
+  };
+
   const handleOpenEditModal = (item: InventoryItem) => {
     setItemToEdit(item);
     setEditName(item.name);
@@ -350,6 +388,7 @@ export default function InventoryPage() {
     setEditUnit(item.attributes?.unit || (unitsList.length > 0 ? unitsList[0] : ""));
     setEditInstock((item.attributes?.instock ?? item.attributes?.stock ?? "").toString());
     setEditCaseSize(item.attributes?.case_size?.toString() || "");
+    setEditHsnCode(item.attributes?.hsn_code?.toString() || "");
 
     setEditDynamicValues(item.attributes || {});
     setShowEditModal(true);
@@ -419,7 +458,8 @@ export default function InventoryPage() {
         unit: unit,
         instock: instockVal,
         stock: instockVal,
-        case_size: caseSizeVal
+        case_size: caseSizeVal,
+        hsn_code: hsnCode.trim()
       };
 
       await createInventoryItemApi({
@@ -438,6 +478,7 @@ export default function InventoryPage() {
       setRate("");
       setInstock("");
       setCaseSize("");
+      setHsnCode("");
       setDynamicValues({});
       setImageBase64(null);
       setShowCreateModal(false);
@@ -496,7 +537,8 @@ export default function InventoryPage() {
         unit: editUnit,
         instock: instockVal,
         stock: instockVal,
-        case_size: caseSizeVal
+        case_size: caseSizeVal,
+        hsn_code: editHsnCode.trim()
       };
 
       await updateInventoryItemApi(itemToEdit._id, {
@@ -665,6 +707,7 @@ export default function InventoryPage() {
                   <th className="px-5 py-3">Serial Number</th>
                   <th className="px-5 py-3">Category Group</th>
                   <th className="px-5 py-3">Company</th>
+                  <th className="px-5 py-3">HSN / SAC</th>
                   <th className="px-5 py-3">In Stock</th>
                   <th className="px-5 py-3">Wholesale Rate</th>
                   <th className="px-5 py-3 text-right">Actions</th>
@@ -677,6 +720,7 @@ export default function InventoryPage() {
               const unitVal = item.attributes?.unit ?? "Unit";
               const stockVal = item.attributes?.instock ?? item.attributes?.stock ?? 0;
               const caseSizeVal = item.attributes?.case_size ?? 1;
+              const hsnVal = item.attributes?.hsn_code ?? "";
 
               /* The one number the warehouse acts on, so it is the one
                  thing on the row that carries a colour. */
@@ -731,6 +775,15 @@ export default function InventoryPage() {
                     )}
                   </td>
                   <td className="px-5 py-3">
+                    {hsnVal ? (
+                      <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-700 dark:bg-[#0d2336] dark:text-slate-200">
+                        {hsnVal}
+                      </span>
+                    ) : (
+                      <span className="text-[12px] text-slate-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3">
                     <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-[11px] font-semibold ${stockTone}`}>
                       {stockVal.toLocaleString("en-IN")} {unitVal}
                     </span>
@@ -756,6 +809,18 @@ export default function InventoryPage() {
                       >
                         <FiEye className="text-sm" />
                       </button>
+                      {/* The sticker for the box: a Code128 of the SKU for
+                          a desk scanner and a QR a phone can read. Opened
+                          in a tab so the browser's own print dialog does
+                          the printing. */}
+                      <button
+                        onClick={() => printLabel(item)}
+                        className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 hover:text-primary"
+                        title="Print label (barcode and QR)"
+                      >
+                        <FiPrinter className="text-sm" />
+                      </button>
+
                       <button
                         onClick={() => handleOpenEditModal(item)}
                         className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 hover:text-primary"
@@ -1123,6 +1188,17 @@ export default function InventoryPage() {
                 />
               </div>
 
+              {/* Every line of a GST invoice has to carry one, and it is a
+                  property of the product rather than of the sale - so it is
+                  captured here once and travels onto every document the
+                  product appears on. */}
+              <Input
+                label="HSN / SAC Code"
+                placeholder="e.g. 8528"
+                value={hsnCode}
+                onChange={(e) => setHsnCode(e.target.value)}
+              />
+
               {/* DYNAMIC FORM SECTION */}
               <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">
                 <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
@@ -1382,6 +1458,13 @@ export default function InventoryPage() {
                     onChange={(e) => setEditCaseSize(e.target.value)}
                   />
                 </div>
+
+                <Input
+                  label="HSN / SAC Code"
+                  placeholder="e.g. 8528"
+                  value={editHsnCode}
+                  onChange={(e) => setEditHsnCode(e.target.value)}
+                />
 
                 {/* DYNAMIC FORM SECTION */}
                 <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">

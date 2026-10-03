@@ -207,7 +207,7 @@ export default function QuotationDetailPage() {
       console.error(error);
 
       addToast(
-        error?.response?.data?.detail || "Unable to load this quotation.",
+        error?.response?.data?.detail || "Unable to load this proposal.",
         "error",
       );
     } finally {
@@ -373,7 +373,7 @@ export default function QuotationDetailPage() {
 
       addToast(
         payload.status
-          ? `Quotation moved to ${QUOTATION_STATUS_LABEL[result.quotation.status]}.`
+          ? `Proposal moved to ${QUOTATION_STATUS_LABEL[result.quotation.status]}.`
           : "Activity logged.",
         "success",
       );
@@ -451,51 +451,79 @@ export default function QuotationDetailPage() {
 
   /* The proposal on an A4 sheet, over the page. Shown rather than routed
      to, so closing it puts the user back exactly where they were. */
+  /* Preview: the proposal on a full page, the way the proforma invoice
+     does it. It used to be a dimmed overlay, which read as a dialog you
+     had to dismiss rather than a document you could sit with - and the
+     document is the point of the screen. */
   if (previewing) {
     return (
-      <div className="fixed inset-0 z-[200] overflow-y-auto bg-slate-200/90 py-8 dark:bg-slate-900/90">
-        <div className="mx-auto mb-4 flex w-[794px] items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-            {quotation.quote_number} — as the client receives it
-          </h2>
+      <div className="min-h-full space-y-4 pb-8">
+        <div>
+          <button
+            type="button"
+            onClick={() => router.push("/sales/quotations")}
+            className="mb-2 flex items-center gap-1 text-[11px] font-medium text-slate-700 hover:text-[#233353] dark:text-slate-300 dark:hover:text-white"
+          >
+            <FiChevronLeft size={13} />
+            Back to all Proposal
+          </button>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={downloading}
-              onClick={async () => {
-                setDownloading(true);
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-[26px] font-medium tracking-tight text-slate-900 dark:text-white">
+              {quoteReference(quotation)}
+              {quotation.organization_name
+                ? ` - ${quotation.organization_name}`
+                : ""}
+            </h1>
 
-                try {
-                  await downloadQuotationPdfApi(
-                    quotation.id,
-                    `${quotation.quote_number || "Quotation"}.pdf`,
-                  );
-                } catch (error) {
-                  console.error(error);
-                  addToast("The proposal PDF could not be generated.", "error");
-                } finally {
-                  setDownloading(false);
-                }
-              }}
-              className="flex h-9 items-center gap-2 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white transition hover:bg-[#18243a] disabled:opacity-50"
-            >
-              <FiDownload size={13} />
-              {downloading ? "Preparing..." : "Download PDF"}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={downloading}
+                onClick={async () => {
+                  setDownloading(true);
 
-            <button
-              type="button"
-              onClick={() => setPreviewing(false)}
-              className="flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Close
-            </button>
+                  try {
+                    await downloadQuotationPdfApi(
+                      quotation.id,
+                      `${quotation.quote_number || "Proposal"}.pdf`,
+                    );
+                  } catch (error) {
+                    console.error(error);
+                    addToast("The proposal PDF could not be generated.", "error");
+                  } finally {
+                    setDownloading(false);
+                  }
+                }}
+                className="flex h-9 items-center gap-2 rounded-lg bg-white px-4 text-xs font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:bg-[#071929] dark:text-slate-200"
+              >
+                <FiDownload size={14} />
+                {downloading ? "Preparing..." : "Download PDF"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreviewing(false)}
+                className="flex h-9 items-center gap-2 rounded-lg bg-[#233353] px-4 text-xs font-semibold text-white transition hover:bg-[#18243a]"
+              >
+                Back to Proposal
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="mx-auto w-[794px] shadow-2xl">
-          <QuotationDocument quotation={quotation} brand={brand} />
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          As the client receives it.
+        </p>
+
+        {/* The sheet is laid out at A4 width; rather than pinning it there
+            and leaving the screen empty either side, it is scaled up to fill
+            whatever width there is. Reading a proposal is the whole job of
+            this screen. */}
+        <div className="origin-top [zoom:1.15] xl:[zoom:1.35] 2xl:[zoom:1.55]">
+          <div className="mx-auto w-[794px] shadow-sm">
+            <QuotationDocument quotation={quotation} brand={brand} />
+          </div>
         </div>
       </div>
     );
@@ -531,6 +559,22 @@ export default function QuotationDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* The way back to the form, and the only place a discount can
+                be sent up the chain from. Without it a draft could be read
+                here but never finished or approved. */}
+            {editable && (
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(`/sales/quotations?edit=${quotation.id}`)
+                }
+                className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+              >
+                <FiEdit2 size={13} />
+                Edit Proposal
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => setPreviewing(true)}
@@ -998,7 +1042,7 @@ export default function QuotationDetailPage() {
             <div className="space-y-4">
               <ProcessStep
                 state={processState(0)}
-                title="Quotation Approved"
+                title="Proposal Approved"
                 caption={
                   quotation.status === QUOTATION_STATUS.ACCEPTED
                     ? `${quotation.quote_number} accepted by the client`

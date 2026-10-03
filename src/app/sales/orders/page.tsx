@@ -15,6 +15,7 @@ import AmountInput, {
   type AmountMode,
 } from "@/components/crm/AmountInput";
 import {
+  getNextOrderNumberApi,
   SALES_ORDER_STATUS,
   SALES_ORDER_STATUS_LABEL,
   SalesOrderStatus as CanonicalSalesOrderStatus,
@@ -31,6 +32,10 @@ import {
   getQuotationsApi,
 } from "@/features/quotations/api/quotations.api";
 import { getOpportunityApi } from "@/features/opportunities/api/opportunities.api";
+import {
+  getPaymentTermOptionsApi,
+  type PaymentTermOption,
+} from "@/features/proformaInvoices/api/proformaInvoices.api";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
 import StatCard from "@/components/crm/StatCard";
 import { FORM_FIELDS } from "@/components/crm/FormCard";
@@ -148,12 +153,50 @@ interface Product {
   category: string;
   price: number;
   available: number;
+  hsn?: string;
+}
+
+/** One line of the revenue working. Read-only by design: every figure on
+    it is entered somewhere above, and two places to edit one number is how
+    the two end up disagreeing. */
+function RevenueLine({
+  label,
+  value,
+  minus,
+  muted,
+}: {
+  label: string;
+  value: string;
+  minus?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between py-0.5">
+      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+        {label}
+      </span>
+
+      <span
+        className={`text-[11px] ${
+          muted
+            ? "italic text-slate-400"
+            : minus
+              ? "font-medium text-rose-500"
+              : "font-semibold text-slate-700 dark:text-slate-200"
+        }`}
+      >
+        {value}
+      </span>
+    </div>
+  );
 }
 
 interface SelectedProduct {
   id: string;
   name: string;
   category: string;
+  /** HSN for goods, SAC for a service, carried from the product. */
+  hsn: string;
   price: number;
   quantity: number;
   discount: number;
@@ -204,10 +247,56 @@ const STATUS_OPTIONS = ["All", "Active", "Inactive"];
    than printed into the markup so the user can edit or remove any of them and
    what they end up with is what gets saved. */
 const DEFAULT_COMMERCIAL_TERMS = [
-  "Payment Terms: 30% advance against Proforma Invoice; 70% balance upon delivery challan verification.",
   "Delivery Lead Time: 15 to 20 working days from receipt of initial mobilization advance and confirmed delivery slot.",
   "Warranty & Support: Standard 3-year comprehensive on-site OEM warranty on IFP panels and Core OPS compute modules.",
 ];
+
+/* Payment terms sit in their own field rather than among the bullets
+   above. Accounts read this one clause on its own - it decides what the
+   proforma invoice asks for - and a bullet in a list is a poor place to
+   go looking for it. */
+/* Only a placeholder now. The terms an order carries are derived from the
+   split it is on, so a sentence typed here cannot contradict the figures
+   beside it - which is exactly what it was doing: a proposal accepted at
+   60/40 converted into an order still reading "30% advance". */
+const DEFAULT_PAYMENT_TERMS =
+  "30% advance against Proforma Invoice; 70% balance upon delivery challan verification.";
+
+/**
+ * The advance a sentence is asking for.
+ *
+ * The terms are one piece of text and the percentage inside it is the
+ * only part that varies, so it is read back out rather than kept as a
+ * second control beside it. Null when there is no percentage to read, in
+ * which case the split already in hand stands - a half-typed sentence
+ * must not reset the figures to zero.
+ */
+const advanceFromTerms = (terms: string): number | null => {
+  const match = /(\d+(?:\.\d+)?)\s*%/.exec(terms || "");
+
+  if (!match) return null;
+
+  const value = Number(match[1]);
+
+  return Number.isFinite(value) && value >= 0 && value <= 100 ? value : null;
+};
+
+/** The sentence that matches a split. Mirrors wording_for() on the server,
+    which is what writes it onto the saved order. */
+const wordingFor = (advancePercent: number, options: PaymentTermOption[]) => {
+  const option = options.find(
+    (candidate) => Math.abs(candidate.advance_percent - advancePercent) < 0.01,
+  );
+
+  if (option) return option.label;
+
+  const balance = 100 - advancePercent;
+
+  return (
+    `${advancePercent}% advance against Proforma Invoice; ` +
+    `${balance}% balance upon delivery challan verification.`
+  );
+};
 
 /* =========================================================
    HELPERS
@@ -367,6 +456,29 @@ export default function OrdersListPage() {
      markup with nothing behind it. */
   const [advancePercent, setAdvancePercent] = useState(30);
 
+  /* The splits a document can be issued on, served from one place so the
+     proposal, this order and the proforma invoice all word them the same
+     way. Held only in a ref: nothing renders the list - it is read when a
+     proposal is converted, to turn the split it was accepted on into the
+     sentence this order carries. */
+  const termOptionsRef = useRef<PaymentTermOption[]>([]);
+
+  /* What it costs us to shift the goods. A cost we carry rather than a
+     charge the customer is billed, so it never touches the taxable amount
+     - it only comes off what the order actually earns. */
+  const [shiftingCharges, setShiftingCharges] = useState(0);
+
+  /* The reference the next order would take, read once when the form
+     opens. A preview rather than a reservation - the number is allocated
+     on write - so the field says "next available" beside it. */
+  const [nextOrderNumber, setNextOrderNumber] = useState("");
+
+  useEffect(() => {
+    getNextOrderNumberApi()
+      .then(setNextOrderNumber)
+      .catch(() => setNextOrderNumber(""));
+  }, []);
+
   const [newOrder, setNewOrder] = useState({
     // Order Information
     salesOrderId: "",
@@ -376,6 +488,7 @@ export default function OrdersListPage() {
     poDate: "",
     assignedTo: "",
     salesExecutive: "",
+    paymentTerms: DEFAULT_PAYMENT_TERMS,
     technicalNotes: "",
 
     // Customer Information
@@ -620,7 +733,7 @@ export default function OrdersListPage() {
   ======================================================= */
 
   const kpis = useMemo(() => {
-    const totalProposal = orders.length;
+    const totalOrders = orders.length;
 
     const orderValue = orders.reduce(
       (sum, order) => sum + Number(order.grand_total || 0),
@@ -643,8 +756,8 @@ export default function OrdersListPage() {
     const createdAt = (order: Order) => order.created_at || order.order_date;
 
     return {
-      totalProposal,
-      totalProposalChange: monthOverMonth(orders, createdAt, (items) => items.length),
+      totalOrders,
+      totalOrdersChange: monthOverMonth(orders, createdAt, (items) => items.length),
       orderValue,
       orderValueChange: monthOverMonth(orders, createdAt, value),
       pendingOrders,
@@ -868,6 +981,7 @@ export default function OrdersListPage() {
           poDate: toDateInput(saved.po_date),
           assignedTo: saved.assigned_to || "",
           salesExecutive: saved.sales_executive || "",
+          paymentTerms: saved.payment_terms || DEFAULT_PAYMENT_TERMS,
           technicalNotes: saved.technical_notes || "",
 
           customerName: saved.customer_name || "",
@@ -915,6 +1029,7 @@ export default function OrdersListPage() {
               name: item.model || item.description || item.item || "Product",
               category:
                 item.product || catalogued?.category || item.category || "",
+              hsn: item.hsn || catalogued?.hsn || "",
               price: Number(item.price ?? item.rate) || 0,
               quantity: Number(item.quantity_case ?? item.qty) || 1,
               discount: Number(item.discount) || 0,
@@ -930,6 +1045,7 @@ export default function OrdersListPage() {
         setOrcMode((saved.orc_mode as AmountMode) || "AMOUNT");
         setOrcInput(saved.orc_input || 0);
         setFreightCharges(saved.freight_charges || 0);
+        setShiftingCharges(saved.shifting_charges || 0);
         setInstallationLumpsum(saved.installation_lumpsum || 0);
         setAdvanceReceived(saved.advance_received || 0);
         setGstPercent(
@@ -962,6 +1078,119 @@ export default function OrdersListPage() {
     [addToast],
   );
 
+  /* -------------------------------------------------------
+     RAISE ONE FROM WHAT CAME BEFORE
+
+     A repeat customer's second order is mostly their first one again:
+     the same company, the same addresses, the same registration numbers,
+     the same terms. Re-keying all of it is how those fields end up
+     disagreeing between two orders for the same customer.
+
+     Two ways in, differing only in whether the products come too:
+
+       ?duplicate=<id>   the whole order again, lines and all
+       ?repeat=<name>    that customer's last order, without its products
+
+     Neither carries anything that identifies the original - its number,
+     the customer's PO, the dates or what has been paid - because this is
+     a new order, not a copy of an old one pretending to be new.
+  ------------------------------------------------------- */
+
+  const prefillFromOrder = useCallback(
+    async (id: string, withProducts: boolean) => {
+      await openOrderForEdit(id);
+
+      setEditingOrderId(null);
+
+      setNewOrder((current) => ({
+        ...current,
+        salesOrderId: "",
+        quotationId: "",
+        poNumber: "",
+        poDate: "",
+        orderDate: new Date().toISOString().slice(0, 10),
+        remarks: "",
+      }));
+
+      if (!withProducts) setSelectedProducts([]);
+
+      setAdvanceReceived(0);
+    },
+    [openOrderForEdit],
+  );
+
+  const duplicateParam = searchParams.get("duplicate");
+  const repeatParam = searchParams.get("repeat");
+
+  const duplicateHandled = useRef("");
+
+  useEffect(() => {
+    if (!duplicateParam || duplicateHandled.current === duplicateParam) return;
+
+    duplicateHandled.current = duplicateParam;
+
+    prefillFromOrder(duplicateParam, true)
+      .then(() =>
+        addToast(
+          "Copied from the previous order. Check the products and dates before saving.",
+          "info",
+        ),
+      )
+      .finally(() => router.replace("/sales/orders"));
+  }, [duplicateParam, prefillFromOrder, router, addToast]);
+
+  /* Guards against running twice for the same customer, which a re-render
+     would otherwise do. The parameter is cleared at the end rather than the
+     start: clearing it first re-renders, and the prefill was being thrown
+     away half-finished. */
+  const repeatHandled = useRef("");
+
+  useEffect(() => {
+    if (!repeatParam || repeatHandled.current === repeatParam) return;
+
+    repeatHandled.current = repeatParam;
+
+    (async () => {
+      try {
+        const all = await getSalesOrdersApi();
+
+        /* Their most recent order is the best record of who they are:
+           it already holds the addresses and registration numbers in the
+           shape this form wants. */
+        const theirs = (all || [])
+          .filter(
+            (order) =>
+              (order.company_name || order.customer_name || "")
+                .trim()
+                .toLowerCase() === repeatParam.trim().toLowerCase(),
+          )
+          .sort((a, b) => Number(b.id) - Number(a.id));
+
+        if (!theirs.length) {
+          addToast(
+            `No earlier order for ${repeatParam} — starting a blank one.`,
+            "info",
+          );
+          setShowCreateOrder(true);
+        } else {
+          await prefillFromOrder(String(theirs[0].id), false);
+
+          addToast(
+            `Details carried over from ${theirs[0].order_number}. Add the products for this order.`,
+            "info",
+          );
+        }
+      } catch (error) {
+        console.error(error);
+
+        addToast("Could not read this customer's earlier orders.", "error");
+        setShowCreateOrder(true);
+      } finally {
+        router.replace("/sales/orders");
+      }
+    })();
+  }, [repeatParam, prefillFromOrder, router, addToast]);
+
   const editParam = searchParams.get("edit");
 
   useEffect(() => {
@@ -977,6 +1206,18 @@ export default function OrdersListPage() {
   /* Convert To Sales Order on a quotation lands here with ?quotation=QT-####.
      Opening the form with that reference already filled is what ties the new
      order back to the quotation - and through it to the opportunity. */
+  /* Loaded once. The form is usable without it - an unlisted split is
+     still offered rather than silently replaced with the nearest one. */
+  useEffect(() => {
+    getPaymentTermOptionsApi()
+      .then((options) => {
+        termOptionsRef.current = options;
+      })
+      .catch(() => {
+        /* The sentence is derived without the list when it is missing. */
+      });
+  }, []);
+
   const quotationParam = searchParams.get("quotation");
   const quotationIdParam = searchParams.get("quotationId");
 
@@ -1081,6 +1322,7 @@ export default function OrdersListPage() {
               id: catalogued?.id || `line-${index}`,
               name: item.model || catalogued?.name || "Product",
               category: item.product || catalogued?.category || "",
+              hsn: item.hsn || catalogued?.hsn || "",
               price: Number(item.unit_price) || 0,
               quantity: Number(item.quantity) || 1,
               discount: Number(item.discount) || 0,
@@ -1105,12 +1347,23 @@ export default function OrdersListPage() {
             ? ORDER_GST_PERCENT
             : quotation.gst_percent,
         );
-        setAdvancePercent(
+        /* The split the client accepted, and the sentence that describes
+           it. Previously only the number came across and the sentence was
+           left at a hardcoded 30/70, so a proposal accepted at 60/40
+           converted into an order that said one thing and charged
+           another. */
+        const quotedAdvance =
           quotation.advance_percent === null ||
-            quotation.advance_percent === undefined
+          quotation.advance_percent === undefined
             ? 30
-            : quotation.advance_percent,
-        );
+            : quotation.advance_percent;
+
+        setAdvancePercent(quotedAdvance);
+
+        setNewOrder((current) => ({
+          ...current,
+          paymentTerms: wordingFor(quotedAdvance, termOptionsRef.current),
+        }));
 
         const agreedTerms = (quotation.terms || [])
           .filter((term) => term.checked && term.label?.trim())
@@ -1122,7 +1375,7 @@ export default function OrdersListPage() {
 
         addToast(
           error?.response?.data?.detail ||
-            "Unable to load the quotation details.",
+            "Unable to load the proposal details.",
           "error",
         );
       }
@@ -1177,6 +1430,7 @@ export default function OrdersListPage() {
           id: product.id,
           name: product.name,
           category: product.category,
+          hsn: product.hsn || "",
           price: product.price,
           quantity: 1,
           discount: 0,
@@ -1188,15 +1442,18 @@ export default function OrdersListPage() {
 
   const updateSelectedProduct = (
     id: string,
-    field: "quantity" | "discount" | "tax",
-    value: number,
+    field: "quantity" | "discount" | "tax" | "hsn",
+    value: number | string,
   ) => {
     setSelectedProducts((current) =>
       current.map((item) =>
         item.id === id
           ? {
               ...item,
-              [field]: Math.max(0, value),
+              /* HSN is a code, not a quantity: it is kept as typed rather
+                 than floored at zero. */
+              [field]:
+                field === "hsn" ? String(value) : Math.max(0, Number(value)),
             }
           : item,
       ),
@@ -1289,6 +1546,7 @@ export default function OrdersListPage() {
           product: item.category,
           model: item.name,
           sku: productSku(item.id),
+          hsn: item.hsn,
 
           description: item.name,
           rate: item.price,
@@ -1314,6 +1572,7 @@ export default function OrdersListPage() {
         orc_mode: orcMode,
         orc_input: orcInput,
         freight_charges: freightCharges,
+        shifting_charges: shiftingCharges,
         installation_lumpsum: installationLumpsum,
         gst_percent: gstPercent,
         advance_received: advanceReceived,
@@ -1327,6 +1586,7 @@ export default function OrdersListPage() {
           .map((term) => term.trim())
           .filter(Boolean),
 
+        payment_terms: newOrder.paymentTerms || undefined,
         technical_notes: newOrder.technicalNotes || undefined,
 
         /* Only the file metadata is stored; there is no upload endpoint yet,
@@ -1413,6 +1673,7 @@ export default function OrdersListPage() {
           poDate: "",
           assignedTo: "",
           salesExecutive: "",
+          paymentTerms: DEFAULT_PAYMENT_TERMS,
           technicalNotes: "",
 
           customerName: "",
@@ -1488,9 +1749,12 @@ export default function OrdersListPage() {
     ? (orderOrc / orderSubtotal) * 100
     : 0;
 
+  /* The ORC comes off, as it does on the server. It was being added here,
+     so the form showed one total and the saved order held another on every
+     order that carried a commission. */
   const orderTaxableAmount =
     orderSubtotal -
-    orderDiscount +
+    orderDiscount -
     orderOrc +
     freightCharges +
     installationLumpsum;
@@ -1498,6 +1762,18 @@ export default function OrdersListPage() {
   const orderGst = (orderTaxableAmount * gstPercent) / 100;
 
   const orderGrandTotal = orderTaxableAmount + orderGst;
+
+  /* What the customer pays, and what the order leaves us, are two
+     different questions. Delivery and installation pass straight through,
+     the GST goes to the government, and shifting is ours to carry. The ORC
+     is already out of the grand total - it came off the taxable amount
+     above - so taking it off again would count the commission twice. */
+  const orderRevenue =
+    orderGrandTotal -
+    freightCharges -
+    installationLumpsum -
+    shiftingCharges -
+    orderGst;
 
   /* An advance cannot exceed the order, so the balance never goes negative. */
   const orderAdvance = Math.max(0, Math.min(advanceReceived, orderGrandTotal));
@@ -1568,14 +1844,22 @@ export default function OrdersListPage() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
-                  {/* Sales Order ID - assigned by the backend on save. */}
+                  {/* The reference this order will take. Read from the
+                      backend so the form is not a blank where the number
+                      should be, and marked as a preview until it is saved -
+                      the number is only allocated on write, so a colleague
+                      saving first would take it. */}
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-[#777777]">
                       Sales Order ID:
                     </span>
 
                     <span className="text-[11px] font-medium text-[#141414] dark:text-white">
-                      {newOrder.salesOrderId || "Assigned on save"}
+                      {newOrder.salesOrderId
+                        ? `#${newOrder.salesOrderId}`
+                        : nextOrderNumber
+                          ? `#${nextOrderNumber}`
+                          : "Assigned on save"}
                     </span>
                   </div>
 
@@ -1605,7 +1889,7 @@ export default function OrdersListPage() {
                       Opportunity ID field, which asked for a numeric id the
                       user had no way of knowing. */}
                   <div>
-                    <label className="mb-1.5 block">Quotation ID:</label>
+                    <label className="mb-1.5 block">Proposal ID:</label>
 
                     <input
                       value={newOrder.quotationId}
@@ -2161,6 +2445,10 @@ export default function OrdersListPage() {
                         </th>
 
                         <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
+                          HSN / SAC
+                        </th>
+
+                        <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
                           Qty
                         </th>
 
@@ -2214,6 +2502,24 @@ export default function OrdersListPage() {
 
                             <td className="px-3 py-3 text-[10px] text-slate-600 max-w-[150px]">
                               {item.name}
+                            </td>
+
+                            {/* From the product, but editable: a line can be
+                                classified differently from the catalogue's
+                                default when the supply is. */}
+                            <td className="px-3 py-3">
+                              <input
+                                value={item.hsn}
+                                placeholder="e.g. 8528"
+                                onChange={(event) =>
+                                  updateSelectedProduct(
+                                    item.id,
+                                    "hsn",
+                                    event.target.value,
+                                  )
+                                }
+                                className="w-20 rounded border border-slate-200 px-2 py-1 font-mono text-[10px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                              />
                             </td>
 
                             <td className="px-3 py-3">
@@ -2335,7 +2641,8 @@ export default function OrdersListPage() {
                       <OrderSummaryRow
                         label={`ORC (${orderOrcPercent.toFixed(2)}%)`}
                         name="ORC"
-                        value={`+${money(orderOrc)}`}
+                        value={`-${money(orderOrc)}`}
+                        tone="rose"
                         edit={{
                           amount: orcInput,
                           mode: orcMode,
@@ -2360,6 +2667,20 @@ export default function OrdersListPage() {
                         edit={{
                           amount: installationLumpsum,
                           onChange: setInstallationLumpsum,
+                        }}
+                      />
+
+                      {/* A cost we carry, not a charge the customer is
+                          billed, so it is outside the taxable amount and
+                          only shows up against the revenue below. */}
+                      <OrderSummaryRow
+                        label="Shifting (our cost)"
+                        name="Shifting"
+                        value={`-${money(shiftingCharges)}`}
+                        tone="rose"
+                        edit={{
+                          amount: shiftingCharges,
+                          onChange: setShiftingCharges,
                         }}
                       />
 
@@ -2396,12 +2717,65 @@ export default function OrdersListPage() {
                       the advance and the balance. */}
                   <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-[#17304a]">
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                      Total Payable:
+                      Sales Order Value:
                     </span>
 
                     <span className="text-sm font-bold text-slate-900 dark:text-white">
                       {money(orderGrandTotal)}
                     </span>
+                  </div>
+
+                  {/* And what it leaves us, which is the figure the business
+                      is actually measured on. Every deduction is listed
+                      rather than netted into one number, because a revenue
+                      figure nobody can reproduce is a figure nobody trusts.
+                      Read-only here: each of these is set above, and two
+                      places to edit one number is how they end up
+                      disagreeing. */}
+                  <div className="mt-3 rounded-xl bg-slate-50 p-3 dark:bg-[#0b2034]">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Revenue Calculation
+                    </p>
+
+                    <RevenueLine
+                      label="Sales Order Value"
+                      value={money(orderGrandTotal)}
+                    />
+                    <RevenueLine
+                      label="Less Delivery"
+                      value={`-${money(freightCharges)}`}
+                      minus
+                    />
+                    <RevenueLine
+                      label="Less Installation"
+                      value={`-${money(installationLumpsum)}`}
+                      minus
+                    />
+                    <RevenueLine
+                      label="Less Shifting"
+                      value={`-${money(shiftingCharges)}`}
+                      minus
+                    />
+                    <RevenueLine
+                      label={`Less GST (${gstPercent}%)`}
+                      value={`-${money(orderGst)}`}
+                      minus
+                    />
+                    <RevenueLine
+                      label="Less ORC"
+                      value={`already deducted above`}
+                      muted
+                    />
+
+                    <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 dark:border-[#17304a]">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        Total Revenue:
+                      </span>
+
+                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                        {money(orderRevenue)}
+                      </span>
+                    </div>
                   </div>
 
                   {/* What has come in against the order, and what is still
@@ -2517,6 +2891,39 @@ export default function OrdersListPage() {
                       </p>
                     )}
                   </div>
+                </div>
+
+                {/* PAYMENT TERMS
+
+                    One field. The advance is the only thing that varies in
+                    the sentence, so it is read back out of what is written
+                    rather than entered a second time beside it: a split and
+                    a sentence kept as two controls is how an order comes to
+                    say 60% and charge 30%. */}
+                <div className="mt-4">
+                  <p className="mb-2 text-[11px] font-medium text-slate-500">
+                    Payment Terms
+                  </p>
+
+                  <textarea
+                    rows={2}
+                    value={newOrder.paymentTerms}
+                    onChange={(event) => {
+                      const text = event.target.value;
+                      updateNewOrder("paymentTerms", text);
+
+                      const advance = advanceFromTerms(text);
+                      if (advance !== null) setAdvancePercent(advance);
+                    }}
+                    placeholder={DEFAULT_PAYMENT_TERMS}
+                    className="field-compact w-full resize-none rounded-xl bg-slate-50 p-3 text-[11px] leading-5 text-slate-600 outline-none focus:ring-1 focus:ring-slate-300 dark:bg-[#0b2034] dark:text-slate-300"
+                  />
+
+                  <p className="mt-1.5 text-[10px] text-slate-400">
+                    The advance written here is what the Proforma Invoice
+                    asks for and what the summary splits on — currently{" "}
+                    <b className="text-slate-500">{advancePercent}%</b>.
+                  </p>
                 </div>
 
                 <div className="mt-4">
@@ -2840,7 +3247,17 @@ export default function OrdersListPage() {
 
                               <div className="flex items-center gap-2 mt-1">
                                 <span className="text-[10px] text-slate-500">
-                                  {money(product.price)}
+                                  {/* A catalogue line the price list leaves
+                                      blank says so. Rs 0.00 reads like a free
+                                      product, and reaches the customer that
+                                      way. */}
+                                  {product.price > 0 ? (
+                                    money(product.price)
+                                  ) : (
+                                    <span className="font-medium text-amber-600">
+                                      Price not set
+                                    </span>
+                                  )}
                                 </span>
 
                                 <span className="text-slate-300">•</span>
@@ -3076,10 +3493,10 @@ export default function OrdersListPage() {
 
       <StatGrid>
         <StatCard
-          label="Total Proposal"
-          value={kpis.totalProposal}
-          change={kpis.totalProposalChange.text}
-          positive={kpis.totalProposalChange.up}
+          label="Total Orders"
+          value={kpis.totalOrders}
+          change={kpis.totalOrdersChange.text}
+          positive={kpis.totalOrdersChange.up}
         />
 
         <StatCard
@@ -3522,6 +3939,22 @@ export default function OrdersListPage() {
                               >
                                 View Order
                               </Link>
+
+                              {/* A repeat order for the same customer: the
+                                  whole thing again, minus anything that
+                                  identified the original. */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenMenu(null);
+                                  router.push(
+                                    `/sales/orders?duplicate=${order._id}`,
+                                  );
+                                }}
+                                className="w-full px-3 py-2 text-left text-xs hover:bg-slate-50 dark:hover:bg-[#0b2034]"
+                              >
+                                Duplicate Order
+                              </button>
 
                               {nextSalesOrderStatuses(order.status).length >
                                 0 && (

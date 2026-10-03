@@ -248,7 +248,10 @@ export const updateOpportunityApi = async (
 export const updateOpportunityStatusApi = async (
   id: number | string,
   status: OpportunityStatus,
-  reason?: { won_reason?: string; lost_reason?: string },
+  /* `remarks` is what the person typed when moving the stage. The backend
+     puts it on the activity entry the move writes, so the history says why
+     rather than only what. */
+  reason?: { won_reason?: string; lost_reason?: string; remarks?: string },
 ): Promise<OpportunityModel> => {
   const { data } = await api.put(`/api/v1/opportunities/${id}/status`, {
     status,

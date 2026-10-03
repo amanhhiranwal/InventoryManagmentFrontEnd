@@ -76,6 +76,8 @@ export interface QuotationItem {
   product?: string;
   model?: string;
   sku?: string;
+  /** HSN for goods, SAC for a service. Carried from the product. */
+  hsn?: string;
   quantity?: number;
   unit_price?: number;
   discount?: number;

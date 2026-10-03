@@ -170,5 +170,5 @@ export function approvalDocumentLink(approval: SalesApproval): string {
 }
 
 export function approvalDocumentLabel(type: ApprovalDocumentType): string {
-  return type === "QUOTATION" ? "Quotation" : "Sales Order";
+  return type === "QUOTATION" ? "Proposal" : "Sales Order";
 }

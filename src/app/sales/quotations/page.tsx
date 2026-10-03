@@ -121,6 +121,8 @@ interface LineItem {
   product: string;
   model: string;
   sku: string;
+  /** HSN for goods, SAC for a service, carried from the product. */
+  hsn: string;
   quantity: number;
   unitPrice: number;
   discount: number;
@@ -195,7 +197,7 @@ const DEFAULT_TERMS: TermState[] = [
   },
   {
     label:
-      "Offer Validity: This quotation remains firm for 30 calendar days from issue date. Subject to reconfirmation thereafter.",
+      "Offer Validity: This Proposal remains firm for 30 calendar days from issue date. Subject to reconfirmation thereafter.",
     checked: true,
   },
   {
@@ -213,7 +215,7 @@ const DEFAULT_TERMS: TermState[] = [
 /** Toggles in the Send Quotation dialog. */
 const SEND_OPTIONS: { key: SendOptionKey; label: string }[] = [
   { key: "track_opens", label: "Track Email Opens (Read Receipt)" },
-  { key: "alert_on_download", label: "Instant Alert on Quotation PDF Download" },
+  { key: "alert_on_download", label: "Instant Alert on Proposal PDF Download" },
   { key: "attach_gst_audit_trail", label: "Attach GST Digital Signature Audit Trail" },
   { key: "notify_lead_owner", label: "Notify Lead Owner upon Client Interaction" },
 ];
@@ -489,8 +491,23 @@ export default function QuotationPage() {
   const [orcInput, setOrcInput] = useState(0);
   const [freight, setFreight] = useState(0);
   const [installation, setInstallation] = useState(0);
+
+  /* Whether the client is being charged for delivery and for installation
+     at all. Both used to be plain amounts sitting at zero, which reads the
+     same as "included free" and the same as "not decided yet"; the tick
+     says which. The figure survives an untick, so changing your mind does
+     not cost you what you typed. */
+  const [includeFreight, setIncludeFreight] = useState(false);
+  const [includeInstallation, setIncludeInstallation] = useState(false);
+
+  const chargedFreight = includeFreight ? freight : 0;
+  const chargedInstallation = includeInstallation ? installation : 0;
   const [gstPercent, setGstPercent] = useState(18);
-  const [advancePercent] = useState(30);
+  /* The split the client is asked to pay on. One number decides all of
+     it: the two figures below, the terms printed on the PDF, and the
+     covering email - which is why it is a field rather than a constant.
+     It used to be fixed at 30 with no way to quote anything else. */
+  const [advancePercent, setAdvancePercent] = useState(30);
 
   const [attachments, setAttachments] = useState<AttachmentState[]>([]);
 
@@ -519,7 +536,7 @@ export default function QuotationPage() {
       setQuotations(data || []);
     } catch (error) {
       console.error(error);
-      addToast("Unable to load quotations.", "error");
+      addToast("Unable to load proposals.", "error");
     } finally {
       setLoading(false);
     }
@@ -713,8 +730,8 @@ export default function QuotationPage() {
         discountInput,
         orcMode,
         orcInput,
-        freight,
-        installation,
+        freight: chargedFreight,
+        installation: chargedInstallation,
         gstPercent,
         advancePercent,
       }),
@@ -724,8 +741,8 @@ export default function QuotationPage() {
       discountInput,
       orcMode,
       orcInput,
-      freight,
-      installation,
+      chargedFreight,
+      chargedInstallation,
       gstPercent,
       advancePercent,
     ],
@@ -759,6 +776,14 @@ export default function QuotationPage() {
       cancelled = true;
     };
   }, [priceType, discountPercent]);
+
+  /* True while a discount on this proposal is still with an approver.
+     Read from the saved status rather than the chain preview: the preview
+     says what *would* need signing, this says what actually is. */
+  const awaitingApproval =
+    editingId !== null &&
+    quotations.find((row) => row.id === editingId)?.status ===
+      QUOTATION_STATUS.PENDING_APPROVAL;
 
   /** Saves the quotation, then sends the discount up for approval. */
   const sendForApproval = async () => {
@@ -836,7 +861,10 @@ export default function QuotationPage() {
     setOrcInput(0);
     setFreight(0);
     setInstallation(0);
+    setIncludeFreight(false);
+    setIncludeInstallation(false);
     setGstPercent(18);
+    setAdvancePercent(30);
     setAttachments([]);
     setTerms(DEFAULT_TERMS);
     setRemarks("");
@@ -898,6 +926,7 @@ export default function QuotationPage() {
             product: item.product || "",
             model: item.model || "",
             sku: item.sku || "",
+            hsn: item.hsn || "",
             quantity: Number(item.quantity) || 1,
             unitPrice: Number(item.unit_price) || 0,
             discount: Number(item.discount) || 0,
@@ -913,10 +942,19 @@ export default function QuotationPage() {
         setOrcInput(saved.orc_input || 0);
         setFreight(saved.freight_charges || 0);
         setInstallation(saved.installation_lumpsum || 0);
+        /* A saved charge is one that was being given; zero is not. */
+        setIncludeFreight(Number(saved.freight_charges || 0) > 0);
+        setIncludeInstallation(Number(saved.installation_lumpsum || 0) > 0);
         setGstPercent(
           saved.gst_percent === null || saved.gst_percent === undefined
             ? 18
             : saved.gst_percent,
+        );
+
+        setAdvancePercent(
+          saved.advance_percent === null || saved.advance_percent === undefined
+            ? 30
+            : saved.advance_percent,
         );
 
         setAttachments(
@@ -935,7 +973,7 @@ export default function QuotationPage() {
       } catch (error) {
         console.error(error);
 
-        addToast("Unable to open this quotation.", "error");
+        addToast("Unable to open this proposal.", "error");
       }
     },
     [addToast],
@@ -1025,6 +1063,7 @@ export default function QuotationPage() {
         product: text("product", "name"),
         model: text("model"),
         sku: text("sku"),
+        hsn: text("hsn", "hsn_code"),
         quantity: num("quantity", "qty") || 1,
         unitPrice: num("unit_price", "unitPrice", "price"),
         discount: num("discount"),
@@ -1116,6 +1155,7 @@ export default function QuotationPage() {
       product: item.product,
       model: item.model,
       sku: item.sku,
+      hsn: item.hsn,
       quantity: item.quantity,
       unit_price: item.unitPrice,
       discount: item.discount,
@@ -1126,8 +1166,8 @@ export default function QuotationPage() {
     discount_input: discountInput,
     orc_mode: orcMode,
     orc_input: orcInput,
-    freight_charges: freight,
-    installation_lumpsum: installation,
+    freight_charges: chargedFreight,
+    installation_lumpsum: chargedInstallation,
     gst_percent: gstPercent,
     advance_percent: advancePercent,
 
@@ -1155,7 +1195,7 @@ export default function QuotationPage() {
     }
 
     if (!items.length) {
-      addToast("Add at least one product before saving the quotation.", "warning");
+      addToast("Add at least one product before saving the proposal.", "warning");
       return false;
     }
 
@@ -1179,8 +1219,8 @@ export default function QuotationPage() {
 
       addToast(
         editingId
-          ? `Quotation ${created.quote_number} updated.`
-          : `Quotation ${created.quote_number} saved as draft.`,
+          ? `Proposal ${created.quote_number} updated.`
+          : `Proposal ${created.quote_number} saved as draft.`,
         "success",
       );
 
@@ -1200,7 +1240,7 @@ export default function QuotationPage() {
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "Failed to save the quotation.";
+          ?.detail || "Failed to save the proposal.";
 
       console.error(error);
       addToast(detail, "error");
@@ -1220,7 +1260,7 @@ export default function QuotationPage() {
     try {
       const created = await createQuotationApi(toPayload(QUOTATION_STATUS.DRAFT));
 
-      addToast(`Quotation ${created.quote_number} saved as draft.`, "success");
+      addToast(`Proposal ${created.quote_number} saved as draft.`, "success");
 
       await fetchQuotations();
       setPageMode("list");
@@ -1230,7 +1270,7 @@ export default function QuotationPage() {
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "Failed to save the quotation.";
+          ?.detail || "Failed to save the proposal.";
 
       console.error(error);
       addToast(detail, "error");
@@ -1256,7 +1296,7 @@ export default function QuotationPage() {
 
       await downloadQuotationPdfApi(
         saved.id,
-        `${saved.quote_number || "Quotation"}.pdf`,
+        `${saved.quote_number || "Proposal"}.pdf`,
       );
 
       addToast(`${saved.quote_number} downloaded.`, "success");
@@ -1270,7 +1310,7 @@ export default function QuotationPage() {
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "The quotation PDF could not be generated.";
+          ?.detail || "The proposal PDF could not be generated.";
 
       console.error(error);
       addToast(detail, "error");
@@ -1324,6 +1364,7 @@ export default function QuotationPage() {
           product: product.category,
           model: product.name,
           sku: productSku(product.id),
+          hsn: product.hsn || "",
           quantity: 1,
           unitPrice: product.price,
           discount: 0,
@@ -1360,7 +1401,7 @@ export default function QuotationPage() {
 
   const removeItem = (key: string) => {
     setItems((current) => current.filter((item) => item.key !== key));
-    addToast("Product removed from the quotation.", "info");
+    addToast("Product removed from the proposal.", "info");
   };
 
   /* --------------------------------------------------------------------------
@@ -1385,7 +1426,7 @@ export default function QuotationPage() {
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "Failed to update the quotation status.";
+          ?.detail || "Failed to update the proposal status.";
 
       console.error(error);
       addToast(detail, "error");
@@ -1396,8 +1437,8 @@ export default function QuotationPage() {
      level because the owner's name needs the users this page loaded. */
   const quotationColumns: ExportColumn<QuotationModel>[] = useMemo(
     () => [
-      { header: "Quote ID", value: (row) => row.quote_number || "" },
-      { header: "Customer Name", value: (row) => row.contact_name || "" },
+      { header: "Proposal ID", value: (row) => row.quote_number || "" },
+      { header: "Contact Person", value: (row) => row.contact_name || "" },
       { header: "Organization", value: (row) => row.organization_name || "" },
       { header: "Email", value: (row) => row.email || "" },
       { header: "Mobile", value: (row) => row.mobile_number || "" },
@@ -1423,8 +1464,8 @@ export default function QuotationPage() {
     return (
       <div className="min-h-full pb-8">
         <FormPageHeader
-          title={editingId ? "Edit Quotation" : "New Quotation"}
-          parentLabel="Quotation"
+          title={editingId ? "Edit Proposal" : "New Proposal"}
+          parentLabel="Proposal"
           currentLabel={editingId ? "Edit" : "New"}
           actions={
             <>
@@ -1444,9 +1485,32 @@ export default function QuotationPage() {
                 {saving
                   ? "Saving..."
                   : editingId
-                    ? "Save Quotation"
+                    ? "Save Proposal"
                     : "Save as Draft"}
               </DraftButton>
+
+              {/* The design puts this in the header, where the other two
+                  actions are. It only lived at the foot of the summary
+                  panel, which is a long way to scroll for the one button
+                  that moves the proposal on. Shown only when there is in
+                  fact something to approve. */}
+              {approvalChain.length > 0 && (
+                <button
+                  type="button"
+                  onClick={sendForApproval}
+                  disabled={requestingApproval || saving}
+                  className="flex h-[39px] items-center gap-2 rounded-lg bg-[#233353] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:opacity-50"
+                >
+                  {requestingApproval ? (
+                    <CgSpinner className="animate-spin" size={14} />
+                  ) : (
+                    <FiSend size={13} />
+                  )}
+                  {requestingApproval
+                    ? "Sending..."
+                    : `Send To ${approvalChain[0]} For Approval`}
+                </button>
+              )}
             </>
           }
         />
@@ -1586,7 +1650,7 @@ export default function QuotationPage() {
                 </Field>
 
                 <div className="grid grid-cols-2 gap-5">
-                  <Field label="Quotation Date">
+                  <Field label="Proposal Date">
                     <input
                       type="date"
                       value={quotationDate}
@@ -1656,6 +1720,7 @@ export default function QuotationPage() {
                     <tr>
                       <Th>Product</Th>
                       <Th>Model / Variant</Th>
+                      <Th>HSN / SAC</Th>
                       <Th>Qty</Th>
                       <Th>Discount</Th>
                       <Th>Tax</Th>
@@ -1668,7 +1733,7 @@ export default function QuotationPage() {
                     {items.length === 0 && (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={8}
                           className="px-4 py-10 text-center text-xs text-slate-400"
                         >
                           No products added yet. Use Add Product to build the
@@ -1714,6 +1779,26 @@ export default function QuotationPage() {
                             ) : (
                               <span className="text-[11px] text-slate-600 dark:text-slate-300">
                                 {item.model}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Comes from the product, but stays editable: a
+                              line can be classified differently from the
+                              catalogue's default when the supply is. */}
+                          <td className="px-4 py-3">
+                            {editing ? (
+                              <input
+                                value={item.hsn}
+                                placeholder="e.g. 8528"
+                                onChange={(event) =>
+                                  updateItem(item.key, { hsn: event.target.value })
+                                }
+                                className={CELL_INPUT}
+                              />
+                            ) : (
+                              <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                                {item.hsn || "—"}
                               </span>
                             )}
                           </td>
@@ -1845,15 +1930,36 @@ export default function QuotationPage() {
                 {/* The design has no summary-level Total Discount or ORC on a
                     quotation: discount is given per line, in the table's own
                     Discount column, and the totals below follow from that. */}
+                {/* Tick to charge for it. Both are optional on a proposal -
+                    a customer collecting their own panels pays no delivery,
+                    and one with their own AV contractor pays no
+                    installation - and an unticked row is plainly not being
+                    charged rather than silently sitting at zero. */}
                 <SummaryRow
                   label="Freight Charges"
-                  value={`+${money(totals.freight)}`}
+                  name="Freight Charges"
+                  value={
+                    includeFreight ? `+${money(totals.freight)}` : "Not charged"
+                  }
+                  include={{
+                    checked: includeFreight,
+                    onChange: setIncludeFreight,
+                  }}
                   edit={{ amount: freight, onChange: setFreight }}
                 />
 
                 <SummaryRow
                   label="Installation"
-                  value={`+${money(totals.installation)}`}
+                  name="Installation"
+                  value={
+                    includeInstallation
+                      ? `+${money(totals.installation)}`
+                      : "Not charged"
+                  }
+                  include={{
+                    checked: includeInstallation,
+                    onChange: setIncludeInstallation,
+                  }}
                   edit={{ amount: installation, onChange: setInstallation }}
                 />
 
@@ -1967,31 +2073,9 @@ export default function QuotationPage() {
                     Pricing &amp; Approval
                   </p>
 
-                  {/* Whose letterhead the proposal carries. Only worth
-                      asking when the salesperson sells for more than one. */}
-                  {sellingCompanies.length > 1 && (
-                    <>
-                      <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-                        Selling Company
-                      </label>
-
-                      <select
-                        value={sellingCompanyId}
-                        onChange={(event) =>
-                          setSellingCompanyId(event.target.value)
-                        }
-                        className="mb-3 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-                      >
-                        <option value="">Use the default profile</option>
-                        {sellingCompanies.map((company) => (
-                          <option key={company.id} value={company.id}>
-                            {company.company_name}
-                          </option>
-                        ))}
-                      </select>
-                    </>
-                  )}
-
+                  {/* The letterhead comes from the company profile. It used
+                      to be a picker here, which asked the salesperson a
+                      question the profile already answers. */}
                   <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
                     Price Type
                   </label>
@@ -2071,9 +2155,37 @@ export default function QuotationPage() {
                   )}
                 </div>
 
-                <p className="mt-5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                  Payment Terms:
-                </p>
+                <div className="mt-5 flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    Payment Terms:
+                  </p>
+
+                  {/* Change this and the two figures below, the terms on the
+                      PDF and the covering email all follow - they are all
+                      read from this one number. */}
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      aria-label="Advance percentage"
+                      value={advancePercent}
+                      onChange={(event) =>
+                        setAdvancePercent(
+                          Math.min(
+                            100,
+                            Math.max(
+                              0,
+                              Number(event.target.value.replace(/[^\d.]/g, "")) || 0,
+                            ),
+                          ),
+                        )
+                      }
+                      className="h-7 w-12 rounded-md border border-slate-200 px-1.5 text-right text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                    />
+
+                    <span className="text-[11px] text-slate-500">% advance</span>
+                  </div>
+                </div>
 
                 <div className="mt-2.5 space-y-2">
                   <div className="flex items-center justify-between">
@@ -2117,7 +2229,7 @@ export default function QuotationPage() {
                             to Proposal / Price Quote.
                           </>
                         ) : (
-                          "Select an opportunity above to link this quotation to the pipeline."
+                          "Select an opportunity above to link this proposal to the pipeline."
                         )}
                       </p>
                     </div>
@@ -2135,16 +2247,32 @@ export default function QuotationPage() {
                     Download PDF
                   </button>
 
+                  {/* Nothing goes to a client on a discount nobody has
+                      signed for yet. The chain exists so a price leaves the
+                      building only once somebody with the authority has
+                      agreed to it, and an email cannot be recalled. */}
                   <button
                     type="button"
                     onClick={saveAndEmail}
-                    disabled={saving}
-                    className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#233353] text-xs font-semibold text-white transition hover:bg-[#18243a] disabled:opacity-50"
+                    disabled={saving || awaitingApproval}
+                    title={
+                      awaitingApproval
+                        ? "Waiting on approval — the proposal can be emailed once the discount is signed off."
+                        : undefined
+                    }
+                    className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#233353] text-xs font-semibold text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <FiMail size={13} />
                     Email Draft
                   </button>
                 </div>
+
+                {awaitingApproval && (
+                  <p className="mt-2 text-[10px] leading-4 text-amber-600 dark:text-amber-400">
+                    Waiting on approval. The proposal can be emailed to the
+                    client once the discount has been signed off.
+                  </p>
+                )}
               </FormSectionBlock>
             </FormCard>
           </div>
@@ -2175,12 +2303,12 @@ export default function QuotationPage() {
   return (
     <ListPage>
       <ListPageHeader
-        title="Quotation"
+        title="Proposal"
         refreshing={refreshing}
         onRefresh={refresh}
         actions={
           <ListActionsMenu
-            name="Quotations"
+            name="Proposals"
             rows={filtered}
             columns={quotationColumns}
             chart={[
@@ -2198,7 +2326,7 @@ export default function QuotationPage() {
       <StatGrid cols={6}>
         <StatCard
           compact
-          label="Total Quotes"
+          label="Total Proposals"
           value={String(stats.total)}
           change={stats.totalChange.text}
           positive={stats.totalChange.up}
@@ -2243,7 +2371,7 @@ export default function QuotationPage() {
           }}
           trailing={
             <PrimaryAction onClick={openCreate} icon={<FiPlus size={14} />}>
-              Add New Quotation
+              Add New Proposal
             </PrimaryAction>
           }
         />
@@ -2258,7 +2386,7 @@ export default function QuotationPage() {
             onApply={() => {
               setFilters(draftFilters);
               setShowFilter(false);
-              addToast("Quotation filters applied.", "success");
+              addToast("Proposal filters applied.", "success");
             }}
             onClear={() => {
               setDraftFilters(EMPTY_FILTERS);
@@ -2300,10 +2428,14 @@ export default function QuotationPage() {
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300" />
                 </Th>
                 <Th className="px-3!">
-                  <SortLabel>Quote ID</SortLabel>
+                  <SortLabel>Proposal ID</SortLabel>
                 </Th>
+                {/* The organisation and where it is, and nothing else, as
+                    the design has it. The contact is on the proposal itself
+                    and on the opportunity beside this column; repeating it
+                    here only made the row taller. */}
                 <Th className="px-3!">
-                  <SortLabel>Customer Name</SortLabel>
+                  <SortLabel>Organization Name</SortLabel>
                 </Th>
                 <Th className="px-3!">
                   <SortLabel>Opportunity</SortLabel>
@@ -2339,7 +2471,7 @@ export default function QuotationPage() {
                     colSpan={9}
                     className="px-4 py-16 text-center text-xs text-slate-400"
                   >
-                    No quotations found. Use Add New Quotation to raise one.
+                    No quotations found. Use Add New Proposal to raise one.
                   </td>
                 </tr>
               )}
@@ -2375,14 +2507,10 @@ export default function QuotationPage() {
 
                     <td className="px-3 py-4">
                       <p className="text-[12px] font-semibold text-slate-900 dark:text-white">
-                        {quotation.contact_name || "—"}
+                        {quotation.organization_name || "—"}
                       </p>
 
-                      <p className="text-[10px] text-slate-700 [overflow-wrap:anywhere] dark:text-slate-400">
-                        {quotation.email || "No email"}
-                      </p>
-
-                      <p className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-slate-400">
+                      <p className="flex items-center gap-1 text-[10px] text-slate-600 dark:text-slate-400">
                         <FiMapPin size={9} />
                         {quotation.state_name ||
                           quotation.billing_address?.state ||
@@ -2439,7 +2567,7 @@ export default function QuotationPage() {
                       <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"
-                          title="Send Quotation"
+                          title="Send Proposal"
                           disabled={
                             !nextQuotationStatuses(quotation.status).includes(
                               QUOTATION_STATUS.SENT,
@@ -2466,7 +2594,20 @@ export default function QuotationPage() {
                           </button>
 
                           {rowMenuId === quotation.id && (
-                            <div className="absolute right-0 top-full z-40 mt-1 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#0d2336] dark:bg-[#051422]">
+                            <div className="absolute right-0 top-full z-40 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#0d2336] dark:bg-[#051422]">
+                              {quotation.status === QUOTATION_STATUS.DRAFT && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRowMenuId(null);
+                                    openForEdit(String(quotation.id));
+                                  }}
+                                  className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#071929]"
+                                >
+                                  Edit Quotation
+                                </button>
+                              )}
+
                               {nextQuotationStatuses(quotation.status).length ===
                                 0 && (
                                 <p className="px-3 py-2 text-[11px] text-slate-400">
@@ -2488,13 +2629,36 @@ export default function QuotationPage() {
                                         return;
                                       }
 
+                                      /* Pending Approval is not a status to
+                                         type. Raising the request is what
+                                         puts it there, and that needs the
+                                         price type and the discount - which
+                                         only the form knows - so this opens
+                                         it rather than setting the status and
+                                         leaving nobody asked. */
+                                      if (
+                                        status ===
+                                        QUOTATION_STATUS.PENDING_APPROVAL
+                                      ) {
+                                        setRowMenuId(null);
+                                        openForEdit(String(quotation.id));
+                                        addToast(
+                                          "Check the discount, then use Send For Approval at the bottom of the form.",
+                                          "info",
+                                        );
+                                        return;
+                                      }
+
                                       changeStatus(quotation, status);
                                     }}
                                     className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#071929]"
                                   >
                                     {status === QUOTATION_STATUS.SENT
                                       ? "Send to Client"
-                                      : `Mark as ${quotationStatusLabel(status)}`}
+                                      : status ===
+                                          QUOTATION_STATUS.PENDING_APPROVAL
+                                        ? "Send For Approval"
+                                        : `Mark as ${quotationStatusLabel(status)}`}
                                   </button>
                                 ),
                               )}
@@ -2515,7 +2679,7 @@ export default function QuotationPage() {
           totalItems={filtered.length}
           totalPages={Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE))}
           onPageChange={setCurrentPage}
-          noun="quotations"
+          noun="proposals"
         />
       </TableCard>
       </div>
@@ -2714,6 +2878,7 @@ function SummaryRow({
   value,
   tone,
   strong,
+  include,
   edit,
 }: {
   label: string;
@@ -2723,6 +2888,13 @@ function SummaryRow({
   value: string;
   tone?: "rose";
   strong?: boolean;
+  /** A charge the client can be given or not. Omit for a row that is
+      always counted. Unticked, the row is greyed and contributes nothing;
+      the figure is kept, so ticking it back restores what was typed. */
+  include?: {
+    checked: boolean;
+    onChange: (next: boolean) => void;
+  };
   /** Omit for a read-only row. */
   edit?: {
     amount: number;
@@ -2761,9 +2933,20 @@ function SummaryRow({
             : "text-slate-500 dark:text-slate-400"
         }`}
       >
+        {include && (
+          <input
+            type="checkbox"
+            checked={include.checked}
+            aria-label={`Include ${name || label}`}
+            onChange={(event) => include.onChange(event.target.checked)}
+            className="h-3.5 w-3.5 rounded border-slate-300 accent-[#233353]"
+          />
+        )}
+
         {label}
 
-        {edit && (
+        {/* Nothing to edit on a charge that is not being given. */}
+        {edit && (!include || include.checked) && (
           <button
             type="button"
             aria-label={`Edit ${name || label}`}
@@ -2777,7 +2960,7 @@ function SummaryRow({
 
       {/* Fixed width: the input replaces the figure without moving it. */}
       <div className="flex w-36 justify-end">
-        {edit && editing ? (
+        {edit && editing && (!include || include.checked) ? (
           edit.unit === "%" ? (
             /* A rate has no rupee alternative, so it gets a plain input
                rather than the ₹ / % selector the charges use. */
@@ -3097,7 +3280,17 @@ function ProductPickerModal({
                       </p>
 
                       <p className="mt-1 text-[10px] text-slate-500">
-                        {money(product.price)} · {product.available} available
+                        {/* A catalogue line the price list leaves blank says so.
+                            Rs 0.00 reads like a free product, and it reaches
+                            a customer's document that way. */}
+                        {product.price > 0 ? (
+                          money(product.price)
+                        ) : (
+                          <span className="font-medium text-amber-600">
+                            Price not set
+                          </span>
+                        )}{" "}
+                        · {product.available} available
                       </p>
                     </div>
                   </div>
@@ -3156,6 +3349,7 @@ function ProductPickerModal({
                           category: item.product,
                           price: item.unitPrice,
                           available: 0,
+                          hsn: item.hsn,
                         })
                       }
                       className="text-rose-400 transition hover:text-rose-600"
@@ -3420,7 +3614,7 @@ function SendQuotationModal({
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || "The quotation could not be sent.";
+          ?.detail || "The proposal could not be sent.";
 
       console.error(error);
       onError(detail);
@@ -3735,7 +3929,7 @@ function SendQuotationModal({
               ) : (
                 <FiSend size={13} />
               )}
-              {sending ? "Sending..." : "Send Quotation Email (Ctrl+Enter)"}
+              {sending ? "Sending..." : "Send Proposal Email (Ctrl+Enter)"}
             </button>
           </div>
         </div>

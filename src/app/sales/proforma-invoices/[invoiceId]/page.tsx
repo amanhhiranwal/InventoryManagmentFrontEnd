@@ -30,6 +30,7 @@ import {
   LuPencil,
   LuPlay,
   LuSend,
+
   LuX,
 } from "react-icons/lu";
 import { CgSpinner } from "react-icons/cg";
@@ -590,7 +591,14 @@ function ProformaInvoiceDetail() {
             onCopied={(message) => addToast(message, "success")}
           />
 
-          <TermsBlock terms={invoice.commercial_terms} notes={invoice.technical_notes} />
+          <TermsBlock
+            terms={invoice.commercial_terms}
+            notes={invoice.technical_notes}
+            paymentTerms={
+              invoice.payment_terms ||
+              `${invoice.advance_percent ?? 30}% advance against this Proforma Invoice.`
+            }
+          />
         </div>
 
         {/* RIGHT */}
@@ -620,7 +628,7 @@ function ProformaInvoiceDetail() {
           >
             <div className="space-y-2.5">
               <LinkedDocument
-                title={order?.quotation_id ? `Quotation ${order.quotation_id}` : "Quotation"}
+                title={order?.quotation_id ? `Proposal ${order.quotation_id}` : "Proposal"}
                 subtitle={order?.quotation_id ? "Approved" : "Not linked"}
                 onView={order?.quotation_id ? () => router.push("/sales/quotations") : undefined}
               />
@@ -735,8 +743,8 @@ function OrderProcess({ invoice }: { invoice: ProformaInvoiceModel }) {
     <div className="space-y-4">
       <ProcessStep
         state={order?.quotation_id ? "done" : "todo"}
-        title="Quotation Approved"
-        caption={order?.quotation_id ? `${order.quotation_id} linked` : "No quotation linked"}
+        title="Proposal Approved"
+        caption={order?.quotation_id ? `${order.quotation_id} linked` : "No proposal linked"}
       />
       <ProcessStep
         state={order?.po_number ? "done" : "todo"}

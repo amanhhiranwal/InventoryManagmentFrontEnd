@@ -16,7 +16,13 @@ import { CgSpinner } from "react-icons/cg";
 
 import PageHeader from "@/components/ui/PageHeader";
 import { ListPage, PrimaryAction } from "@/components/crm/ListPageShell";
-import { LuBuilding2, LuFileText, LuImage, LuPenLine, LuSave } from "react-icons/lu";
+import {
+  LuBuilding2,
+  LuFileText,
+  LuImage,
+  LuPenLine,
+  LuSave,
+} from "react-icons/lu";
 
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
@@ -82,6 +88,8 @@ export default function CompanyProfilePage() {
         company_offerings: profile.company_offerings,
         signatory_name: profile.signatory_name,
         signatory_title: profile.signatory_title,
+
+
       });
 
       setProfile(saved);
@@ -289,6 +297,11 @@ export default function CompanyProfilePage() {
             </div>
           </Section>
 
+          {/* Banking and the GST registration live on their own Masters
+              page. They were here, under a heading about proposals and
+              emails, which is not where anyone looks for an account
+              number - and this page is long enough that they were below
+              the fold. */}
           <Section icon={<LuImage size={16} />} title="Logo">
             <div className="flex flex-wrap items-center gap-5">
               <img

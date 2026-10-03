@@ -100,6 +100,9 @@ export interface ProformaInvoiceItem {
   quantity_kg_ltr?: number;
   discount?: number;
   tax_rate?: number;
+  /** Carried from the product, through the quotation and the order. A GST
+      document has to print the code the goods were classified under. */
+  hsn?: string;
 }
 
 export interface ProformaAddress {
@@ -108,6 +111,33 @@ export interface ProformaAddress {
   state?: string;
   country?: string;
   pin?: string;
+}
+
+/** One HSN's worth of tax, as a GST document has to show it. */
+export interface TaxSummaryRow {
+  hsn: string;
+  taxable: number;
+  rate: number;
+  cgst_rate: number;
+  cgst_amount: number;
+  sgst_rate: number;
+  sgst_amount: number;
+  igst_rate: number;
+  igst_amount: number;
+  total_tax: number;
+}
+
+export interface TaxSummary {
+  /** True when the goods cross a state line, so one IGST line replaces
+      the CGST and SGST pair. */
+  interstate: boolean;
+  rows: TaxSummaryRow[];
+  taxable_total: number;
+  cgst_total: number;
+  sgst_total: number;
+  igst_total: number;
+  tax_total: number;
+  grand_total: number;
 }
 
 export interface ProformaInvoiceModel {
@@ -163,7 +193,16 @@ export interface ProformaInvoiceModel {
   balance_expected: number;
 
   commercial_terms: string[];
+  /** How this invoice is to be paid, carried from the proposal. */
+  payment_terms?: string | null;
   technical_notes?: string | null;
+
+  /* The tax, worked out on the server. A document that recomputes its own
+     GST is a document that can disagree with what was charged. */
+  tax_summary?: TaxSummary | null;
+  place_of_supply?: string | null;
+  seller_state_code?: string | null;
+  buyer_state_code?: string | null;
   attachments: { name: string; size?: number; type?: string }[];
 
   generated_at?: string | null;
@@ -192,6 +231,7 @@ export interface ProformaInvoicePayload {
   amount_paid?: number;
   advance_percent?: number;
   commercial_terms?: string[];
+  payment_terms?: string;
   technical_notes?: string;
   attachments?: { name: string; size?: number; type?: string }[];
 }
@@ -200,13 +240,19 @@ export interface CompanyProfile {
   legal_name?: string | null;
   address_lines: string[];
   gstin?: string | null;
+  email?: string | null;
+  state_name?: string | null;
+  state_code?: string | null;
   bank: {
     beneficiary_name?: string | null;
     bank_name?: string | null;
     branch?: string | null;
     account_number?: string | null;
     ifsc?: string | null;
+    swift?: string | null;
     upi_vpa?: string | null;
+    /** Path on the API, not a data URL: the image is served, not inlined. */
+    upi_qr_url?: string | null;
   };
   signatory: { name?: string | null; title?: string | null };
   configured: boolean;
@@ -249,6 +295,39 @@ export const getProformaInvoiceApi = async (
 export const getCompanyProfileApi = async (): Promise<CompanyProfile> => {
   const { data } = await api.get(`${BASE}/company-profile`);
   return data.data;
+};
+
+/** One payment split: the advance figure and the sentence that describes it. */
+export interface PaymentTermOption {
+  advance_percent: number;
+  label: string;
+}
+
+/**
+ * The splits a document can be issued on.
+ *
+ * Served rather than listed in each screen, so the proposal, the sales
+ * order and this invoice offer the same terms and a new one is added in a
+ * single place. The percentage travels with the wording because every
+ * figure on the three documents is worked out from it - the wording alone
+ * would leave "50% advance" printing a 30% number.
+ */
+export const getPaymentTermOptionsApi = async (): Promise<PaymentTermOption[]> => {
+  const { data } = await api.get(`${BASE}/payment-terms`);
+  return data.data || [];
+};
+
+/**
+ * The reference a new invoice would take.
+ *
+ * A preview, not a reservation. The counter is read rather than moved, so
+ * opening the form never burns a number and two people opening one at the
+ * same moment both see the same figure. The number is only theirs once the
+ * record is written, which is why the form says "next available".
+ */
+export const getNextPiNumberApi = async (): Promise<string | null> => {
+  const { data } = await api.get(`${BASE}/next-number`);
+  return data?.data?.pi_number || null;
 };
 
 export const createProformaInvoiceApi = async (
