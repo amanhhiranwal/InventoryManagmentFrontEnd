@@ -154,3 +154,25 @@ body {
 .animate-fadeIn {
   animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* NUMBER FIELDS WITHOUT THE BROWSER'S STEPPER
+ *
+ * A quantity, a discount and a rate are all typed, never stepped: nobody
+ * reaches a price of 68,000 by clicking an arrow. The spinner only takes
+ * width from the cell and puts a second control inside one that already
+ * has a field in it.
+ *
+ * Firefox is told the same thing through the standard property. Note this
+ * hides the buttons only - a wheel over a focused number field still
+ * changes it, which is guarded where those fields are rendered.
+ */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

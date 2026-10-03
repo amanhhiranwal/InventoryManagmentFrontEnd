@@ -471,8 +471,21 @@ export function ProductsTable({
 }) {
   const documentStyle = variant === "document";
 
+  /* QUIET UNTIL YOU REACH FOR IT
+
+     The lines read as a table rather than as a form: a border and a white
+     well only appear under the pointer or on focus. Eight framed boxes per
+     row made a list of products look like a data-entry screen, and the eye
+     had nowhere to rest when reading down a column of figures.
+
+     Borders are transparent rather than absent, so nothing shifts by a
+     pixel when one appears. */
   const cellInput =
-    "h-7 w-full rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none transition focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
+    "h-7 w-full rounded-md border border-transparent bg-transparent px-2 text-[11px] text-slate-700 outline-none transition " +
+    "group-hover/row:border-slate-200 group-hover/row:bg-white " +
+    "focus:border-[#233353] focus:bg-white " +
+    "dark:text-white dark:group-hover/row:border-[#17304a] dark:group-hover/row:bg-[#071929] " +
+    "dark:focus:bg-[#071929]";
 
   /** A number cell that leaves the field alone while it is being typed in. */
   const numberCell = (
@@ -490,6 +503,9 @@ export function ProductsTable({
         onChange={(event) =>
           onEdit?.(index, { [field]: Number(event.target.value) || 0 })
         }
+        /* A wheel over a focused number field changes it. On a page you
+           scroll through, that silently rewrites a rate on the way past. */
+        onWheel={(event) => event.currentTarget.blur()}
         className={cellInput}
       />
       {suffix && <span className="text-[10px] text-slate-400">{suffix}</span>}
@@ -538,11 +554,11 @@ export function ProductsTable({
             lines.map((line, index) => (
               <tr
                 key={`${line.id}-${index}`}
-                className={
+                className={`group/row ${
                   documentStyle
                     ? "border-b border-slate-100 last:border-slate-300"
                     : "border-b border-slate-100 last:border-0 dark:border-[#17304a]/70"
-                }
+                }`}
               >
                 <td className="px-3 py-3">
                   <p className="text-[11px] font-bold text-slate-800 dark:text-white">
@@ -801,11 +817,16 @@ function TotalsRow({
 export function BankingDetails({
   profile,
   reference,
+  provisional,
   onCopied,
 }: {
   profile: CompanyProfile | null;
   /** The PI number the customer quotes on their transfer; unset until saved. */
   reference?: string | null;
+  /** True while the number is only the next one free, not yet allocated.
+      The form shows it so the panel is not two blanks, but it must not
+      read as an instruction to quote a number nobody owns yet. */
+  provisional?: boolean;
   onCopied?: (what: string) => void;
 }) {
   const bank = profile?.bank || {};
@@ -910,22 +931,31 @@ export function BankingDetails({
             <div className="flex items-center">
               <span className="w-[110px] shrink-0 text-[11px] text-slate-500">Reference:</span>
               {reference ? (
-                <button
-                  type="button"
-                  onClick={() => copy(reference, "Reference copied.")}
-                  className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-1 text-[10px] font-medium text-slate-700 dark:bg-[#071929] dark:text-slate-200"
-                >
-                  <LuCopy size={10} />
-                  {reference}
-                </button>
+                provisional ? (
+                  <span className="text-[10px] text-slate-500">
+                    {reference}{" "}
+                    <span className="text-slate-400">— on saving</span>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => copy(reference, "Reference copied.")}
+                    className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-1 text-[10px] font-medium text-slate-700 dark:bg-[#071929] dark:text-slate-200"
+                  >
+                    <LuCopy size={10} />
+                    {reference}
+                  </button>
+                )
               ) : (
                 <span className="text-[10px] text-slate-400">Assigned on save</span>
               )}
             </div>
 
             <p className="mt-3 text-[10px] leading-[15px] text-slate-500">
-              Please mention {reference || "the PI number"} in NEFT/RTGS/UPI
-              transaction remarks for automated payment reconciliation.
+              Please mention{" "}
+              {reference && !provisional ? reference : "the PI number"} in
+              NEFT/RTGS/UPI transaction remarks for automated payment
+              reconciliation.
             </p>
           </div>
         </div>
@@ -941,12 +971,19 @@ export function BankingDetails({
 export function TermsBlock({
   terms,
   notes,
+  paymentTerms,
   showHeading = true,
   onTermsChange,
   onNotesChange,
 }: {
   terms: string[];
   notes?: string | null;
+  /** The split the document is payable on, stated with the other
+      conditions where the design has it. Always read-only here: it is
+      carried from the proposal the client accepted, and a document that
+      lets its own terms be rewritten after the fact is not a record of
+      what was agreed. */
+  paymentTerms?: string | null;
   /** The printed document drops the "Pre-filled" caption. */
   showHeading?: boolean;
   onTermsChange?: (next: string[]) => void;
@@ -994,22 +1031,48 @@ export function TermsBlock({
         )}
       </div>
 
-      <p className="mb-2 mt-4 text-[12px] font-medium text-slate-500">
-        Technical Scope &amp; Deployment Notes
-      </p>
+      {paymentTerms && (
+        <>
+          <p className="mb-2 mt-4 text-[12px] font-medium text-slate-500">
+            Payment Terms
+          </p>
 
+          <p className="rounded-xl bg-slate-100 p-3 text-[12px] leading-5 text-slate-700 dark:bg-[#0b2034] dark:text-slate-300">
+            {paymentTerms}
+          </p>
+        </>
+      )}
+
+      {/* On a form the box is always there to be typed into. On the
+          document it appears only when something was typed: a printed
+          heading over "No technical notes recorded." tells the customer
+          nothing and takes a sixth of the page to do it. */}
       {onNotesChange ? (
-        <textarea
-          rows={3}
-          value={notes || ""}
-          onChange={(event) => onNotesChange(event.target.value)}
-          placeholder="Agreed scope, installation and training notes."
-          className="field-compact w-full resize-none rounded-xl bg-slate-100 p-3 text-[12px] leading-5 text-slate-700 outline-none focus:ring-1 focus:ring-slate-300 dark:bg-[#0b2034] dark:text-slate-300"
-        />
+        <>
+          <p className="mb-2 mt-4 text-[12px] font-medium text-slate-500">
+            Technical Scope &amp; Deployment Notes
+          </p>
+
+          <textarea
+            rows={3}
+            value={notes || ""}
+            onChange={(event) => onNotesChange(event.target.value)}
+            placeholder="Agreed scope, installation and training notes."
+            className="field-compact w-full resize-none rounded-xl bg-slate-100 p-3 text-[12px] leading-5 text-slate-700 outline-none focus:ring-1 focus:ring-slate-300 dark:bg-[#0b2034] dark:text-slate-300"
+          />
+        </>
       ) : (
-        <p className="rounded-xl bg-slate-100 p-3 text-[12px] leading-5 text-slate-700 dark:bg-[#0b2034] dark:text-slate-300">
-          {notes || <span className="text-slate-400">No technical notes recorded.</span>}
-        </p>
+        notes?.trim() && (
+          <>
+            <p className="mb-2 mt-4 text-[12px] font-medium text-slate-500">
+              Technical Scope &amp; Deployment Notes
+            </p>
+
+            <p className="rounded-xl bg-slate-100 p-3 text-[12px] leading-5 text-slate-700 dark:bg-[#0b2034] dark:text-slate-300">
+              {notes}
+            </p>
+          </>
+        )
       )}
     </div>
   );
