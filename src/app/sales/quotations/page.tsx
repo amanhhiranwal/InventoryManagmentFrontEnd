@@ -43,7 +43,6 @@ import {
 } from "@/features/inventory/api/inventory.api";
 import {
   PRICE_TYPE,
-  PRICE_TYPE_LABEL,
   type PriceType,
   previewApprovalApi,
   requestApprovalApi,
@@ -54,10 +53,15 @@ import FormPageHeader, {
 } from "@/components/crm/FormPageHeader";
 
 import {
+  PRICE_BASIS,
   PRODUCT_CATALOG,
   PRODUCT_CATEGORIES,
+  missingDtp,
+  priceBasisFor,
   productSku,
+  rateFor,
   type CatalogProduct,
+  type PriceBasis,
 } from "@/features/catalog/productCatalog";
 
 import {
@@ -448,6 +452,13 @@ export default function QuotationPage() {
 
   /* ---- create form ---- */
   const [opportunityId, setOpportunityId] = useState<number | null>(null);
+
+  /* Who is buying. Carried from the opportunity, and the one thing that
+     decides which price list this proposal is written against: an End
+     Customer is quoted ECP, everybody else is bought through at the fixed
+     DTP. It replaced a Price Type dropdown here, which asked the
+     salesperson a question the customer record already answers. */
+  const [customerTypeName, setCustomerTypeName] = useState("");
   const [opportunityName, setOpportunityName] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [contactName, setContactName] = useState("");
@@ -479,7 +490,12 @@ export default function QuotationPage() {
   const [sellingCompanyId, setSellingCompanyId] = useState("");
   const [sellingCompanies, setSellingCompanies] = useState<ScopeCompany[]>([]);
 
-  const [priceType, setPriceType] = useState<PriceType>(PRICE_TYPE.ECP);
+  /* Derived, never chosen. Mirrors price_type_for() on the server, which
+     is what actually decides the approval chain, so the screen and the
+     refusal cannot describe different deals. */
+  const priceBasis = priceBasisFor(customerTypeName);
+  const priceType: PriceType =
+    priceBasis === PRICE_BASIS.DTP ? PRICE_TYPE.DP : PRICE_TYPE.ECP;
   const [approvalChain, setApprovalChain] = useState<string[]>([]);
   const [approvalReason, setApprovalReason] = useState("");
   const [requestingApproval, setRequestingApproval] = useState(false);
@@ -750,16 +766,52 @@ export default function QuotationPage() {
 
   /* The discount as a share of the lines, which is what the bands are
      measured against. */
-  const discountPercent = totals.subtotal
+  /* THE DISCOUNT THE CHAIN IS BUILT ON
+
+     The deepest cut given anywhere, not the blended share of the whole
+     subtotal. 10% off one of two panels is a 10% discount; showing it as
+     5.07% was not only confusing, it decided which band owned it - so a
+     deep cut on a cheap line could land below the role whose authority it
+     actually uses up, or skip the chain altogether. The server works the
+     same figure out from the saved lines and does not trust this one.
+
+     A summary-level discount is still measured against the subtotal,
+     because that is what it was typed against. */
+  const summaryDiscountPercent = totals.subtotal
     ? (totals.discountAmount / totals.subtotal) * 100
     : 0;
+
+  const discountPercent = Math.max(
+    summaryDiscountPercent,
+    ...items.map((item) => Number(item.discount) || 0),
+    0,
+  );
+
+  /* A transfer price is fixed, so a dealer proposal carries no discount.
+     Hiding the field is not enough: picking a dealer opportunity after
+     discounts were already typed would leave them on the lines, priced
+     into the total and sent up a chain that refuses them. */
+  useEffect(() => {
+    if (priceBasis !== PRICE_BASIS.DTP) return;
+
+    setItems((current) =>
+      current.some((item) => item.discount)
+        ? current.map((item) => ({ ...item, discount: 0 }))
+        : current,
+    );
+
+    setDiscountInput((current) => (current ? null : current));
+  }, [priceBasis]);
 
   /* Asked of the server rather than worked out here, so the bands live in
      one place and a change to them does not need a frontend release. */
   useEffect(() => {
     let cancelled = false;
 
-    previewApprovalApi(priceType, Number(discountPercent.toFixed(2)))
+    previewApprovalApi(priceType, Number(discountPercent.toFixed(2)), {
+      customerType: customerTypeName,
+      documentType: "QUOTATION",
+    })
       .then((preview) => {
         if (cancelled) return;
         setApprovalChain(preview.chain);
@@ -775,15 +827,24 @@ export default function QuotationPage() {
     return () => {
       cancelled = true;
     };
-  }, [priceType, discountPercent]);
+  }, [priceType, discountPercent, customerTypeName]);
 
-  /* True while a discount on this proposal is still with an approver.
-     Read from the saved status rather than the chain preview: the preview
-     says what *would* need signing, this says what actually is. */
+  /* The saved proposal being edited, if there is one. The preview says
+     what *would* need signing; this says what actually has been. */
+  const editingRow =
+    editingId === null
+      ? undefined
+      : quotations.find((row) => row.id === editingId);
+
   const awaitingApproval =
-    editingId !== null &&
-    quotations.find((row) => row.id === editingId)?.status ===
-      QUOTATION_STATUS.PENDING_APPROVAL;
+    editingRow?.status === QUOTATION_STATUS.PENDING_APPROVAL;
+
+  /* Every proposal carries the CEO's signature before it reaches a
+     client, so the question is not only "is an approval open" but "has one
+     been granted". A draft nobody ever sent up has nothing open either,
+     and used to sail past a guard that only looked for a pending one.
+     An unsaved proposal cannot have been signed, so it is blocked too. */
+  const emailBlocked = !editingRow || !editingRow.is_approved;
 
   /** Saves the quotation, then sends the discount up for approval. */
   const sendForApproval = async () => {
@@ -842,6 +903,7 @@ export default function QuotationPage() {
 
   const resetForm = () => {
     setOpportunityId(null);
+    setCustomerTypeName("");
     setOpportunityName("");
     setOrganizationName("");
     setContactName("");
@@ -896,6 +958,7 @@ export default function QuotationPage() {
         const saved = await getQuotationApi(id);
 
         setOpportunityId(saved.opportunity_id ?? null);
+        setCustomerTypeName(saved.customer_type || "");
         setOpportunityName(saved.opportunity_name || "");
         setOrganizationName(saved.organization_name || "");
         setContactName(saved.contact_name || "");
@@ -1014,6 +1077,7 @@ export default function QuotationPage() {
     if (!opportunity) return;
 
     setOpportunityId(Number(opportunity.id));
+    setCustomerTypeName(opportunity.customer_type_name || "");
     setOpportunityName(opportunity.title || "");
     setOrganizationName(opportunity.organization_name || "");
     setContactName(opportunity.contact_name || "");
@@ -1366,7 +1430,10 @@ export default function QuotationPage() {
           sku: productSku(product.id),
           hsn: product.hsn || "",
           quantity: 1,
-          unitPrice: product.price,
+          /* The rate that matches who is buying. A dealer line takes the
+             fixed transfer price; an end customer line takes the list
+             price a discount comes off. */
+          unitPrice: rateFor(product, priceBasis),
           discount: 0,
           tax: 18,
         },
@@ -1499,6 +1566,13 @@ export default function QuotationPage() {
                   type="button"
                   onClick={sendForApproval}
                   disabled={requestingApproval || saving}
+                  /* Why it is going where it is going, told at the moment
+                     of asking rather than in a panel further down. */
+                  title={
+                    approvalReason
+                      ? `${approvalReason} Chain: ${approvalChain.join(" \u2192 ")}.`
+                      : undefined
+                  }
                   className="flex h-[39px] items-center gap-2 rounded-lg bg-[#233353] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:opacity-50"
                 >
                   {requestingApproval ? (
@@ -1783,24 +1857,14 @@ export default function QuotationPage() {
                             )}
                           </td>
 
-                          {/* Comes from the product, but stays editable: a
-                              line can be classified differently from the
-                              catalogue's default when the supply is. */}
+                          {/* The classification the product is filed
+                              under, and the seller answers for it. Change
+                              it on the Product List, where it changes for
+                              every document rather than this one. */}
                           <td className="px-4 py-3">
-                            {editing ? (
-                              <input
-                                value={item.hsn}
-                                placeholder="e.g. 8528"
-                                onChange={(event) =>
-                                  updateItem(item.key, { hsn: event.target.value })
-                                }
-                                className={CELL_INPUT}
-                              />
-                            ) : (
-                              <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300">
-                                {item.hsn || "—"}
-                              </span>
-                            )}
+                            <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                              {item.hsn || "—"}
+                            </span>
                           </td>
 
                           <td className="px-4 py-3">
@@ -1841,18 +1905,34 @@ export default function QuotationPage() {
                             )}
                           </td>
 
+                          {/* A transfer price is fixed. Nobody below the
+                              CEO may discount it, so on a dealer proposal
+                              the field is closed rather than left open for
+                              a figure the chain would refuse. */}
                           <td className="px-4 py-3">
-                            {editing ? (
-                              <input
-                                type="number"
-                                value={item.discount}
-                                onChange={(event) =>
-                                  updateItem(item.key, {
-                                    discount: Number(event.target.value) || 0,
-                                  })
-                                }
-                                className={CELL_INPUT}
-                              />
+                            {editing && priceBasis === PRICE_BASIS.ECP ? (
+                              <span className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={item.discount}
+                                  onChange={(event) =>
+                                    updateItem(item.key, {
+                                      discount: Number(event.target.value) || 0,
+                                    })
+                                  }
+                                  className={PERCENT_INPUT}
+                                />
+                                <span className="text-[10px] text-slate-400">%</span>
+                              </span>
+                            ) : editing ? (
+                              <span
+                                title="The transfer price is fixed; only the CEO may move it."
+                                className="text-[11px] text-slate-400"
+                              >
+                                Fixed
+                              </span>
                             ) : (
                               <span className="text-[11px] text-slate-600 dark:text-slate-300">
                                 {item.discount} %
@@ -1862,16 +1942,21 @@ export default function QuotationPage() {
 
                           <td className="px-4 py-3">
                             {editing ? (
-                              <input
-                                type="number"
-                                value={item.tax}
-                                onChange={(event) =>
-                                  updateItem(item.key, {
-                                    tax: Number(event.target.value) || 0,
-                                  })
-                                }
-                                className={CELL_INPUT}
-                              />
+                              <span className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={item.tax}
+                                  onChange={(event) =>
+                                    updateItem(item.key, {
+                                      tax: Number(event.target.value) || 0,
+                                    })
+                                  }
+                                  className={PERCENT_INPUT}
+                                />
+                                <span className="text-[10px] text-slate-400">%</span>
+                              </span>
                             ) : (
                               <span className="text-[11px] text-slate-600 dark:text-slate-300">
                                 {item.tax} %
@@ -1879,23 +1964,16 @@ export default function QuotationPage() {
                             )}
                           </td>
 
+                          {/* The price list decides the price. Which list
+                              follows from the customer type, and the figure
+                              on it is the company's — the discount is
+                              the lever, and it is the one the approval
+                              chain actually sees. A rate typed over the top
+                              bypassed both. */}
                           <td className="px-4 py-3">
-                            {editing ? (
-                              <input
-                                type="number"
-                                value={item.unitPrice}
-                                onChange={(event) =>
-                                  updateItem(item.key, {
-                                    unitPrice: Number(event.target.value) || 0,
-                                  })
-                                }
-                                className={CELL_INPUT}
-                              />
-                            ) : (
-                              <span className="text-[11px] text-slate-600 dark:text-slate-300">
-                                {item.unitPrice.toLocaleString("en-IN")}
-                              </span>
-                            )}
+                            <span className="text-[11px] text-slate-600 dark:text-slate-300">
+                              {item.unitPrice.toLocaleString("en-IN")}
+                            </span>
                           </td>
 
                           <td className="px-4 py-3">
@@ -2065,95 +2143,12 @@ export default function QuotationPage() {
                   </p>
                 </div>
 
-                {/* Margin given away, and who has to sign for it. None of
-                    this reaches the client's quotation - it drives the
-                    approval and carries onto the sales order. */}
-                <div className="mt-5 rounded-xl border border-slate-200 p-3.5 dark:border-[#17304a]">
-                  <p className="mb-2.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                    Pricing &amp; Approval
-                  </p>
-
-                  {/* The letterhead comes from the company profile. It used
-                      to be a picker here, which asked the salesperson a
-                      question the profile already answers. */}
-                  <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-                    Price Type
-                  </label>
-
-                  <select
-                    value={priceType}
-                    onChange={(event) =>
-                      setPriceType(event.target.value as PriceType)
-                    }
-                    className="mb-3 h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-                  >
-                    <option value={PRICE_TYPE.ECP}>
-                      {PRICE_TYPE_LABEL.ECP}
-                    </option>
-                    <option value={PRICE_TYPE.DP}>
-                      {PRICE_TYPE_LABEL.DP}
-                    </option>
-                  </select>
-
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-slate-500">
-                        Discount given
-                      </span>
-                      <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                        {discountPercent.toFixed(1)}% ({money(totals.discountAmount)})
-                      </span>
-                    </div>
-
-                    {totals.orcAmount > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] text-slate-500">ORC</span>
-                        <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                          {totals.orcPercent.toFixed(1)}% ({money(totals.orcAmount)})
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {approvalReason && (
-                    <p className="mt-2.5 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                      {approvalReason}
-                    </p>
-                  )}
-
-                  {approvalChain.length > 0 && (
-                    <>
-                      <div className="mt-2.5 flex flex-wrap items-center gap-1">
-                        {approvalChain.map((role, index) => (
-                          <span key={role} className="flex items-center gap-1">
-                            <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
-                              {role}
-                            </span>
-                            {index < approvalChain.length - 1 && (
-                              <span className="text-[9px] text-slate-300">›</span>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={sendForApproval}
-                        disabled={requestingApproval || saving}
-                        className="mt-3 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-amber-600 text-[11px] font-semibold text-white transition hover:bg-amber-700 disabled:opacity-50"
-                      >
-                        {requestingApproval ? (
-                          <CgSpinner className="animate-spin" size={13} />
-                        ) : (
-                          <FiShield size={12} />
-                        )}
-                        {requestingApproval
-                          ? "Sending..."
-                          : `Send To ${approvalChain[0]} For Approval`}
-                      </button>
-                    </>
-                  )}
-                </div>
+                {/* The Pricing & Approval panel stood here. It restated
+                    the discount already shown on the lines and the price
+                    type already decided by the customer type, and carried a
+                    second Send For Approval button beside the one in the
+                    header. Who has to sign is told at the moment of asking,
+                    which is where it matters. */}
 
                 <div className="mt-5 flex items-center justify-between">
                   <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
@@ -2254,11 +2249,13 @@ export default function QuotationPage() {
                   <button
                     type="button"
                     onClick={saveAndEmail}
-                    disabled={saving || awaitingApproval}
+                    disabled={saving || emailBlocked}
                     title={
                       awaitingApproval
-                        ? "Waiting on approval — the proposal can be emailed once the discount is signed off."
-                        : undefined
+                        ? "Waiting on approval — the proposal can be emailed once it is signed off."
+                        : emailBlocked
+                          ? "Not approved yet — send it for approval first."
+                          : undefined
                     }
                     className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#233353] text-xs font-semibold text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -2267,10 +2264,11 @@ export default function QuotationPage() {
                   </button>
                 </div>
 
-                {awaitingApproval && (
+                {emailBlocked && (
                   <p className="mt-2 text-[10px] leading-4 text-amber-600 dark:text-amber-400">
-                    Waiting on approval. The proposal can be emailed to the
-                    client once the discount has been signed off.
+                    {awaitingApproval
+                      ? "Waiting on approval. The proposal can be emailed to the client once it has been signed off."
+                      : "Not approved yet. Every proposal is signed by the CEO before it goes to a client — use Send For Approval first."}
                   </p>
                 )}
               </FormSectionBlock>
@@ -2282,6 +2280,7 @@ export default function QuotationPage() {
           <ProductPickerModal
             products={filteredProducts}
             picked={picked}
+            priceBasis={priceBasis}
             search={productSearch}
             onSearch={setProductSearch}
             category={productCategory}
@@ -2711,6 +2710,13 @@ const INPUT =
 
 const CELL_INPUT =
   "h-8 w-full min-w-[70px] rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
+
+/* A percentage is two or three characters. Letting the field fill its
+   column made a 10 look like it was waiting for a paragraph, and put two
+   wide boxes in the middle of a table that is otherwise read. Sized to
+   the number, with the sign beside it so the unit is not lost. */
+const PERCENT_INPUT =
+  "h-8 w-14 rounded-md border border-slate-200 bg-white px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
 
 const STEPPER =
   "flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 transition hover:bg-slate-100 dark:border-[#17304a] dark:hover:bg-[#0d2336]";
@@ -3169,6 +3175,7 @@ function FilterPopover({
 function ProductPickerModal({
   products,
   picked,
+  priceBasis,
   search,
   onSearch,
   category,
@@ -3180,6 +3187,9 @@ function ProductPickerModal({
 }: {
   products: CatalogProduct[];
   picked: LineItem[];
+  /** Which price list to show, so the figure in the picker is the one the
+      line will actually take. */
+  priceBasis: PriceBasis;
   search: string;
   onSearch: (value: string) => void;
   category: string;
@@ -3280,17 +3290,25 @@ function ProductPickerModal({
                       </p>
 
                       <p className="mt-1 text-[10px] text-slate-500">
-                        {/* A catalogue line the price list leaves blank says so.
-                            Rs 0.00 reads like a free product, and it reaches
-                            a customer's document that way. */}
-                        {product.price > 0 ? (
-                          money(product.price)
+                        {/* The rate this line would actually take, which is
+                            not always the list price: a dealer is bought
+                            through at the transfer price. A catalogue line
+                            the price list leaves blank says so — Rs 0.00
+                            reads like a free product, and it reaches a
+                            customer's document that way. */}
+                        {rateFor(product, priceBasis) > 0 ? (
+                          money(rateFor(product, priceBasis))
                         ) : (
                           <span className="font-medium text-amber-600">
                             Price not set
                           </span>
                         )}{" "}
                         · {product.available} available
+                        {missingDtp(product, priceBasis) && (
+                          <span className="ml-1 font-medium text-amber-600">
+                            · no DTP set, end customer price shown
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -3396,16 +3414,10 @@ function ProductPickerModal({
                         Unit Price (₹)
                       </label>
 
-                      <input
-                        type="number"
-                        value={item.unitPrice}
-                        onChange={(event) =>
-                          onUpdate(item.key, {
-                            unitPrice: Number(event.target.value) || 0,
-                          })
-                        }
-                        className={CELL_INPUT}
-                      />
+                      {/* From the price list, not typed. */}
+                      <p className="flex h-[30px] items-center text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                        {item.unitPrice.toLocaleString("en-IN")}
+                      </p>
                     </div>
 
                     <div>
