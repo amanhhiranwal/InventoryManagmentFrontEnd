@@ -120,6 +120,10 @@ export interface QuotationModel {
   email?: string | null;
   mobile_number?: string | null;
   customer_type?: string | null;
+  /** Whether this proposal has been signed. The status cannot answer
+      it: an approved proposal returns to Draft to be sent, so Draft means
+      both "never sent up" and "signed and ready". */
+  is_approved?: boolean;
 
   quotation_date?: string | null;
   validation_date?: string | null;

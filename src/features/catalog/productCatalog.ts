@@ -20,7 +20,14 @@ export interface CatalogProduct {
   id: string;
   name: string;
   category: string;
+  /** End Customer Price. What an end customer is quoted, and the figure a
+      discount comes off. */
   price: number;
+  /** Dealer Transfer Price: the fixed figure the channel is bought
+      through at. Zero means none has been set on the Product List yet,
+      not that it is free — a document written at DTP keeps the end
+      customer rate and says so rather than quoting nothing. */
+  dtp?: number;
   available: number;
   /** HSN for goods, SAC for a service. Every line of a GST invoice has to
       carry one, so it travels with the product rather than being typed
@@ -312,3 +319,69 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
  * two different names for the same product.
  */
 export const productSku = (productId: string) => productId;
+
+
+/* =========================================================
+   WHICH PRICE A DOCUMENT IS WRITTEN AGAINST
+========================================================= */
+
+export const PRICE_BASIS = {
+  /** End Customer Price. Discountable, up the approval chain. */
+  ECP: "ECP",
+  /** Dealer Transfer Price. Fixed; only the CEO may move it. */
+  DTP: "DTP",
+} as const;
+
+export type PriceBasis = (typeof PRICE_BASIS)[keyof typeof PRICE_BASIS];
+
+export const PRICE_BASIS_LABEL: Record<PriceBasis, string> = {
+  ECP: "End Customer Price",
+  DTP: "Dealer Transfer Price",
+};
+
+/** The one customer type that buys at end customer price. */
+const END_CUSTOMER = ["end customer", "end-customer", "endcustomer"];
+
+/**
+ * Which price list a document is written against.
+ *
+ * Decided by who is buying rather than chosen on a form. It used to be a
+ * dropdown beside the discount, which asked the salesperson a question the
+ * customer record already answers — and let a dealer be quoted at end
+ * customer price by leaving the picker alone.
+ *
+ * An unknown or missing type is treated as an end customer: quoting the
+ * higher price by mistake is a conversation, quoting the transfer price by
+ * mistake is a loss. Mirrors price_type_for() on the server, which is what
+ * actually decides the approval chain.
+ */
+export const priceBasisFor = (customerType?: string | null): PriceBasis => {
+  const name = String(customerType || "").trim().toLowerCase();
+
+  if (!name) return PRICE_BASIS.ECP;
+
+  return END_CUSTOMER.includes(name) ? PRICE_BASIS.ECP : PRICE_BASIS.DTP;
+};
+
+/**
+ * The rate a line takes, given who is buying.
+ *
+ * Falls back to the end customer price when a product has no transfer
+ * price set, because a line at zero would otherwise reach a customer's
+ * document as a free product. The pickers mark those lines so the gap is
+ * visible rather than silent.
+ */
+export const rateFor = (
+  product: Pick<CatalogProduct, "price" | "dtp">,
+  basis: PriceBasis,
+): number => {
+  if (basis === PRICE_BASIS.ECP) return product.price;
+
+  return product.dtp && product.dtp > 0 ? product.dtp : product.price;
+};
+
+/** True when this line is being quoted at ECP only because no DTP exists. */
+export const missingDtp = (
+  product: Pick<CatalogProduct, "dtp">,
+  basis: PriceBasis,
+): boolean => basis === PRICE_BASIS.DTP && !(product.dtp && product.dtp > 0);

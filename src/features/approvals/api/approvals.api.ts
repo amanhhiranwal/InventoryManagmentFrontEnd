@@ -91,12 +91,38 @@ export const saveApprovalMatrixApi = async (
 };
 
 /** Who would have to approve this, without raising anything. */
+/** What the preview endpoint answers with. */
+export interface ApprovalPreview {
+  /** The roles that must sign, senior-most last. Empty means nobody. */
+  chain: string[];
+  /** ECP or DP, as the server derived it from the customer type. */
+  price_type: PriceType;
+  /** One line explaining why these approvals are needed. */
+  reason: string;
+  needs_approval: boolean;
+  ceilings: Record<string, number | null>;
+}
+
+/**
+ * Who would have to approve this, without raising anything.
+ *
+ * ``customerType`` is what the form actually knows; the price list follows
+ * from it on the server, so the screen and the refusal cannot describe
+ * different deals. ``documentType`` matters because a proposal always ends
+ * at the CEO and a sales order raised off a signed one does not.
+ */
 export const previewApprovalApi = async (
   priceType: PriceType,
   discountPercent: number,
-): Promise<{ chain: string[]; reason: string; needs_approval: boolean }> => {
+  context?: { customerType?: string; documentType?: string },
+): Promise<ApprovalPreview> => {
   const { data } = await api.get("/api/v1/approvals/preview", {
-    params: { price_type: priceType, discount_percent: discountPercent },
+    params: {
+      price_type: priceType,
+      discount_percent: discountPercent,
+      customer_type: context?.customerType || undefined,
+      document_type: context?.documentType || undefined,
+    },
   });
   return data.data;
 };
