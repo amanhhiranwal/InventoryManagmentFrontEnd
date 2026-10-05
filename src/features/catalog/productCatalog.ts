@@ -3,6 +3,11 @@
  * Proposal, New Sales Order and Proforma Invoice screens so all three
  * offer the same list at the same prices rather than each keeping a copy.
  *
+ * Built from the pricing workbook: the END Customer Price sheet gives
+ * `price`, the Dealer Price sheet gives `dtp`, and the Inventory sheet
+ * gives `available`. Mirrors seed_synergy_catalogue.py, which is what
+ * actually puts these on the shelf.
+ *
  * Built from the Noida 65 stock dashboard: the panels as they are actually
  * stocked, the OPS modules, the standees, the cameras and the stand. The
  * rates and the HSN codes are the ones written on that sheet - nothing
@@ -41,199 +46,174 @@ export const PRODUCT_CATEGORIES = [
   "OPS Module",
   "Standee",
   "Camera & Audio",
+  "Service & AMC",
   "Accessories",
 ];
 
 export const PRODUCT_CATALOG: CatalogProduct[] = [
-  /* Panels. Priced by the dashboard column, which already carries the
-     camera's cost on the CPX variants. */
+  /* Interactive Flat Panel */
   {
-    id: "SG-SPX6-LANGOV100",
+    id: "SG-IFP-65-SPX-V100",
     hsn: "85285900",
-    name: '65" Interactive Flat Panel SPX6 (LangoV100)',
+    name: "65\" Interactive Flat Panel SPX (Lango V100)",
     category: "Interactive Flat Panel",
-    price: 68000,
+    price: 70000,
+    dtp: 61000,
     available: 14,
   },
   {
-    id: "SG-CPX6-YS3576",
+    id: "SG-IFP-65-CPX-V100",
     hsn: "85285900",
-    name: '65" Interactive Flat Panel CPX6 (YS 3576)',
-    category: "Interactive Flat Panel",
-    price: 70000,
-    available: 118,
-  },
-  {
-    id: "SG-SPX6-LANGO3576",
-    hsn: "85285900",
-    name: '65" Interactive Flat Panel SPX6 (Lango 3576)',
-    category: "Interactive Flat Panel",
-    price: 68000,
-    available: 119,
-  },
-  {
-    id: "SG-SPX7-CVT9679",
-    hsn: "84714190",
-    name: '75" Interactive Flat Panel SPX7 (CVT 9679)',
+    name: "65\" Interactive Flat Panel CPX (Lango V100)",
     category: "Interactive Flat Panel",
     price: 75000,
-    available: 68,
+    dtp: 65500,
+    available: 0,
   },
   {
-    id: "SG-SPX7-LANGOV100",
+    id: "SG-IFP-75-SPX-V100",
     hsn: "84714190",
-    name: '75" Interactive Flat Panel SPX7 (LangoV100)',
+    name: "75\" Interactive Flat Panel SPX (Lango V100)",
     category: "Interactive Flat Panel",
-    price: 75000,
+    price: 82000,
+    dtp: 71000,
     available: 74,
   },
   {
-    id: "SG-SPX7-LANGO3576",
+    id: "SG-IFP-75-CPX-V100",
     hsn: "84714190",
-    name: '75" Interactive Flat Panel SPX7 (Lango 3576)',
+    name: "75\" Interactive Flat Panel CPX (Lango V100)",
     category: "Interactive Flat Panel",
-    price: 75000,
-    available: 120,
+    price: 86000,
+    dtp: 0,
+    available: 0,
   },
   {
-    id: "SG-CPX7-CVT9679",
-    hsn: "84714190",
-    name: '75" Interactive Flat Panel CPX7 (CVT 9679)',
-    category: "Interactive Flat Panel",
-    price: 77000,
-    available: 6,
-  },
-  {
-    id: "SG-CPX7-YS3576",
-    hsn: "84714190",
-    name: '75" Interactive Flat Panel CPX7 (YS 3576)',
-    category: "Interactive Flat Panel",
-    price: 77000,
-    available: 12,
-  },
-  {
-    id: "SG-SPX8-LANGOV100",
+    id: "SG-IFP-86-SPX-V100",
     hsn: "85285900",
-    name: '86" Interactive Flat Panel SPX8 (LangoV100)',
+    name: "86\" Interactive Flat Panel SPX (Lango V100)",
     category: "Interactive Flat Panel",
-    price: 85000,
+    price: 110000,
+    dtp: 90000,
     available: 40,
   },
   {
-    id: "SG-CPX8-LANGOV100",
+    id: "SG-IFP-86-CPX-V100",
     hsn: "85285900",
-    name: '86" Interactive Flat Panel CPX8 (LangoV100)',
+    name: "86\" Interactive Flat Panel CPX (Lango V100)",
+    category: "Interactive Flat Panel",
+    price: 0,
+    dtp: 0,
+    available: 3,
+  },
+  {
+    id: "SG-IFP-65-SPX-EDLA",
+    hsn: "85285900",
+    name: "65\" Interactive Flat Panel SPX EDLA (Lango 3576)",
+    category: "Interactive Flat Panel",
+    price: 73000,
+    dtp: 63000,
+    available: 119,
+  },
+  {
+    id: "SG-IFP-65-CPX-EDLA",
+    hsn: "85285900",
+    name: "65\" Interactive Flat Panel CPX EDLA NFC (YS 3576)",
+    category: "Interactive Flat Panel",
+    price: 77000,
+    dtp: 0,
+    available: 119,
+  },
+  {
+    id: "SG-IFP-75-SPX-3576",
+    hsn: "84714190",
+    name: "75\" Interactive Flat Panel SPX (Lango 3576)",
+    category: "Interactive Flat Panel",
+    price: 85000,
+    dtp: 0,
+    available: 120,
+  },
+  {
+    id: "SG-IFP-75-SPX-EDLA",
+    hsn: "84714190",
+    name: "75\" Interactive Flat Panel SPX EDLA (Lango 3576)",
     category: "Interactive Flat Panel",
     price: 88000,
-    available: 3,
+    dtp: 0,
+    available: 0,
   },
   {
-    id: "SG-CPX9-LANGOV100",
-    hsn: "85285900",
-    name: '98" Interactive Flat Panel CPX9 (LangoV100)',
+    id: "SG-IFP-75-CPX-EDLA",
+    hsn: "84714190",
+    name: "75\" Interactive Flat Panel CPX EDLA NFC (YS 3576)",
     category: "Interactive Flat Panel",
-    price: 150000,
-    available: 6,
+    price: 92000,
+    dtp: 78000,
+    available: 12,
   },
   {
-    id: "SG-CPX11-CVT311D2",
+    id: "SG-IFP-86-SPX-3576",
     hsn: "85285900",
-    name: '110" Interactive Flat Panel CPX11 (CVT 311D2)',
+    name: "86\" Interactive Flat Panel SPX (3576)",
     category: "Interactive Flat Panel",
-    price: 150000,
+    price: 0,
+    dtp: 93500,
+    available: 0,
+  },
+  {
+    id: "SG-IFP-86-CPX-3576",
+    hsn: "85285900",
+    name: "86\" Interactive Flat Panel CPX NFC (3576)",
+    category: "Interactive Flat Panel",
+    price: 0,
+    dtp: 97000,
+    available: 0,
+  },
+  {
+    id: "SG-IFP-98-CPX",
+    hsn: "85285900",
+    name: "98\" Interactive Flat Panel CPX (CVTE 311D2)",
+    category: "Interactive Flat Panel",
+    price: 300000,
+    dtp: 250000,
+    available: 0,
+  },
+  {
+    id: "SG-IFP-110-CPX",
+    hsn: "85285900",
+    name: "110\" Interactive Flat Panel CPX (CVTE 311D2)",
+    category: "Interactive Flat Panel",
+    price: 550000,
+    dtp: 430000,
     available: 3,
   },
 
-  /* OPS compute modules, by processor, memory and generation. */
+  /* OPS Module */
   {
-    id: "SG-OPS-I5-8-256-G10",
+    id: "SG-OPS-I5-12G",
     hsn: "85291029",
-    name: "OPS i5 8GB/256GB 10th Gen",
-    category: "OPS Module",
-    price: 22000,
-    available: 0,
-  },
-  {
-    id: "SG-OPS-I5-8-256-G11",
-    hsn: "85291029",
-    name: "OPS i5 8GB/256GB 11th Gen",
-    category: "OPS Module",
-    price: 23000,
-    available: 0,
-  },
-  {
-    id: "SG-OPS-I5-8-256-G12",
-    hsn: "85291029",
-    name: "OPS i5 8GB/256GB 12th Gen",
-    category: "OPS Module",
-    price: 23500,
-    available: 0,
-  },
-  {
-    id: "SG-OPS-I5-8-512-G10",
-    hsn: "85291029",
-    name: "OPS i5 8GB/512GB 10th Gen",
-    category: "OPS Module",
-    price: 26000,
-    available: 0,
-  },
-  {
-    id: "SG-OPS-I5-8-512-G11",
-    hsn: "85291029",
-    name: "OPS i5 8GB/512GB 11th Gen",
-    category: "OPS Module",
-    price: 26500,
-    available: 0,
-  },
-  {
-    id: "SG-OPS-I5-8-512-G12",
-    hsn: "85291029",
-    name: "OPS i5 8GB/512GB 12th Gen",
-    category: "OPS Module",
-    price: 32000,
-    available: 0,
-  },
-  {
-    id: "SG-OPS-I7-8-256-G10",
-    hsn: "85291029",
-    name: "OPS i7 8GB/256GB 10th Gen",
-    category: "OPS Module",
-    price: 28000,
-    available: 0,
-  },
-  {
-    id: "SG-OPS-I7-8-256-G11",
-    hsn: "85291029",
-    name: "OPS i7 8GB/256GB 11th Gen",
+    name: "OPS i5 12th Gen 8GB/256GB",
     category: "OPS Module",
     price: 30000,
+    dtp: 30000,
     available: 0,
   },
   {
-    id: "SG-OPS-I7-8-512-G10",
+    id: "SG-OPS-I7-13G",
     hsn: "85291029",
-    name: "OPS i7 8GB/512GB 10th Gen",
+    name: "OPS i7 13th Gen 8GB/256GB",
     category: "OPS Module",
-    price: 35000,
+    price: 36000,
+    dtp: 36000,
     available: 0,
   },
-  {
-    id: "SG-OPS-I7-8-512-G11",
-    hsn: "85291029",
-    name: "OPS i7 8GB/512GB 11th Gen",
-    category: "OPS Module",
-    price: 40000,
-    available: 0,
-  },
-
-  /* Bare units with stock on the shelf. They were left out of the picker
-     while they had no price; now that they have one they can be quoted. */
   {
     id: "SG-OPS-I5-NA",
     hsn: "85291029",
     name: "OPS i5 Non Assembled",
     category: "OPS Module",
     price: 30000,
+    dtp: 0,
     available: 11,
   },
   {
@@ -242,37 +222,83 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     name: "OPS i7 Non Assembled",
     category: "OPS Module",
     price: 30000,
+    dtp: 0,
     available: 15,
   },
+  {
+    id: "SG-OPS-RAM-16",
+    hsn: "84733099",
+    name: "OPS Upgrade – 16GB RAM",
+    category: "OPS Module",
+    price: 6500,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-OPS-SSD-256",
+    hsn: "84733099",
+    name: "OPS Upgrade – 256GB SSD",
+    category: "OPS Module",
+    price: 4500,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-OPS-SSD-512",
+    hsn: "84733099",
+    name: "OPS Upgrade – 512GB SSD",
+    category: "OPS Module",
+    price: 7000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-OPS-SSD-1TB",
+    hsn: "84733099",
+    name: "OPS Upgrade – 1TB SSD",
+    category: "OPS Module",
+    price: 14000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-OPS-SSD-2TB",
+    hsn: "84733099",
+    name: "OPS Upgrade – 2TB SSD",
+    category: "OPS Module",
+    price: 24000,
+    dtp: 0,
+    available: 0,
+  },
 
-  /* Standees, priced by the panel inside rather than by cabinet size. */
+  /* Standee */
   {
     id: "SG-STD-TOUCH",
     hsn: "85285900",
-    name: "Standee Touch",
+    name: "Standee – Touch",
     category: "Standee",
     price: 60000,
+    dtp: 0,
     available: 0,
   },
   {
     id: "SG-STD-NONTOUCH",
     hsn: "85285900",
-    name: "Standee Non-Touch",
+    name: "Standee – Non-Touch",
     category: "Standee",
     price: 57000,
+    dtp: 0,
     available: 6,
   },
 
-  /* The cameras, the array mic and the stand. Named on the dashboard
-     without a figure and carried at 0 until the rates came through - an
-     invented price on a customer's quotation is worse than a visible
-     blank, so they showed as "Price not set" in the meantime. */
+  /* Camera & Audio */
   {
     id: "SG-CAM-UHDBAR",
     hsn: "85258900",
     name: "UHD All in One USB Video Bar 12V 5A",
     category: "Camera & Audio",
     price: 1949,
+    dtp: 0,
     available: 4,
   },
   {
@@ -281,6 +307,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     name: "Camera 360 Degree",
     category: "Camera & Audio",
     price: 2500,
+    dtp: 0,
     available: 4,
   },
   {
@@ -289,6 +316,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     name: "4K Business Webcam HF0V-120 Degree",
     category: "Camera & Audio",
     price: 3000,
+    dtp: 0,
     available: 6,
   },
   {
@@ -297,7 +325,120 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     name: "Cascading Omnidirectional Digital Array Mic",
     category: "Camera & Audio",
     price: 50000,
+    dtp: 0,
     available: 1,
+  },
+
+  /* Service & AMC */
+  {
+    id: "SG-AMC-2Y-65",
+    hsn: "998719",
+    name: "Extended Warranty 2 Years – 65″ (at purchase)",
+    category: "Service & AMC",
+    price: 5000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-AMC-2Y-75",
+    hsn: "998719",
+    name: "Extended Warranty 2 Years – 75″ (at purchase)",
+    category: "Service & AMC",
+    price: 7000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-AMC-2Y-86",
+    hsn: "998719",
+    name: "Extended Warranty 2 Years – 86″ (at purchase)",
+    category: "Service & AMC",
+    price: 8000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-AMC-2Y-98",
+    hsn: "998719",
+    name: "Extended Warranty 2 Years – 98″ (at purchase)",
+    category: "Service & AMC",
+    price: 15000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-AMC-P-65",
+    hsn: "998719",
+    name: "AMC after 3 Years – 65″",
+    category: "Service & AMC",
+    price: 8000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-AMC-P-75",
+    hsn: "998719",
+    name: "AMC after 3 Years – 75″",
+    category: "Service & AMC",
+    price: 8000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-AMC-P-86",
+    hsn: "998719",
+    name: "AMC after 3 Years – 86″",
+    category: "Service & AMC",
+    price: 10000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-AMC-P-98",
+    hsn: "998719",
+    name: "AMC after 3 Years – 98″",
+    category: "Service & AMC",
+    price: 120000,
+    dtp: 0,
+    available: 0,
+  },
+
+  /* Accessories */
+  {
+    id: "SG-UPS",
+    hsn: "85044090",
+    name: "UPS",
+    category: "Accessories",
+    price: 5000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-UPS-CABINET",
+    hsn: "85044090",
+    name: "UPS Cabinet",
+    category: "Accessories",
+    price: 900,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-FRAME-65-75",
+    hsn: "84733099",
+    name: "Frame – 65″ & 75″",
+    category: "Accessories",
+    price: 22000,
+    dtp: 0,
+    available: 0,
+  },
+  {
+    id: "SG-FRAME-86",
+    hsn: "84733099",
+    name: "Frame – 86″",
+    category: "Accessories",
+    price: 25000,
+    dtp: 0,
+    available: 0,
   },
   {
     id: "SG-STAND-PANEL",
@@ -305,6 +446,7 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
     name: "Panel Stand",
     category: "Accessories",
     price: 11000,
+    dtp: 0,
     available: 0,
   },
 ];
@@ -312,14 +454,12 @@ export const PRODUCT_CATALOG: CatalogProduct[] = [
 /**
  * SKU shown under the product name on the line items tables.
  *
- * The catalogue id *is* the SKU now that the lines are the real ones, so
- * this no longer builds a reference out of a product code. It used to
- * wrap every id in an "NX-9K-...-EX" pattern that matched nothing in the
- * warehouse, which left a quotation line and the stock it drew on with
- * two different names for the same product.
+ * The catalogue id *is* the SKU, so this no longer builds a reference out
+ * of a product code. It used to wrap every id in an "NX-9K-...-EX" pattern
+ * that matched nothing in the warehouse, which left a quotation line and
+ * the stock it drew on with two different names for the same product.
  */
 export const productSku = (productId: string) => productId;
-
 
 /* =========================================================
    WHICH PRICE A DOCUMENT IS WRITTEN AGAINST
