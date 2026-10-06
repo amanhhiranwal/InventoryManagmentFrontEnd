@@ -17,6 +17,8 @@ import * as XLSX from "xlsx";
 import api from "@/lib/axios";
 
 import { useUIStore } from "@/lib/store/ui.store";
+import { useAuthStore } from "@/features/auth/store/auth.store";
+import { hasPermission } from "@/features/auth/utils/permissions";
 
 import {
   createLeadApi,
@@ -544,8 +546,25 @@ function formatDateInput(value: string) {
    MAIN PAGE
 ============================================================================ */
 
+/**
+ * Permission ticked in Roles & Access to allow Add From Excel here.
+ *
+ * Separate from the customers one. Importing a few hundred enquiries and
+ * importing a few hundred people who have already bought are different
+ * privileges, and somebody may be trusted with one and not the other.
+ */
+export const LEAD_BULK_UPLOAD_PERMISSION = "lead.bulk_upload";
+
 export default function LeadsPage() {
   const { addToast } = useUIStore();
+
+  /* Add From Excel needs its own tick in Roles & Access, separate from
+     the customers one: importing enquiries and importing people who have
+     already bought are different privileges. */
+  const superAdmin = useAuthStore((state) => state.user?.is_super_admin === true);
+
+  const canBulkUpload =
+    superAdmin || hasPermission(LEAD_BULK_UPLOAD_PERMISSION);
 
   const router = useRouter();
 
@@ -1933,15 +1952,20 @@ export default function LeadsPage() {
                 Add Single Lead
               </DropdownButton>
 
-              <DropdownButton
-                icon={<FiFileText className="text-emerald-500" />}
-                onClick={() => {
-                  setShowAddMenu(false);
-                  setShowExcelModal(true);
-                }}
-              >
-                Add From Excel
-              </DropdownButton>
+              {/* Putting a few hundred records in at once is its own
+                  privilege, ticked in Roles & Access. The same one
+                  governs Add From Excel on Customers. */}
+              {canBulkUpload && (
+                <DropdownButton
+                  icon={<FiFileText className="text-emerald-500" />}
+                  onClick={() => {
+                    setShowAddMenu(false);
+                    setShowExcelModal(true);
+                  }}
+                >
+                  Add From Excel
+                </DropdownButton>
+              )}
 
               <DropdownButton
                 icon={<FiLink className="text-indigo-500" />}

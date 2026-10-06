@@ -86,6 +86,13 @@ const PAGE_ACTIONS: Record<string, { key: string; title: string }[]> = {
   "customer.read": [
     { key: "customer.bulk_upload", title: "Bulk Upload from Excel" },
   ],
+  /* Its own tick rather than the customers one. Importing a few hundred
+     enquiries and importing a few hundred people who have already bought
+     are different privileges, and somebody may well be trusted with one
+     and not the other. */
+  "lead.read": [
+    { key: "lead.bulk_upload", title: "Bulk Upload from Excel" },
+  ],
 };
 
 /** The pages a menu group grants. A group with sub-pages grants those; a

@@ -814,6 +814,16 @@ function TotalsRow({
    BANKING DETAILS
 ========================================================= */
 
+/**
+ * Whether the Virtual UPI panel appears on the invoice.
+ *
+ * Off for now. The VPA and the QR are still captured on Masters and still
+ * served; this only decides whether the customer sees them. A UPI code on
+ * a document somebody pays against is worth printing once it has been
+ * checked against the bank, and it has not been. Flip to true to restore.
+ */
+const SHOW_UPI_PANEL = false;
+
 export function BankingDetails({
   profile,
   reference,
@@ -881,7 +891,11 @@ export function BankingDetails({
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl bg-slate-100 p-4 dark:bg-[#0b2034]">
+          {/* Held back behind the flag at the top of this file. Left as
+              code rather than commented out, so it keeps type-checking
+              against these props and cannot rot while it is off. */}
+          {SHOW_UPI_PANEL && (
+            <div className="rounded-xl bg-slate-100 p-4 dark:bg-[#0b2034]">
             <p className="mb-3 border-b border-slate-200 pb-2 text-[12px] font-semibold text-slate-600 dark:border-[#17304a] dark:text-slate-300">
               Virtual UPI Settlement
             </p>
@@ -922,6 +936,7 @@ export function BankingDetails({
               </button>
             </div>
           </div>
+          )}
 
           <div className="rounded-xl bg-slate-100 p-4 dark:bg-[#0b2034]">
             <p className="mb-3 border-b border-slate-200 pb-2 text-[12px] font-semibold text-slate-600 dark:border-[#17304a] dark:text-slate-300">
