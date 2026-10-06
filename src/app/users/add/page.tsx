@@ -9,7 +9,14 @@ import { getCompaniesApi, Company } from "@/features/companies/api/companies.api
 import { getLocationsApi, Location } from "@/features/locations/api/locations.api";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
-import { FiArrowLeft, FiUser, FiBriefcase, FiShield } from "react-icons/fi";
+import {
+  FiArrowLeft,
+  FiUser,
+  FiBriefcase,
+  FiShield,
+  FiEye,
+  FiEyeOff,
+} from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 import Link from "next/link";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
@@ -24,6 +31,10 @@ export default function AddUserPage() {
   const [managers, setManagers] = useState<User[]>([]);
   const [loadingSetup, setLoadingSetup] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  /* Whoever sets a colleague's first password should be able to read back
+     what they typed, the same way the sign-in page allows. */
+  const [revealPassword, setRevealPassword] = useState(false);
 
   const [formData, setFormData] = useState({
     first_name: "",
@@ -204,15 +215,26 @@ export default function AddUserPage() {
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Password <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="password"
-                name="password"
-                required
-                className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400"
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={handleChange}
-              />
+              <div className="relative">
+                <input
+                  type={revealPassword ? "text" : "password"}
+                  name="password"
+                  required
+                  className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 py-2.5 pl-3.5 pr-11 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={handleChange}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setRevealPassword((previous) => !previous)}
+                  aria-label={revealPassword ? "Hide password" : "Show password"}
+                  className="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3.5 text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  {revealPassword ? <FiEye /> : <FiEyeOff />}
+                </button>
+              </div>
             </div>
           </div>
 
