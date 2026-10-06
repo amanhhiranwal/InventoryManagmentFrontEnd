@@ -1,0 +1,86 @@
+name: CI/CD Pipeline - Frontend
+
+on:
+  push:
+    branches:
+      - prod
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Frontend CI (TypeScript Check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Check
+        run: npx tsc --noEmit
+
+  deploy:
+    name: Deploy Next.js Frontend
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            set -e
+            echo "=========================================="
+            echo "==> Deploying Frontend to ${{ secrets.SERVER_HOST }}..."
+            echo "=========================================="
+
+            APP_DIR="/var/www/saas"
+            FRONTEND_DIR="$APP_DIR/e-frontend"
+
+            if [ ! -d "$FRONTEND_DIR" ]; then
+              echo "Error: Frontend directory $FRONTEND_DIR does not exist."
+              exit 1
+            fi
+
+            cd "$FRONTEND_DIR"
+            git config --global --add safe.directory "$FRONTEND_DIR"
+
+            BRANCH="${{ github.ref_name }}"
+            echo "==> Fetching latest changes from branch $BRANCH..."
+            git fetch origin "$BRANCH"
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+
+            echo "==> Building and starting frontend container..."
+            docker compose -f "$APP_DIR/docker-compose.prod.yml" build saas_frontend
+            docker compose -f "$APP_DIR/docker-compose.prod.yml" up -d saas_frontend
+
+            echo "==> Waiting for frontend response..."
+            sleep 4
+            for i in {1..10}; do
+              if curl -s -f -I http://127.0.0.1:3050 > /dev/null; then
+                echo "==> Frontend is online and responding!"
+                exit 0
+              fi
+              echo "Waiting for frontend service ($i/10)..."
+              sleep 2
+            done
+
+            echo "Frontend healthcheck timed out! Recent container logs:"
+            docker compose -f "$APP_DIR/docker-compose.prod.yml" logs --tail=50 saas_frontend
+            exit 1
