@@ -111,8 +111,11 @@ function userName(user: User) {
  * New Customer, as designed: organization, location and primary contact on
  * the left; lead source, owner, remarks and files on the right.
  *
- * "Create Lead" saves the customer and opens its lead with the chosen Lead
- * Source; "Save as Draft" keeps the customer without a lead. ?edit=<id>
+ * "Save & Create Sales Order" saves the customer and opens a new order
+ * with their details already filled in; "Save as Draft" keeps the customer
+ * and stays on the list. A customer is not a lead - whoever writes one
+ * down has already qualified them - so this form no longer opens an
+ * enquiry to chase. ?edit=<id>
  * reopens a customer.
  */
 export default function CustomerFormPage() {
@@ -125,7 +128,7 @@ export default function CustomerFormPage() {
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState<"draft" | "lead" | "save" | null>(null);
+  const [saving, setSaving] = useState<"draft" | "order" | "save" | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const [customerTypes, setCustomerTypes] = useState<string[]>(FALLBACK_CUSTOMER_TYPES);
@@ -281,15 +284,19 @@ export default function CustomerFormPage() {
     attachments: form.attachments,
   });
 
-  const save = async (mode: "draft" | "lead" | "save") => {
-    if (!validate(mode === "lead")) {
+  const save = async (mode: "draft" | "order" | "save") => {
+    if (!validate(mode === "order")) {
       addToast("Please fill in the highlighted fields.", "warning");
       return;
     }
 
     const payload: CustomerPayload = {
       ...buildPayload(),
-      create_lead: mode === "lead",
+      /* A customer is not a lead. Somebody being written down here has
+         already been qualified by whoever is writing them down, so the
+         next thing to do with them is sell to them - the form ends at a
+         sales order rather than opening an enquiry to chase. */
+      create_lead: false,
       draft: mode === "draft",
     };
 
@@ -301,15 +308,19 @@ export default function CustomerFormPage() {
         : await createCustomerApi(payload);
 
       addToast(
-        saved.lead_id
-          ? `${saved.name} saved and Lead #${saved.lead_id} created.`
-          : mode === "draft"
-            ? `${saved.name} saved as a draft.`
-            : `${saved.name} saved.`,
+        mode === "draft"
+          ? `${saved.name} saved as a draft.`
+          : `${saved.name} saved.`,
         "success",
       );
 
-      router.push("/sales/customers");
+      /* Straight on to the order, with everything just entered carried
+         across, rather than back to a list and a second round of typing. */
+      router.push(
+        mode === "order"
+          ? `/sales/orders?customer=${saved.id}`
+          : "/sales/customers",
+      );
     } catch (error) {
       console.error(error);
       const detail = (error as AxiosError<{ detail?: string }>).response?.data?.detail;
@@ -321,7 +332,7 @@ export default function CustomerFormPage() {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    save(convertedLeadId ? "save" : "lead");
+    save(convertedLeadId ? "save" : "order");
   };
 
   /* Only the names are kept - there is no file store behind the form yet,
@@ -365,7 +376,7 @@ export default function CustomerFormPage() {
                 </DraftButton>
 
                 <SubmitButton formId="customer-form" disabled={Boolean(saving) || loading}>
-                  {saving === "lead" ? "Creating..." : "Create Lead"}
+                  {saving === "order" ? "Saving..." : "Save & Create Sales Order"}
                 </SubmitButton>
               </>
             )}

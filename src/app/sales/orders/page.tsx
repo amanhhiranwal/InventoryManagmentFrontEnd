@@ -35,6 +35,7 @@ import {
   getQuotationsApi,
 } from "@/features/quotations/api/quotations.api";
 import { getOpportunityApi } from "@/features/opportunities/api/opportunities.api";
+import { getCustomerApi } from "@/features/customers/api/customers.api";
 import {
   getPaymentTermOptionsApi,
   type PaymentTermOption,
@@ -1165,12 +1166,16 @@ export default function OrdersListPage() {
         /* Their most recent order is the best record of who they are:
            it already holds the addresses and registration numbers in the
            shape this form wants. */
+        const wanted = repeatParam.trim().toLowerCase();
+
+        /* Matched on either name the order carries. It records the
+           organisation and the person separately, and the customer page
+           may send us whichever of the two it holds. */
         const theirs = (all || [])
-          .filter(
-            (order) =>
-              (order.company_name || order.customer_name || "")
-                .trim()
-                .toLowerCase() === repeatParam.trim().toLowerCase(),
+          .filter((order) =>
+            [order.company_name, order.customer_name].some(
+              (name) => (name || "").trim().toLowerCase() === wanted,
+            ),
           )
           .sort((a, b) => Number(b.id) - Number(a.id));
 
@@ -1198,6 +1203,72 @@ export default function OrdersListPage() {
       }
     })();
   }, [repeatParam, prefillFromOrder, router, addToast]);
+
+  /* A customer who has never ordered has no previous order to carry
+     details across from, but the customer record holds the same facts -
+     organisation, contact, address, registration numbers, type. Starting
+     them on a blank form threw all of that away and asked somebody to
+     re-key what the system already knew. */
+  const customerParam = searchParams.get("customer");
+  const customerHandled = useRef("");
+
+  useEffect(() => {
+    if (!customerParam || customerHandled.current === customerParam) return;
+
+    customerHandled.current = customerParam;
+
+    (async () => {
+      try {
+        const customer = await getCustomerApi(customerParam);
+
+        openCreateOrder();
+
+        /* The customer record has one address. It stands for both until
+           somebody says otherwise, which is what the Same As Billing tick
+           means on the form anyway. */
+        setNewOrder((current) => ({
+          ...current,
+          customerName: customer.contact_name || customer.name || "",
+          companyName: customer.name || "",
+          customerType: customer.customer_type || "",
+          email: customer.email || "",
+          phone: customer.phone || "",
+          gst: customer.gst || "",
+          pan: customer.pan || "",
+          coi: customer.coi || "",
+          state: customer.state || "",
+          designation: customer.designation || "",
+
+          billingStreet: customer.address || "",
+          billingCountry: customer.country || "India",
+          billingState: customer.state || "",
+          billingCity: customer.city || "",
+          billingPin: customer.pin_code || "",
+
+          shippingStreet: customer.address || "",
+          shippingCountry: customer.country || "India",
+          shippingState: customer.state || "",
+          shippingCity: customer.city || "",
+          shippingPin: customer.pin_code || "",
+        }));
+
+        addToast(
+          `Starting an order for ${customer.name || "this customer"}. Add the products.`,
+          "info",
+        );
+      } catch (error) {
+        console.error(error);
+
+        addToast("Could not read that customer.", "error");
+        setShowCreateOrder(true);
+      } finally {
+        router.replace("/sales/orders");
+      }
+    })();
+    /* openCreateOrder is deliberately not a dependency: it is redefined
+       every render, and the ref above already stops this running twice.
+       Listing it would re-run the effect on every render instead. */
+  }, [customerParam, router, addToast]);
 
   const editParam = searchParams.get("edit");
 

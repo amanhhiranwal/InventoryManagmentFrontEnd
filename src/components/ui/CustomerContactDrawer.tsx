@@ -26,8 +26,10 @@ import {
 
 /**
  * Contact Details panel from the design: the stage stepper, the contact's
- * profile, Activity History with Log Activity, and Edit Contact / Convert To
- * Lead. Every action is saved; the page passes the handlers.
+ * profile, Activity History with Log Activity, and the actions in the
+ * header. A customer is not a lead, so the header offers the next sales
+ * order rather than a conversion back into an enquiry. Every action is
+ * saved; the page passes the handlers.
  */
 export default function CustomerContactDrawer({
   customer,
@@ -40,7 +42,6 @@ export default function CustomerContactDrawer({
   onLogActivity,
   onMarkDead,
   onReactivate,
-  onConvertToLead,
   lastOrder,
   onRepeatOrder,
 }: {
@@ -59,7 +60,6 @@ export default function CustomerContactDrawer({
   ) => Promise<boolean>;
   onMarkDead: (customer: CustomerModel, reason: string) => Promise<boolean>;
   onReactivate: (customer: CustomerModel) => void;
-  onConvertToLead: (customer: CustomerModel) => void;
   /** Their most recent order, when they have bought before. */
   lastOrder?: { id: string; number: string } | null;
   onRepeatOrder?: (mode: "repeat" | "duplicate") => void;
@@ -133,12 +133,22 @@ export default function CustomerContactDrawer({
             </h2>
           </div>
 
-          {/* Somebody who has bought is not a lead again. Once there is an
-              order behind them the header offers the next one instead -
-              either their details with the products left to choose, or the
-              same order over again. */}
-          {lastOrder && onRepeatOrder ? (
-            <div className="flex items-center gap-2">
+          {/* A customer is not a lead. They have already been qualified
+              and written down, so the next thing to do with one is sell to
+              them. Duplicate appears only once there is an order to copy;
+              New Sales Order always does, carrying their details from the
+              last order or from the customer record. */}
+          <div className="flex items-center gap-2">
+            {customer.converted_lead_id && (
+              <Link
+                href={`/leads?open=${customer.converted_lead_id}`}
+                className="flex h-[35px] items-center rounded-lg border border-[#d1d1d1] bg-white px-3 text-[12px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+              >
+                View Lead #{customer.converted_lead_id}
+              </Link>
+            )}
+
+            {lastOrder && onRepeatOrder && (
               <button
                 type="button"
                 disabled={busy || inactive}
@@ -148,7 +158,9 @@ export default function CustomerContactDrawer({
               >
                 Duplicate {lastOrder.number || "Last Order"}
               </button>
+            )}
 
+            {onRepeatOrder && (
               <button
                 type="button"
                 disabled={busy || inactive}
@@ -158,25 +170,8 @@ export default function CustomerContactDrawer({
               >
                 New Sales Order
               </button>
-            </div>
-          ) : customer.converted_lead_id ? (
-            <Link
-              href={`/leads?open=${customer.converted_lead_id}`}
-              className="flex h-[35px] items-center rounded-lg border border-[#d1d1d1] bg-white px-4 text-[12px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
-            >
-              View Lead #{customer.converted_lead_id}
-            </Link>
-          ) : (
-            <button
-              type="button"
-              disabled={busy || inactive}
-              title={inactive ? "Reactivate the customer first" : undefined}
-              onClick={() => onConvertToLead(customer)}
-              className="h-[35px] rounded-lg bg-[#273756] px-4 text-[12px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Convert To Lead
-            </button>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Stage stepper */}

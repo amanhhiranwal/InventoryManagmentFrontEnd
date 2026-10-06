@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AxiosError } from "axios";
 
-import Modal from "@/components/ui/Modal";
 import { getSalesOrdersApi } from "@/features/salesOrders/api/salesOrders.api";
 import CustomerContactDrawer from "@/components/ui/CustomerContactDrawer";
 import Pagination from "@/components/crm/Pagination";
@@ -30,7 +29,6 @@ import {
   CustomerActivityType,
   CustomerModel,
   CustomerStage,
-  convertCustomerToLeadApi,
   getCustomerActivitiesApi,
   getCustomerApi,
   getCustomersApi,
@@ -38,7 +36,6 @@ import {
   updateCustomerStageApi,
   updateCustomerStatusApi,
 } from "@/features/customers/api/customers.api";
-import { getUsersApi, User } from "@/features/users/api/users.api";
 import { getStatesApi } from "@/features/locations/api/locations.api";
 
 import {
@@ -47,7 +44,6 @@ import {
   FiChevronDown,
   FiCopy,
   FiEdit2,
-  FiFile,
   FiLink,
   FiMapPin,
   FiMoreVertical,
@@ -204,15 +200,19 @@ export default function CustomersPage() {
         for (const order of [...(orders || [])].sort(
           (a, b) => Number(a.id) - Number(b.id),
         )) {
-          const key = (order.company_name || order.customer_name || "")
-            .trim()
-            .toLowerCase();
+          const entry = {
+            id: String(order.id),
+            number: order.order_number || "",
+          };
 
-          if (key) {
-            latest[key] = {
-              id: String(order.id),
-              number: order.order_number || "",
-            };
+          /* Filed under both names the order carries. An order records the
+             organisation in company_name and the person in customer_name,
+             while a customer record holds the organisation as its name and
+             the person beside it - so matching on one of them only meant a
+             customer who had plainly bought still looked new. */
+          for (const name of [order.company_name, order.customer_name]) {
+            const key = (name || "").trim().toLowerCase();
+            if (key) latest[key] = entry;
           }
         }
 
@@ -221,9 +221,23 @@ export default function CustomersPage() {
       .catch(() => setLastOrderByCustomer({}));
   }, []);
 
+  /** Their most recent order, looked up by either name on the record. */
   const lastOrderFor = useCallback(
-    (name?: string | null) =>
-      lastOrderByCustomer[(name || "").trim().toLowerCase()] || null,
+    (customer?: { name?: string | null; contact_name?: string | null } | string | null) => {
+      const names =
+        typeof customer === "string" || customer == null
+          ? [customer]
+          : [customer.name, customer.contact_name];
+
+      for (const name of names) {
+        const key = (name || "").trim().toLowerCase();
+        const found = key ? lastOrderByCustomer[key] : undefined;
+
+        if (found) return found;
+      }
+
+      return null;
+    },
     [lastOrderByCustomer],
   );
 
@@ -233,13 +247,6 @@ export default function CustomersPage() {
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [drawerBusy, setDrawerBusy] = useState(false);
 
-  /* Convert To Lead */
-  const [convertTarget, setConvertTarget] = useState<CustomerModel | null>(null);
-  const [convertTitle, setConvertTitle] = useState("");
-  const [convertRemarks, setConvertRemarks] = useState("");
-  const [convertAssignee, setConvertAssignee] = useState("");
-  const [converting, setConverting] = useState(false);
-  const [users, setUsers] = useState<User[]>([]);
   const [masterStates, setMasterStates] = useState<string[]>([]);
 
   // --------------------------------------------------
@@ -437,7 +444,10 @@ export default function CustomersPage() {
     router.push("/sales/customers/create");
   };
 
-  const handleAddFromExcel = () => {
+  /* Kept, unreferenced, with the modal it opens. Underscored so the
+     linter knows it is deliberate. Restore the menu entry above to use
+     it again. */
+  const _handleAddFromExcel = () => {
     setNewCustomerMenuOpen(false);
 
     if (!canBulkUpload) {
@@ -538,48 +548,12 @@ export default function CustomersPage() {
       "Could not reactivate the customer.",
     );
 
-  // --------------------------------------------------
-  // Convert To Lead
-  // --------------------------------------------------
+  /* Convert To Lead is gone from this page. A customer has already been
+     qualified and written down; turning one back into an enquiry was a
+     step backwards, and the next thing to do with a customer is sell to
+     them. The endpoint is left on the server for anything else that wants
+     it. */
 
-  const openConvertLead = (customer: CustomerModel) => {
-    setConvertTarget(customer);
-    setConvertTitle(customer.name);
-    setConvertRemarks("");
-    setConvertAssignee(customer.assigned_to_id || "");
-
-    if (!users.length) {
-      getUsersApi(1, 500, { skipErrorToast: true })
-        .then((response) => setUsers(response.data))
-        .catch(() => setUsers([]));
-    }
-  };
-
-  const confirmConvertLead = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!convertTarget) return;
-
-    try {
-      setConverting(true);
-
-      const result = await convertCustomerToLeadApi(convertTarget.id, {
-        title: convertTitle.trim() || undefined,
-        remarks: convertRemarks.trim() || undefined,
-        assigned_to_id: convertAssignee || undefined,
-      });
-
-      applyCustomer(result.customer);
-      if (drawerCustomer?.id === convertTarget.id) loadActivities(convertTarget.id);
-
-      addToast(`Lead #${result.lead_id} created from ${convertTarget.name}.`, "success");
-      setConvertTarget(null);
-    } catch (error) {
-      console.error(error);
-      addToast(errorText(error, "Could not convert this customer to a lead."), "error");
-    } finally {
-      setConverting(false);
-    }
-  };
 
   return (
     <ListPage>
@@ -651,12 +625,13 @@ export default function CustomersPage() {
                 Add Single Customer
               </MenuItem>
 
-              {/* Only for roles given Bulk Upload in Roles & Access. */}
-              {canBulkUpload && (
-                <MenuItem icon={<FiFile />} onClick={handleAddFromExcel}>
-                  Add From Excel
-                </MenuItem>
-              )}
+              {/* Add From Excel is off here for now. Importing a
+                  spreadsheet of customers is not something anyone is
+                  asking for yet, and the same action on Leads is where
+                  the rows actually belong — an import is a list of
+                  enquiries, not of people who have already bought. The
+                  handler and the modal are still below; restore this
+                  entry to bring it back. */}
 
               <MenuItem icon={<FiLink />} onClick={openIntegrationContact}>
                 Add From Integration
@@ -950,42 +925,47 @@ export default function CustomersPage() {
                                     View Activities
                                   </MenuItem>
 
-                                  {/* Somebody who has bought before is not a
-                                      lead again. Their next order starts from
-                                      the last one - same company, addresses
-                                      and registration numbers - with either
-                                      the products left to choose, or the same
-                                      ones again. */}
-                                  {lastOrderFor(customer.name) && (
-                                    <>
-                                      <MenuItem
-                                        icon={<FiShoppingBag />}
-                                        onClick={() => {
-                                          setOpenRowMenu(null);
-                                          router.push(
-                                            `/sales/orders?repeat=${encodeURIComponent(
-                                              customer.name,
-                                            )}`,
-                                          );
-                                        }}
-                                      >
-                                        New Sales Order
-                                      </MenuItem>
+                                  {/* A customer is not a lead. They have
+                                      already been qualified and written
+                                      down, so the next thing to do with
+                                      one is sell to them. Their details
+                                      carry over either way: from the last
+                                      order when there is one, from the
+                                      customer record when there is not. */}
+                                  <MenuItem
+                                    icon={<FiShoppingBag />}
+                                    onClick={() => {
+                                      setOpenRowMenu(null);
 
-                                      <MenuItem
-                                        icon={<FiCopy />}
-                                        onClick={() => {
-                                          setOpenRowMenu(null);
-                                          router.push(
-                                            `/sales/orders?duplicate=${
-                                              lastOrderFor(customer.name)!.id
-                                            }`,
-                                          );
-                                        }}
-                                      >
-                                        Duplicate Last Order
-                                      </MenuItem>
-                                    </>
+                                      const order = lastOrderFor(customer.raw);
+
+                                      router.push(
+                                        order
+                                          ? `/sales/orders?repeat=${encodeURIComponent(
+                                              customer.name,
+                                            )}`
+                                          : `/sales/orders?customer=${customer.id}`,
+                                      );
+                                    }}
+                                  >
+                                    New Sales Order
+                                  </MenuItem>
+
+                                  {/* Only once there is something to copy. */}
+                                  {lastOrderFor(customer.raw) && (
+                                    <MenuItem
+                                      icon={<FiCopy />}
+                                      onClick={() => {
+                                        setOpenRowMenu(null);
+                                        router.push(
+                                          `/sales/orders?duplicate=${
+                                            lastOrderFor(customer.raw)!.id
+                                          }`,
+                                        );
+                                      }}
+                                    >
+                                      Duplicate Last Order
+                                    </MenuItem>
                                   )}
 
                                   {customer.status === "Inactive" ? (
@@ -1044,9 +1024,9 @@ export default function CustomersPage() {
       )}
 
       <CustomerContactDrawer
-        lastOrder={lastOrderFor(drawerCustomer?.name)}
+        lastOrder={lastOrderFor(drawerCustomer)}
         onRepeatOrder={(mode) => {
-          const order = lastOrderFor(drawerCustomer?.name);
+          const order = lastOrderFor(drawerCustomer);
 
           if (!order) return;
 
@@ -1068,89 +1048,8 @@ export default function CustomersPage() {
         onLogActivity={logActivity}
         onMarkDead={markDead}
         onReactivate={reactivate}
-        onConvertToLead={openConvertLead}
       />
 
-      {convertTarget && (
-        <Modal
-          isOpen
-          onClose={() => setConvertTarget(null)}
-          title="Convert To Lead"
-        >
-          <form onSubmit={confirmConvertLead} className="space-y-4">
-            <p className="text-[12px] text-[#777777] dark:text-slate-400">
-              A new lead is opened for{" "}
-              <span className="font-medium text-[#141414] dark:text-white">
-                {convertTarget.name}
-              </span>{" "}
-              with its contact, address and registration details.
-            </p>
-
-            <div>
-              <label className="mb-1.5 block text-[12px] text-[#777777] dark:text-slate-400">
-                Lead Title
-              </label>
-              <input
-                value={convertTitle}
-                onChange={(e) => setConvertTitle(e.target.value)}
-                className="h-[39px] w-full rounded-lg border border-[#d1d1d1] bg-white px-3 text-[13px] text-[#141414] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-[12px] text-[#777777] dark:text-slate-400">
-                Assign To
-              </label>
-              <div className="relative">
-                <select
-                  value={convertAssignee}
-                  onChange={(e) => setConvertAssignee(e.target.value)}
-                  className="h-[39px] w-full appearance-none rounded-lg border border-[#d1d1d1] bg-white px-3 pr-9 text-[13px] text-[#141414] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-                >
-                  <option value="">Same as the customer</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {`${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email}
-                    </option>
-                  ))}
-                </select>
-                <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-[12px] text-[#777777] dark:text-slate-400">
-                Requirements / Remarks
-              </label>
-              <textarea
-                rows={4}
-                value={convertRemarks}
-                onChange={(e) => setConvertRemarks(e.target.value)}
-                placeholder="What is the customer looking for?"
-                className="w-full resize-none rounded-lg border border-[#d1d1d1] bg-[#f3f3f3] p-3 text-[13px] text-[#141414] outline-none placeholder:text-[#a9a9a9] focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-[#17304a]">
-              <button
-                type="button"
-                onClick={() => setConvertTarget(null)}
-                className="h-[39px] rounded-lg border border-[#d1d1d1] bg-white px-4 text-[13px] text-slate-700 hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={converting}
-                className="inline-flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white hover:bg-[#18243a] disabled:opacity-50"
-              >
-                {converting && <CgSpinner className="animate-spin" />}
-                Create Lead
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
     </ListPage>
   );
 }
