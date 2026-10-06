@@ -15,6 +15,13 @@ import {
 import { CgSpinner } from "react-icons/cg";
 
 import api from "@/lib/axios";
+import {
+  capMobile,
+  capPin,
+  emailError,
+  mobileError,
+  pinError,
+} from "@/lib/fieldChecks";
 import { FormCard, FormSectionBlock } from "@/components/crm/FormCard";
 import FormPageHeader, {
   CancelButton,
@@ -95,7 +102,6 @@ const EMPTY_FORM: CustomerForm = {
   attachments: [],
 };
 
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /** "+91 9876543210" -> ["+91", "9876543210"]. */
 function splitPhone(phone?: string): [string, string] {
@@ -252,12 +258,19 @@ export default function CustomerFormPage() {
       required("assignedToId", "Select who it is assigned to.");
     }
 
-    if (form.email.trim() && !EMAIL.test(form.email.trim()))
-      next.email = "Enter a valid email address.";
-    if (form.mobile.trim() && !/^[0-9]{6,14}$/.test(form.mobile.replace(/\s/g, "")))
-      next.mobile = "Enter digits only, 6 to 14 long.";
-    if (form.pinCode.trim() && !/^[A-Za-z0-9 -]{3,10}$/.test(form.pinCode.trim()))
-      next.pinCode = "Enter a valid PIN / ZIP code.";
+    /* The API's own rules, shared from one place, so the form refuses what
+       the server would refuse. These three used to be looser than it: a
+       six-digit phone number and a three-character PIN passed here and
+       came back as a failed save. */
+    const email = emailError(form.email);
+    if (email) next.email = email;
+
+    const mobile = mobileError(form.mobile);
+    if (mobile) next.mobile = mobile;
+
+    const pin = pinError(form.pinCode);
+    if (pin) next.pinCode = pin;
+
     if (form.website.trim() && !/^(https?:\/\/)?[\w-]+(\.[\w-]+)+.*$/.test(form.website.trim()))
       next.website = "Enter a website like www.company.com.";
 
@@ -483,7 +496,7 @@ export default function CustomerFormPage() {
                     placeholder="Pin Code"
                     value={form.pinCode}
                     error={errors.pinCode}
-                    onChange={(value) => update("pinCode", value)}
+                    onChange={(value) => update("pinCode", capPin(value))}
                   />
                 </div>
               </div>
@@ -535,7 +548,7 @@ export default function CustomerFormPage() {
                       inputMode="numeric"
                       value={form.mobile}
                       placeholder="XXXXXXXXXX"
-                      onChange={(event) => update("mobile", event.target.value.replace(/[^0-9 ]/g, ""))}
+                      onChange={(event) => update("mobile", capMobile(event.target.value))}
                       aria-invalid={Boolean(errors.mobile)}
                       className={`min-w-0 flex-1 border bg-white px-3 outline-none focus:border-[#233353] dark:bg-[#071929] ${
                         errors.mobile ? "!border-rose-400" : ""

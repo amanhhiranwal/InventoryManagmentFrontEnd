@@ -16,6 +16,17 @@ import * as XLSX from "xlsx";
 
 import api from "@/lib/axios";
 
+import {
+  capCode,
+  capMobile,
+  capPin,
+  emailError,
+  gstinError,
+  mobileError,
+  panError,
+  pinError,
+} from "@/lib/fieldChecks";
+
 import { useUIStore } from "@/lib/store/ui.store";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { hasPermission } from "@/features/auth/utils/permissions";
@@ -23,6 +34,7 @@ import { hasPermission } from "@/features/auth/utils/permissions";
 import {
   createLeadApi,
   getLeadActivitiesApi,
+  importLeadsApi,
   getLeadsApi,
   logLeadActivityApi,
   progressLeadApi,
@@ -956,17 +968,21 @@ export default function LeadsPage() {
       return false;
     }
 
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      addToast("Enter a valid email address.", "warning");
-      return false;
-    }
+    /* The same checks the API applies, so the form refuses what the server
+       would refuse rather than reporting it as a failed save. The old
+       length check here only caught numbers that were too short, which let
+       a nineteen-digit one through to a 400. */
+    const problems = [
+      mobileError(form.mobileNumber),
+      emailError(form.email),
+      pinError(form.zipCode),
+      gstinError(form.gstNumber),
+      panError(form.panNumber),
+    ].filter(Boolean);
 
-    if (form.mobileNumber.trim()) {
-      const phone = form.mobileNumber.replace(/\D/g, "");
-      if (phone.length < 10) {
-        addToast("Enter a valid mobile number.", "warning");
-        return false;
-      }
+    if (problems.length) {
+      addToast(problems[0] as string, "warning");
+      return false;
     }
 
     return true;
@@ -1562,9 +1578,19 @@ export default function LeadsPage() {
         throw new Error("File contains no records.");
       }
 
-      let imported = 0;
+      /* The whole sheet goes up in one request. It used to loop here,
+         calling the ordinary single-create route once per row, which meant
+         the permission that gates this was only hiding a button - anybody
+         could post the rows one at a time. The server decides now, checks
+         each row on its own, and hands back which were skipped and why, so
+         one bad cell in two hundred rows does not cost the other
+         hundred and ninety-nine.
 
-      for (const rawRow of rows) {
+         The master lists go up by name. A salesperson's sheet says
+         "Dealer" and "Maharashtra"; resolving those to row ids is the
+         server's job, and a name it does not hold comes back named rather
+         than silently dropped. */
+      const payload = rows.map((rawRow) => {
         const row: Record<string, string> = {};
 
         Object.entries(rawRow).forEach(([key, value]) => {
@@ -1573,109 +1599,49 @@ export default function LeadsPage() {
 
         const get = (...keys: string[]) => {
           for (const key of keys) {
-            if (row[key]) {
-              return row[key];
-            }
+            if (row[key]) return row[key];
           }
-
           return "";
         };
 
-        const contactName = get(
-          "full name",
-          "customer name",
-          "name",
-          "contact name",
-        );
-
-        const organizationName = get(
-          "organization name",
-          "company",
-          "organization",
-        );
-
-        if (!contactName) {
-          continue;
-        }
-
-        const importedDetails: LeadDetails = {
-          customerType: get("customer type"),
-
-          contactName,
-
-          organizationName,
-
-          website: get("website", "organization website"),
-
-          address: get("address"),
-
-          city: get("city"),
-
-          state: get("state"),
-
-          zipCode: get("pin / zip code", "pin", "zip", "zip code"),
-
-
-          country: get("country") || "India",
-
-          gstNumber: get("gst number", "gst"),
-
-          panNumber: get("pan number", "pan"),
-
-          coiNumber: get("coi", "coi number"),
-
+        return {
+          contact_name: get("full name", "customer name", "name", "contact name"),
+          organization_name: get("organization name", "company", "organization"),
           designation: get("designation"),
-
-          mobileNumber: get("mobile", "mobile number", "phone", "phone number"),
-
           email: get("email"),
-
-          leadSource: get("lead source"),
-
+          mobile_number: get("mobile", "mobile number", "phone", "phone number"),
+          website: get("website", "organization website"),
+          office_address: get("address"),
+          city: get("city"),
+          zip_code: get("pin / zip code", "pin", "zip", "zip code"),
+          country: get("country"),
+          gst_number: get("gst number", "gst"),
+          pan_number: get("pan number", "pan"),
+          coi_number: get("coi", "coi number"),
           remarks: get("remarks"),
-
-          attachments: [],
+          customer_type: get("customer type"),
+          state: get("state"),
+          lead_source: get("lead source"),
+          assigned_to: get("assigned to"),
         };
+      });
 
-        const assignedName = get("assigned to");
+      const result = await importLeadsApi(payload);
+      const imported = result.created;
 
-        const selectedCt = customerTypesList.find(
-          (c) => c.name.toLowerCase().trim() === importedDetails.customerType.toLowerCase().trim()
+      /* Named rather than counted. "12 of 50 imported" leaves somebody
+         opening the file to work out which twelve. */
+      if (result.skipped.length) {
+        const first = result.skipped
+          .slice(0, 3)
+          .map((entry) => `row ${entry.row}: ${entry.reason}`)
+          .join(" \u00b7 ");
+
+        addToast(
+          `${result.skipped.length} row(s) skipped \u2014 ${first}` +
+            (result.skipped.length > 3 ? " \u2026" : ""),
+          "warning",
         );
-        const selectedSt = statesList.find(
-          (s) => s.name.toLowerCase().trim() === importedDetails.state.toLowerCase().trim() || s.code.toLowerCase().trim() === importedDetails.state.toLowerCase().trim()
-        );
-        const matchingUser = users.find(
-          (user) =>
-            getUserName(user).toLowerCase().trim() ===
-            assignedName.toLowerCase().trim(),
-        );
-
-        await createLeadApi({
-          title: `${contactName}${
-            organizationName ? ` (${organizationName})` : ""
-          }`,
-          contact_name: contactName,
-          organization_name: organizationName || undefined,
-          email: importedDetails.email || undefined,
-          mobile_number: importedDetails.mobileNumber || undefined,
-          website: importedDetails.website || undefined,
-          office_address: importedDetails.address || undefined,
-          city: importedDetails.city || undefined,
-          zip_code: importedDetails.zipCode || undefined,
-          country: importedDetails.country || "India",
-          gst_number: importedDetails.gstNumber || undefined,
-          pan_number: importedDetails.panNumber || undefined,
-          coi_number: importedDetails.coiNumber || undefined,
-          designation: importedDetails.designation || undefined,
-          remarks: importedDetails.remarks || undefined,
-          status: "NEW",
-          customer_type_id: selectedCt?.id,
-          state_id: selectedSt?.id,
-          assigned_to_id: matchingUser?.id || undefined,
-        });
-
-        imported++;
       }
 
       addToast(`${imported} lead(s) imported successfully.`, "success");
@@ -2606,6 +2572,29 @@ function LeadFormPage({
   onAttachment: (event: ChangeEvent<HTMLInputElement>) => void;
   onClose: () => void;
 }) {
+  /* A field complains once it has been left, not while it is being filled:
+     an email is wrong for every keystroke up to the last one. Submitting
+     marks every field as left, so the errors appear together. */
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  const touch = (field: string) =>
+    setTouched((previous) => ({ ...previous, [field]: true }));
+
+  const shown = (field: string, problem: string | null) =>
+    touched[field] && problem ? problem : undefined;
+
+  const handleSubmit = (event: FormEvent) => {
+    setTouched({
+      mobileNumber: true,
+      email: true,
+      zipCode: true,
+      gstNumber: true,
+      panNumber: true,
+    });
+
+    onSubmit(event);
+  };
+
   return (
     <div className="min-h-full pb-8">
       {/* PAGE HEADER */}
@@ -2633,7 +2622,7 @@ function LeadFormPage({
 
       <form
         id="lead-form"
-        onSubmit={onSubmit}
+        onSubmit={handleSubmit}
         className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_372px]"
       >
         {/* LEFT */}
@@ -2712,6 +2701,10 @@ function LeadFormPage({
                 required
                 value={form.zipCode}
                 placeholder="Pin Code"
+                inputMode="numeric"
+                transform={capPin}
+                error={shown("zipCode", pinError(form.zipCode))}
+                onBlur={() => touch("zipCode")}
                 onChange={(value) => onChange("zipCode", value)}
               />
             </div>
@@ -2722,6 +2715,9 @@ function LeadFormPage({
               <DocumentField
                 label="GST Number"
                 value={form.gstNumber}
+                transform={(value) => capCode(value, 15)}
+                error={shown("gstNumber", gstinError(form.gstNumber))}
+                onBlur={() => touch("gstNumber")}
                 onChange={(value) => onChange("gstNumber", value)}
                 onFile={onAttachment}
               />
@@ -2729,6 +2725,9 @@ function LeadFormPage({
               <DocumentField
                 label="PAN Number"
                 value={form.panNumber}
+                transform={(value) => capCode(value, 10)}
+                error={shown("panNumber", panError(form.panNumber))}
+                onBlur={() => touch("panNumber")}
                 onChange={(value) => onChange("panNumber", value)}
                 onFile={onAttachment}
               />
@@ -2764,6 +2763,14 @@ function LeadFormPage({
                 required
                 value={form.mobileNumber}
                 placeholder="XXXXXXXXXX"
+                inputMode="numeric"
+                transform={capMobile}
+                error={shown(
+                  "mobileNumber",
+                  mobileError(form.mobileNumber),
+                )}
+                hint="10 digits, starting 6, 7, 8 or 9."
+                onBlur={() => touch("mobileNumber")}
                 onChange={(value) => onChange("mobileNumber", value)}
               />
 
@@ -2771,7 +2778,10 @@ function LeadFormPage({
                 label="Email Address"
                 required
                 type="email"
+                inputMode="email"
                 value={form.email}
+                error={shown("email", emailError(form.email))}
+                onBlur={() => touch("email")}
                 onChange={(value) => onChange("email", value)}
               />
             </div>
@@ -4036,6 +4046,22 @@ const filterInput = `
 const formInputOverride =
   "h-[39px]! rounded-lg! border-[#d1d1d1]! px-3! text-[13px]! text-[#141414]! placeholder:text-[#a9a9a9]! dark:border-[#0d2336]! dark:text-white!";
 
+/**
+ * The override above, with the border reddened when the field is wrong.
+ *
+ * The grey border is marked important, so a second important rule beside
+ * it is settled by the order of the generated stylesheet rather than by
+ * the order written here - appending one leaves the field grey. Taking
+ * the grey token out removes the contest instead of entering it.
+ */
+function fieldOverride(error?: string) {
+  if (!error) return formInputOverride;
+
+  return `${formInputOverride
+    .replace("border-[#d1d1d1]!", "")
+    .replace("dark:border-[#0d2336]!", "")} border-rose-400! dark:border-rose-400!`;
+}
+
 function FormInput({
   label,
   value,
@@ -4043,6 +4069,11 @@ function FormInput({
   required,
   placeholder,
   type = "text",
+  error,
+  hint,
+  inputMode,
+  onBlur,
+  transform,
 }: {
   label: string;
   value: string;
@@ -4050,6 +4081,14 @@ function FormInput({
   required?: boolean;
   placeholder?: string;
   type?: string;
+  /** Shown under the field, and reddens its border. */
+  error?: string;
+  /** Shown under the field when there is nothing wrong with it. */
+  hint?: string;
+  inputMode?: "text" | "numeric" | "tel" | "email";
+  onBlur?: () => void;
+  /** Settles what the field may hold, per keystroke. */
+  transform?: (value: string) => string;
 }) {
   return (
     <div>
@@ -4060,12 +4099,23 @@ function FormInput({
       </label>
 
       <Input
-        className={formInputOverride}
+        className={fieldOverride(error)}
         type={type}
         value={value}
+        inputMode={inputMode}
+        aria-invalid={Boolean(error)}
         placeholder={placeholder || `Enter ${label.toLowerCase()}`}
-        onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
+        onChange={(event) =>
+          onChange(transform ? transform(event.target.value) : event.target.value)
+        }
       />
+
+      {error ? (
+        <p className="mt-1 text-[11px] text-rose-500">{error}</p>
+      ) : hint ? (
+        <p className="mt-1 text-[11px] text-[#a9a9a9]">{hint}</p>
+      ) : null}
     </div>
   );
 }
@@ -4179,11 +4229,17 @@ function DocumentField({
   value,
   onChange,
   onFile,
+  error,
+  onBlur,
+  transform,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   onFile: (event: ChangeEvent<HTMLInputElement>) => void;
+  error?: string;
+  onBlur?: () => void;
+  transform?: (value: string) => string;
 }) {
   return (
     <div>
@@ -4193,9 +4249,13 @@ function DocumentField({
 
       <div className="grid grid-cols-[minmax(0,1fr)_150px] gap-3">
         <Input
-          className={formInputOverride}
+          className={fieldOverride(error)}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          aria-invalid={Boolean(error)}
+          onBlur={onBlur}
+          onChange={(event) =>
+            onChange(transform ? transform(event.target.value) : event.target.value)
+          }
           placeholder={`Enter ${label}`}
         />
 
@@ -4225,6 +4285,8 @@ function DocumentField({
           <input type="file" className="hidden" onChange={onFile} />
         </label>
       </div>
+
+      {error && <p className="mt-1 text-[11px] text-rose-500">{error}</p>}
     </div>
   );
 }
