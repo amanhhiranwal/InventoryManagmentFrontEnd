@@ -16,8 +16,11 @@ import { parseAmount } from "@/components/crm/AmountInput";
 import {
   PRODUCT_CATALOG,
   PRODUCT_CATEGORIES,
+  priceBasisFor,
   productSku,
+  rateFor,
   type CatalogProduct,
+  type PriceBasis,
 } from "@/features/catalog/productCatalog";
 import { Lead, getLeadsApi } from "@/features/workflows/api/workflows.api";
 import StatCard from "@/components/crm/StatCard";
@@ -3215,6 +3218,12 @@ function NewOpportunityPage({
     normalizeCustomerType(seed.customer_type_name),
   );
 
+  /* Which price list this deal is being shaped against. An End Customer
+     is quoted ECP; everybody else is bought through at the fixed DTP, so
+     the lines take that rate from the moment the deal is opened rather
+     than being repriced when it becomes a proposal. */
+  const priceBasis = priceBasisFor(customerType);
+
   const [organizationName, setOrganizationName] = useState(
     seed.organization_name || "",
   );
@@ -3432,7 +3441,9 @@ function NewOpportunityPage({
           sku: productSku(product.id),
           hsn: product.hsn || "",
           quantity: 1,
-          unitPrice: product.price,
+          /* The rate that matches who is buying, so an opportunity and
+             the proposal raised off it never disagree on the price. */
+          unitPrice: rateFor(product, priceBasis),
           discount: 0,
           tax: 18,
         },
@@ -3985,19 +3996,12 @@ function NewOpportunityPage({
 
                             {/* Set here so it carries to the proposal and the
                                 order rather than being typed again on each. */}
+                            {/* The classification the product is filed
+                                under, and the seller answers for it on a
+                                tax document. Changed on the Product List,
+                                where it changes everywhere at once. */}
                             <td className="px-2 py-2.5">
-                              {editing ? (
-                                <input
-                                  value={item.hsn}
-                                  placeholder="e.g. 8528"
-                                  onChange={(event) =>
-                                    updateLineItem(item.key, {
-                                      hsn: event.target.value,
-                                    })
-                                  }
-                                  className={LINE_CELL_MODEL}
-                                />
-                              ) : (
+                              {(
                                 <span className="font-mono text-[10px] text-slate-600 dark:text-slate-300">
                                   {item.hsn || "—"}
                                 </span>
@@ -4094,24 +4098,15 @@ function NewOpportunityPage({
                                 the salesperson's to change: a negotiated price
                                 is the whole point of the line, and the totals
                                 below follow whatever it is set to. */}
+                            {/* The price list decides the price, and which
+                                list follows from the customer type. The
+                                discount is the negotiating lever, and it is
+                                the one the approval chain sees — a rate
+                                typed over the top went past both. */}
                             <td className="px-2 py-2.5">
-                              {editing ? (
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={item.unitPrice}
-                                  onChange={(event) =>
-                                    updateLineItem(item.key, {
-                                      unitPrice: parseAmount(event.target.value),
-                                    })
-                                  }
-                                  className={LINE_CELL_MODEL}
-                                />
-                              ) : (
-                                <span className="text-[10px] text-slate-600 dark:text-slate-300">
-                                  {item.unitPrice.toLocaleString("en-IN")}
-                                </span>
-                              )}
+                              <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                                {item.unitPrice.toLocaleString("en-IN")}
+                              </span>
                             </td>
 
                             <td className="px-3 py-2.5 text-right">
@@ -4324,6 +4319,7 @@ function NewOpportunityPage({
         <OpportunityProductModal
           products={filteredProducts}
           picked={pickedProducts}
+          priceBasis={priceBasis}
           search={productSearch}
           onSearch={setProductSearch}
           category={productCategory}
@@ -4400,6 +4396,7 @@ function LineNumberInput({
 function OpportunityProductModal({
   products,
   picked,
+  priceBasis,
   search,
   onSearch,
   category,
@@ -4411,6 +4408,9 @@ function OpportunityProductModal({
 }: {
   products: CatalogProduct[];
   picked: OpportunityLineItem[];
+  /** Which price list to show, so the figure in the picker is the one the
+      line will actually take. */
+  priceBasis: PriceBasis;
   search: string;
   onSearch: (value: string) => void;
   category: string;
@@ -4516,8 +4516,8 @@ function OpportunityProductModal({
                         {/* A catalogue line the price list leaves blank says so.
                             Rs 0.00 reads like a free product, and it reaches
                             a customer's document that way. */}
-                        {product.price > 0 ? (
-                          formatShortCurrency(product.price)
+                        {rateFor(product, priceBasis) > 0 ? (
+                          formatShortCurrency(rateFor(product, priceBasis))
                         ) : (
                           <span className="font-medium text-amber-600">
                             Price not set
@@ -4631,17 +4631,10 @@ function OpportunityProductModal({
                         Unit Price (₹)
                       </label>
 
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={item.unitPrice}
-                        onChange={(event) =>
-                          onUpdate(item.key, {
-                            unitPrice: parseAmount(event.target.value),
-                          })
-                        }
-                        className="h-8 w-full rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-                      />
+                      {/* From the price list, not typed. */}
+                      <p className="flex h-8 items-center text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                        {item.unitPrice.toLocaleString("en-IN")}
+                      </p>
                     </div>
 
                     <div>

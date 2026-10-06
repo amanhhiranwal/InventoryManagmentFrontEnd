@@ -59,7 +59,8 @@ const INVENTORY_COLUMNS: ExportColumn<InventoryItem>[] = [
     value: (item) => Number(item.attributes?.instock ?? item.attributes?.stock ?? 0),
   },
   { header: "Unit", value: (item) => String(item.attributes?.unit ?? "") },
-  { header: "Wholesale Rate", value: (item) => Number(item.attributes?.rate ?? 0) },
+  { header: "ECP Rate", value: (item) => Number(item.attributes?.rate ?? 0) },
+  { header: "DTP Rate", value: (item) => Number(item.attributes?.dtp_rate ?? 0) },
   { header: "Case Size", value: (item) => Number(item.attributes?.case_size ?? 1) },
   { header: "HSN / SAC", value: (item) => String(item.attributes?.hsn_code ?? "") },
   {
@@ -104,6 +105,13 @@ export default function InventoryPage() {
 
   // Mandatory standard attributes
   const [rate, setRate] = useState("");
+
+  /* The fixed transfer price the channel is bought through at. "rate" is
+     the end customer price; which of the two a document uses follows from
+     the customer type on it. Blank means none is set, and a dealer
+     document then keeps the end customer rate and says so — rather
+     than quoting zero. */
+  const [dtpRate, setDtpRate] = useState("");
   const [unit, setUnit] = useState("");
   const [instock, setInstock] = useState("");
   const [caseSize, setCaseSize] = useState("");
@@ -130,6 +138,7 @@ export default function InventoryPage() {
 
   // Mandatory standard attributes (Edit)
   const [editRate, setEditRate] = useState("");
+  const [editDtpRate, setEditDtpRate] = useState("");
   const [editUnit, setEditUnit] = useState("");
   const [editInstock, setEditInstock] = useState("");
   const [editCaseSize, setEditCaseSize] = useState("");
@@ -385,6 +394,7 @@ export default function InventoryPage() {
 
     // Extract standard attributes
     setEditRate(item.attributes?.rate?.toString() || "");
+    setEditDtpRate(item.attributes?.dtp_rate?.toString() || "");
     setEditUnit(item.attributes?.unit || (unitsList.length > 0 ? unitsList[0] : ""));
     setEditInstock((item.attributes?.instock ?? item.attributes?.stock ?? "").toString());
     setEditCaseSize(item.attributes?.case_size?.toString() || "");
@@ -455,6 +465,7 @@ export default function InventoryPage() {
         ...dynamicValues,
         rate: rateVal,
         rate_per_unit: rateVal,
+        dtp_rate: Number(dtpRate) || 0,
         unit: unit,
         instock: instockVal,
         stock: instockVal,
@@ -534,6 +545,7 @@ export default function InventoryPage() {
         ...editDynamicValues,
         rate: rateVal,
         rate_per_unit: rateVal,
+        dtp_rate: Number(editDtpRate) || 0,
         unit: editUnit,
         instock: instockVal,
         stock: instockVal,
@@ -709,7 +721,8 @@ export default function InventoryPage() {
                   <th className="px-5 py-3">Company</th>
                   <th className="px-5 py-3">HSN / SAC</th>
                   <th className="px-5 py-3">In Stock</th>
-                  <th className="px-5 py-3">Wholesale Rate</th>
+                  <th className="px-5 py-3">ECP Rate</th>
+                  <th className="px-5 py-3">DTP Rate</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -717,6 +730,7 @@ export default function InventoryPage() {
             {visibleItems.map((item) => {
               const typeName = productTypes.find((t) => t.code === item.product_type_code)?.name || item.product_type_code;
               const rateVal = item.attributes?.rate ?? 0;
+              const dtpVal = Number(item.attributes?.dtp_rate ?? 0);
               const unitVal = item.attributes?.unit ?? "Unit";
               const stockVal = item.attributes?.instock ?? item.attributes?.stock ?? 0;
               const caseSizeVal = item.attributes?.case_size ?? 1;
@@ -796,6 +810,18 @@ export default function InventoryPage() {
                     <p className="text-[11px] text-[#777777] dark:text-slate-400">
                       {caseSizeVal} {unitVal}/case
                     </p>
+                  </td>
+                  {/* The transfer price beside the end customer one, so a
+                      product sold through the channel can be checked at a
+                      glance. Unset is said rather than shown as zero. */}
+                  <td className="px-5 py-3">
+                    {dtpVal > 0 ? (
+                      <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">
+                        ₹{dtpVal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </span>
+                    ) : (
+                      <span className="text-[12px] text-amber-600">Not set</span>
+                    )}
                   </td>
                   <td className="px-5 py-3 text-right">
                     <div className="flex justify-end gap-1.5">
@@ -1192,6 +1218,22 @@ export default function InventoryPage() {
                   property of the product rather than of the sale - so it is
                   captured here once and travels onto every document the
                   product appears on. */}
+              {/* THE TWO PRICE LISTS
+
+                  "Rate" above is the end customer price. This is the fixed
+                  figure a dealer, a distributor or an OEM is bought through
+                  at. Which one a proposal uses follows from the customer
+                  type on it, so nobody picks a price list by hand. Left
+                  blank, a dealer document falls back to the end customer
+                  rate and marks the line, rather than quoting nothing. */}
+              <Input
+                label="DTP Rate (Dealer Transfer Price)"
+                type="number"
+                placeholder="Leave blank if this is not sold through the channel"
+                value={dtpRate}
+                onChange={(e) => setDtpRate(e.target.value)}
+              />
+
               <Input
                 label="HSN / SAC Code"
                 placeholder="e.g. 8528"
@@ -1458,6 +1500,15 @@ export default function InventoryPage() {
                     onChange={(e) => setEditCaseSize(e.target.value)}
                   />
                 </div>
+
+                {/* The fixed transfer price. See the note on the add form. */}
+                <Input
+                  label="DTP Rate (Dealer Transfer Price)"
+                  type="number"
+                  placeholder="Leave blank if this is not sold through the channel"
+                  value={editDtpRate}
+                  onChange={(e) => setEditDtpRate(e.target.value)}
+                />
 
                 <Input
                   label="HSN / SAC Code"

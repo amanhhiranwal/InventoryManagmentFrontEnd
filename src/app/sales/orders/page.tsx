@@ -8,7 +8,10 @@ import { useUIStore } from "@/lib/store/ui.store";
 import {
   PRODUCT_CATALOG,
   PRODUCT_CATEGORIES,
+  priceBasisFor,
   productSku,
+  rateFor,
+  type PriceBasis,
 } from "@/features/catalog/productCatalog";
 import AmountInput, {
   resolveAmount,
@@ -524,6 +527,11 @@ export default function OrdersListPage() {
     // Requirements
     remarks: "",
   });
+
+  /* Which price list this order is written against, from the customer
+     type carried onto it. Mirrors price_type_for() on the server, so the
+     screen and the approval chain cannot describe different deals. */
+  const priceBasis: PriceBasis = priceBasisFor(newOrder.customerType);
 
   /* =======================================================
      FETCH ORDERS
@@ -1431,7 +1439,9 @@ export default function OrdersListPage() {
           name: product.name,
           category: product.category,
           hsn: product.hsn || "",
-          price: product.price,
+          /* The rate that matches who is buying, carried from the
+             proposal's customer type onto the order. */
+          price: rateFor(product, priceBasis),
           quantity: 1,
           discount: 0,
           tax: 18,
@@ -2504,22 +2514,14 @@ export default function OrdersListPage() {
                               {item.name}
                             </td>
 
-                            {/* From the product, but editable: a line can be
-                                classified differently from the catalogue's
-                                default when the supply is. */}
+                            {/* The classification the product is filed
+                                under, and the seller answers for it on a
+                                tax document. Changed on the Product List,
+                                where it changes everywhere at once. */}
                             <td className="px-3 py-3">
-                              <input
-                                value={item.hsn}
-                                placeholder="e.g. 8528"
-                                onChange={(event) =>
-                                  updateSelectedProduct(
-                                    item.id,
-                                    "hsn",
-                                    event.target.value,
-                                  )
-                                }
-                                className="w-20 rounded border border-slate-200 px-2 py-1 font-mono text-[10px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
-                              />
+                              <span className="font-mono text-[10px] text-slate-600 dark:text-slate-300">
+                                {item.hsn || "—"}
+                              </span>
                             </td>
 
                             <td className="px-3 py-3">
@@ -3251,8 +3253,8 @@ export default function OrdersListPage() {
                                       blank says so. Rs 0.00 reads like a free
                                       product, and reaches the customer that
                                       way. */}
-                                  {product.price > 0 ? (
-                                    money(product.price)
+                                  {rateFor(product, priceBasis) > 0 ? (
+                                    money(rateFor(product, priceBasis))
                                   ) : (
                                     <span className="font-medium text-amber-600">
                                       Price not set
