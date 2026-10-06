@@ -160,6 +160,51 @@ export const createLeadApi = async (payload: {
   return data.data || data;
 };
 
+/** One spreadsheet row, with the master lists named rather than numbered. */
+export interface LeadImportRow {
+  contact_name?: string;
+  organization_name?: string;
+  designation?: string;
+  email?: string;
+  mobile_number?: string;
+  website?: string;
+  office_address?: string;
+  city?: string;
+  zip_code?: string;
+  country?: string;
+  gst_number?: string;
+  pan_number?: string;
+  coi_number?: string;
+  remarks?: string;
+  customer_type?: string;
+  state?: string;
+  lead_source?: string;
+  assigned_to?: string;
+}
+
+export interface LeadImportResult {
+  created: number;
+  ids: number[];
+  skipped: { row: number; name: string; reason: string }[];
+  total: number;
+}
+
+/**
+ * Import a whole sheet of leads in one request.
+ *
+ * Needs lead.bulk_upload, checked on the server. The client used to loop
+ * over the single-create route instead, which meant the permission was
+ * only hiding a button. Each row is judged on its own and the rejected
+ * ones come back with their sheet row and the reason, so one bad cell
+ * does not cost the rest of the file.
+ */
+export const importLeadsApi = async (
+  leads: LeadImportRow[],
+): Promise<LeadImportResult> => {
+  const { data } = await api.post("/api/v1/leads/bulk", { leads });
+  return data.data;
+};
+
 export const updateLeadApi = async (
   leadId: number | string,
   payload: {
