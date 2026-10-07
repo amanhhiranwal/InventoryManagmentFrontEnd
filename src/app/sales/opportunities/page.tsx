@@ -13,6 +13,11 @@ import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 
 import { parseAmount } from "@/components/crm/AmountInput";
+import { formatRupees } from "@/lib/money";
+import {
+  LineDiscountInput,
+  LineSellingPriceInput,
+} from "@/features/pricing/LinePriceInputs";
 import {
   PRODUCT_CATALOG,
   PRODUCT_CATEGORIES,
@@ -344,26 +349,9 @@ function formatCurrency(value: number) {
   return `₹${value.toLocaleString("en-IN")}`;
 }
 
-/** Full rupee figure, as the Total Amount row shows in the design. */
-function formatRupees(value: number) {
-  return `₹${Math.round(value || 0).toLocaleString("en-IN")}`;
-}
 
-function formatShortCurrency(value: number) {
-  if (value >= 10000000) {
-    return `₹${(value / 10000000).toFixed(2)} Cr`;
-  }
-
-  if (value >= 100000) {
-    return `₹${(value / 100000).toFixed(1)} L`;
-  }
-
-  if (value >= 1000) {
-    return `₹${(value / 1000).toFixed(1)} K`;
-  }
-
-  return formatCurrency(value);
-}
+/** Used to read "₹61.0 K"; the figure is written in full now. */
+const formatShortCurrency = formatRupees;
 
 function formatDate(value?: string) {
   if (!value) return "-";
@@ -603,7 +591,6 @@ function OpportunitiesPageInner() {
 
   /* Lead sources come from Masters so the source recorded on a lead can
      always be shown here; the form previously offered three fixed values. */
-  const [leadSourceOptions, setLeadSourceOptions] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -715,9 +702,10 @@ function OpportunitiesPageInner() {
     }
   };
 
-  /* Only QUALIFIED leads may become an opportunity: a lead has to pass the
-     qualification checklist first. Leads already carrying an opportunity are
-     excluded too. */
+  /* Any lead still live may become an opportunity - raising one is itself
+     the act of qualifying it, which is the rule the API now applies too.
+     Lost leads cannot be converted, and a lead already carrying an
+     opportunity is excluded so it cannot be converted twice. */
   const loadConvertibleLeads = useCallback(async () => {
     setLoadingLeads(true);
 
@@ -737,7 +725,9 @@ function OpportunitiesPageInner() {
       setConvertibleLeads(
         leads.filter(
           (lead) =>
-            lead.status === "QUALIFIED" && !taken.has(String(lead.id)),
+            lead.status !== "LOST" &&
+            lead.status !== "CONVERTED" &&
+            !taken.has(String(lead.id)),
         ),
       );
     } catch (error) {
@@ -761,26 +751,9 @@ function OpportunitiesPageInner() {
     setShowAddModal(true);
   };
 
-  const fetchLeadSources = async () => {
-    try {
-      const res = await api.get("/api/v1/lead-sources");
-
-      if (res.data?.success) {
-        setLeadSourceOptions(
-          (res.data.data || [])
-            .filter((source: any) => source.is_active !== false)
-            .map((source: any) => source.name),
-        );
-      }
-    } catch (error) {
-      console.warn("Lead sources endpoint unavailable.", error);
-    }
-  };
-
   useEffect(() => {
     fetchOpportunities();
     fetchSalesUsers();
-    fetchLeadSources();
   }, [fetchOpportunities]);
 
   /* Arriving from the Leads page via "Convert To Opportunity". */
@@ -1408,8 +1381,6 @@ function OpportunitiesPageInner() {
       <NewOpportunityPage
         lead={sourceLead}
         opportunity={editingOpportunity}
-        salesUsers={salesUsers}
-        leadSourceOptions={leadSourceOptions}
         onClose={() => {
           setShowAddModal(false);
           setSourceLead(null);
@@ -3093,8 +3064,7 @@ function LeadPickerModal({
               Select a Lead
             </h2>
             <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-              Qualified leads only. Details carry over to the new
-              opportunity.
+              Details carry over to the new opportunity.
             </p>
           </div>
 
@@ -3190,8 +3160,6 @@ function LeadPickerModal({
 function NewOpportunityPage({
   lead,
   opportunity,
-  salesUsers,
-  leadSourceOptions,
   onClose,
   onSubmit,
 }: {
@@ -3202,9 +3170,6 @@ function NewOpportunityPage({
       record. Editing used to open a four-field modal, which could not reach
       the address, compliance, sourcing or product lines at all. */
   opportunity?: Opportunity | null;
-  salesUsers: SalesUser[];
-  /** Lead sources as configured in Masters, not a hardcoded list. */
-  leadSourceOptions: string[];
   onClose: () => void;
   onSubmit: (payload: Record<string, any>) => Promise<void>;
 }) {
@@ -3304,13 +3269,13 @@ function NewOpportunityPage({
 
   /* Carried over from the lead rather than defaulting to Marketing, which
      misreported the source of every lead that came in another way. */
-  const [leadSource, setLeadSource] = useState(
+  const [leadSource] = useState(
     seed.lead_source || seed.lead_source_name || "",
   );
 
   /* Holds the user id, not a display name: the previous single hardcoded
      "Sales Team" option could never map to a real user. */
-  const [assignedTo, setAssignedTo] = useState(seed.assigned_to_id || "");
+  const [assignedTo] = useState(seed.assigned_to_id || "");
 
 
   /* Line items chosen through Add Product, replacing the old fixed
@@ -4204,23 +4169,12 @@ function NewOpportunityPage({
                 title="Sales Information"
               >
                 <div className="space-y-3">
-                  <FormSelect
-                    label="Lead Source *"
-                    value={leadSource}
-                    options={leadSourceOptions}
-                    onChange={setLeadSource}
-                  />
-
-                  <FormSelect
-                    label="Assigned to *"
-                    value={assignedTo}
-                    options={salesUsers.map((user) => user.id)}
-                    displayOptions={salesUsers.map((user) => ({
-                      value: user.id,
-                      label: user.name,
-                    }))}
-                    onChange={setAssignedTo}
-                  />
+                  {/* Lead Source and Assigned To were asked for again here
+                      having already been answered on the lead. They are
+                      carried over rather than re-picked - the state is
+                      still seeded from the lead and still sent - so the
+                      two cannot disagree about where the deal came from
+                      or whose it is. */}
 
                   {/* Priority */}
                   <div>
@@ -4625,7 +4579,7 @@ function OpportunityProductModal({
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="mt-3 grid grid-cols-4 gap-2">
                     <div>
                       <label className="mb-1 block text-[9px] text-slate-500">
                         Unit Price (₹)
@@ -4639,19 +4593,29 @@ function OpportunityProductModal({
 
                     <div>
                       <label className="mb-1 block text-[9px] text-slate-500">
-                        Discount (%)
+                        Selling Price (₹)
                       </label>
 
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={item.discount}
-                        onChange={(event) =>
-                          onUpdate(item.key, {
-                            discount: parseAmount(event.target.value),
-                          })
-                        }
-                        className="h-8 w-full rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                      {/* The other way of saying the discount: type what the
+                          line sells at and the percentage follows. */}
+                      <LineSellingPriceInput
+                        unitPrice={item.unitPrice}
+                        discount={item.discount}
+                        ariaLabel={`Selling price for ${item.model}`}
+                        onChange={(discount) => onUpdate(item.key, { discount })}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[9px] text-slate-500">
+                        Discount
+                      </label>
+
+                      <LineDiscountInput
+                        unitPrice={item.unitPrice}
+                        discount={item.discount}
+                        ariaLabel={`Discount for ${item.model}`}
+                        onChange={(discount) => onUpdate(item.key, { discount })}
                       />
                     </div>
 

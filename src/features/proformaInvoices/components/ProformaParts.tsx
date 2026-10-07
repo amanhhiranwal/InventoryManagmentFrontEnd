@@ -7,6 +7,7 @@
  */
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { formatRupees } from "@/lib/money";
 import {
   LuBox,
   LuCopy,
@@ -42,16 +43,8 @@ export const money = (value?: number | null) =>
 export const plainAmount = (value?: number | null) =>
   Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
-/** "₹8.46 Cr", "₹48.6 L" - the short form the KPI cards and list use. */
-export function compactMoney(value?: number | null) {
-  const amount = Number(value || 0);
-  const trim = (n: number) => String(Number(n.toFixed(2)));
-
-  if (Math.abs(amount) >= 1e7) return `₹${trim(amount / 1e7)} Cr`;
-  if (Math.abs(amount) >= 1e5) return `₹${trim(amount / 1e5)} L`;
-
-  return money(amount);
-}
+/** The KPI cards and list used to read "₹48.6 L"; written in full now. */
+export const compactMoney = formatRupees;
 
 export function formatDate(value?: string | null) {
   if (!value) return "-";

@@ -18,6 +18,10 @@ import AmountInput, {
   type AmountMode,
 } from "@/components/crm/AmountInput";
 import {
+  LineDiscountInput,
+  LineSellingPriceInput,
+} from "@/features/pricing/LinePriceInputs";
+import {
   getNextOrderNumberApi,
   SALES_ORDER_STATUS,
   SALES_ORDER_STATUS_LABEL,
@@ -3431,7 +3435,7 @@ export default function OrdersListPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-2 mt-3">
+                          <div className="grid grid-cols-4 gap-2 mt-3">
                             <div>
                               <label className="block text-[9px] text-slate-500 mb-1">
                                 Unit Price (₹)
@@ -3444,22 +3448,42 @@ export default function OrdersListPage() {
 
                             <div>
                               <label className="block text-[9px] text-slate-500 mb-1">
-                                Discount (%)
+                                Selling Price (₹)
                               </label>
 
-                              <input
-                                type="number"
-                                value={item.discount}
-                                min="0"
-                                max="100"
-                                onChange={(e) =>
+                              {/* The other way of saying the discount: type
+                                  what the line sells at and the percentage
+                                  follows. */}
+                              <LineSellingPriceInput
+                                unitPrice={item.price}
+                                discount={item.discount}
+                                ariaLabel={`Selling price for ${item.name}`}
+                                onChange={(discount) =>
                                   updateSelectedProduct(
                                     item.id,
                                     "discount",
-                                    Number(e.target.value),
+                                    discount,
                                   )
                                 }
-                                className="w-full h-9 rounded-md border border-slate-200 px-2 text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[9px] text-slate-500 mb-1">
+                                Discount
+                              </label>
+
+                              <LineDiscountInput
+                                unitPrice={item.price}
+                                discount={item.discount}
+                                ariaLabel={`Discount for ${item.name}`}
+                                onChange={(discount) =>
+                                  updateSelectedProduct(
+                                    item.id,
+                                    "discount",
+                                    discount,
+                                  )
+                                }
                               />
                             </div>
 

@@ -9,6 +9,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { formatRupees } from "@/lib/money";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
@@ -35,6 +36,10 @@ import AmountInput, {
   resolveAmount,
   type AmountMode,
 } from "@/components/crm/AmountInput";
+import {
+  LineDiscountInput,
+  LineSellingPriceInput,
+} from "@/features/pricing/LinePriceInputs";
 import RichTextEditor, { textToHtml } from "@/components/crm/RichTextEditor";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
@@ -239,15 +244,8 @@ const ROWS_PER_PAGE = 10;
 const money = (value: number | null | undefined) =>
   `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
-/** Compact form used by the KPI cards, e.g. ₹4.82 Cr / ₹52.4 L. */
-function compactMoney(value: number) {
-  const amount = Number(value || 0);
-
-  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
-  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)} L`;
-
-  return money(amount);
-}
+/** The KPI cards used to read "₹52.4 L"; they show the figure in full. */
+const compactMoney = formatRupees;
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -3408,7 +3406,7 @@ function ProductPickerModal({
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="mt-3 grid grid-cols-4 gap-2">
                     <div>
                       <label className="mb-1 block text-[9px] text-slate-500">
                         Unit Price (₹)
@@ -3422,18 +3420,29 @@ function ProductPickerModal({
 
                     <div>
                       <label className="mb-1 block text-[9px] text-slate-500">
-                        Discount (%)
+                        Selling Price (₹)
                       </label>
 
-                      <input
-                        type="number"
-                        value={item.discount}
-                        onChange={(event) =>
-                          onUpdate(item.key, {
-                            discount: Number(event.target.value) || 0,
-                          })
-                        }
-                        className={CELL_INPUT}
+                      {/* The other way of saying the discount: type what the
+                          line sells at and the percentage follows. */}
+                      <LineSellingPriceInput
+                        unitPrice={item.unitPrice}
+                        discount={item.discount}
+                        ariaLabel={`Selling price for ${item.model}`}
+                        onChange={(discount) => onUpdate(item.key, { discount })}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[9px] text-slate-500">
+                        Discount
+                      </label>
+
+                      <LineDiscountInput
+                        unitPrice={item.unitPrice}
+                        discount={item.discount}
+                        ariaLabel={`Discount for ${item.model}`}
+                        onChange={(discount) => onUpdate(item.key, { discount })}
                       />
                     </div>
 

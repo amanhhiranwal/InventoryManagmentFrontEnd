@@ -9,6 +9,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
+import { formatRupees } from "@/lib/money";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -149,45 +150,12 @@ const PIPELINE_STAGES = [
    HELPERS
 ============================================================ */
 
-function formatCurrency(value: number) {
-  if (!value || Number.isNaN(value)) {
-    return "₹0";
-  }
-
-  if (value >= 10000000) {
-    return `₹${(value / 10000000).toFixed(2)} Cr`;
-  }
-
-  if (value >= 100000) {
-    return `₹${(value / 100000).toFixed(2)} L`;
-  }
-
-  if (value >= 1000) {
-    return `₹${(value / 1000).toFixed(1)}K`;
-  }
-
-  return `₹${Math.round(value).toLocaleString("en-IN")}`;
-}
-
-function formatCompactCurrency(value: number) {
-  if (!value || Number.isNaN(value)) {
-    return "₹0";
-  }
-
-  if (value >= 10000000) {
-    return `₹${(value / 10000000).toFixed(1)}Cr`;
-  }
-
-  if (value >= 100000) {
-    return `₹${(value / 100000).toFixed(0)}L`;
-  }
-
-  if (value >= 1000) {
-    return `₹${(value / 1000).toFixed(0)}K`;
-  }
-
-  return `₹${Math.round(value).toLocaleString("en-IN")}`;
-}
+/* Both of these used to abbreviate - "₹80.0K", "₹2.4 L" - which rounded
+   the figure away. Written in full now, from the one place that decides
+   how a rupee figure reads. The two names are kept because the call sites
+   distinguish a card from a chart label, not because they differ. */
+const formatCurrency = formatRupees;
+const formatCompactCurrency = formatRupees;
 
 function getLeadValue(lead: DashboardLead) {
   if (typeof lead.revenue === "number") {
