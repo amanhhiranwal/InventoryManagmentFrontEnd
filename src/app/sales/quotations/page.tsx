@@ -41,6 +41,11 @@ import {
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
 import { sellingPriceFor } from "@/features/pricing/lineMath";
+import {
+  describeRate,
+  useWarrantyTerms,
+  type WarrantyTermOption,
+} from "@/features/pricing/warrantyTerms";
 import RichTextEditor, { textToHtml } from "@/components/crm/RichTextEditor";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
@@ -136,6 +141,9 @@ interface LineItem {
   unitPrice: number;
   discount: number;
   tax: number;
+  /** The warranty term quoted on this line, by name. What it costs is
+      decided by Masters and applied on the server, never here. */
+  warrantyTerm: string;
 }
 
 interface AddressState {
@@ -533,6 +541,11 @@ export default function QuotationPage() {
   const [productSearch, setProductSearch] = useState("");
   const [productCategory, setProductCategory] = useState("All");
   const [picked, setPicked] = useState<LineItem[]>([]);
+
+  /* Offered against each line. Only the choice travels with the document;
+     what the cover costs is settled on the server against Masters. */
+  const { terms: warrantyTerms, standard: defaultWarrantyTerm } =
+    useWarrantyTerms();
 
   /* ---- send dialog ---- */
   const [sendTarget, setSendTarget] = useState<QuotationModel | null>(null);
@@ -992,6 +1005,9 @@ export default function QuotationPage() {
             unitPrice: Number(item.unit_price) || 0,
             discount: Number(item.discount) || 0,
             tax: Number(item.tax) || 0,
+            /* The term the document was saved quoting, kept as it stands.
+               An empty one falls back to the standard term. */
+            warrantyTerm: item.warranty_term || "",
           })),
         );
 
@@ -1130,6 +1146,7 @@ export default function QuotationPage() {
         unitPrice: num("unit_price", "unitPrice", "price"),
         discount: num("discount"),
         tax: num("tax", "tax_rate"),
+        warrantyTerm: text("warranty_term"),
       };
     });
 
@@ -1222,6 +1239,7 @@ export default function QuotationPage() {
       unit_price: item.unitPrice,
       discount: item.discount,
       tax: item.tax,
+      warranty_term: item.warrantyTerm,
     })),
 
     discount_mode: discountMode,
@@ -1434,6 +1452,9 @@ export default function QuotationPage() {
           unitPrice: rateFor(product, priceBasis),
           discount: 0,
           tax: 18,
+          /* The standard term, which is included in the price. A line
+             always starts on the cover the customer gets anyway. */
+          warrantyTerm: defaultWarrantyTerm,
         },
       ];
     });
@@ -1796,6 +1817,7 @@ export default function QuotationPage() {
                       <Th>Qty</Th>
                       <Th>Discount</Th>
                       <Th>Tax</Th>
+                      <Th>Warranty</Th>
                       <Th>Unit Price</Th>
                       <Th>Selling Price</Th>
                       <Th />
@@ -1806,7 +1828,7 @@ export default function QuotationPage() {
                     {items.length === 0 && (
                       <tr>
                         <td
-                          colSpan={9}
+                          colSpan={10}
                           className="px-4 py-10 text-center text-xs text-slate-400"
                         >
                           No products added yet. Use Add Product to build the
@@ -1959,6 +1981,38 @@ export default function QuotationPage() {
                             ) : (
                               <span className="text-[11px] text-slate-600 dark:text-slate-300">
                                 {item.tax} %
+                              </span>
+                            )}
+                          </td>
+
+                          {/* The cover quoted, and nothing about what it
+                              costs: that is settled on the server from
+                              Masters, so it cannot be retyped here. */}
+                          <td className="px-4 py-3">
+                            {editing ? (
+                              <select
+                                value={item.warrantyTerm}
+                                aria-label={`Warranty for ${item.model}`}
+                                onChange={(event) =>
+                                  updateItem(item.key, {
+                                    warrantyTerm: event.target.value,
+                                  })
+                                }
+                                className="h-8 w-28 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                              >
+                                {warrantyTerms.length === 0 && (
+                                  <option value="">Standard</option>
+                                )}
+
+                                {warrantyTerms.map((term) => (
+                                  <option key={term.id} value={term.name}>
+                                    {term.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-[11px] text-slate-600 dark:text-slate-300">
+                                {item.warrantyTerm || "Standard"}
                               </span>
                             )}
                           </td>
@@ -2309,6 +2363,7 @@ export default function QuotationPage() {
             onUpdate={updatePicked}
             onClose={() => setShowProductModal(false)}
             onConfirm={confirmProducts}
+            warrantyTerms={warrantyTerms}
           />
         )}
       </div>
@@ -3185,9 +3240,13 @@ function ProductPickerModal({
   onUpdate,
   onClose,
   onConfirm,
+  warrantyTerms,
 }: {
   products: CatalogProduct[];
   picked: LineItem[];
+  /** Offered against each picked line. What a term costs is settled on
+      the server, so only the choice is made here. */
+  warrantyTerms: WarrantyTermOption[];
   /** Which price list to show, so the figure in the picker is the one the
       line will actually take. */
   priceBasis: PriceBasis;
@@ -3447,6 +3506,35 @@ function ProductPickerModal({
                         ariaLabel={`Discount for ${item.model}`}
                         onChange={(discount) => onUpdate(item.key, { discount })}
                       />
+                    </div>
+
+                    <div className="col-span-4">
+                      <label className="mb-1 block text-[9px] text-slate-500">
+                        Warranty
+                      </label>
+
+                      {/* The cover quoted on this line. The price of it is
+                          settled on the server from Masters, so the figure
+                          beside each option is a statement of the rate
+                          rather than something typed here. */}
+                      <select
+                        value={item.warrantyTerm}
+                        onChange={(event) =>
+                          onUpdate(item.key, { warrantyTerm: event.target.value })
+                        }
+                        aria-label={`Warranty for ${item.model}`}
+                        className={CELL_INPUT}
+                      >
+                        {warrantyTerms.length === 0 && (
+                          <option value="">Standard</option>
+                        )}
+
+                        {warrantyTerms.map((term) => (
+                          <option key={term.id} value={term.name}>
+                            {term.name} - {describeRate(term)}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <div>
