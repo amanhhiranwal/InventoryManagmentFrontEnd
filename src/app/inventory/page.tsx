@@ -22,6 +22,10 @@ import Switch from "@/components/ui/Switch";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 import {
+  describeRate,
+  useWarrantyTerms,
+} from "@/features/pricing/warrantyTerms";
+import {
   getInventoryItemsApi,
   createInventoryItemApi,
   deleteInventoryItemApi,
@@ -43,7 +47,8 @@ import {
   FiPrinter,
   FiUploadCloud,
   FiImage,
-  FiX
+  FiX,
+  FiShield,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 
@@ -73,6 +78,10 @@ const INVENTORY_COLUMNS: ExportColumn<InventoryItem>[] = [
 
 export default function InventoryPage() {
   const { addToast } = useUIStore();
+
+  /* Stated on the product form, read-only: what cover costs is set in
+     Masters and applied on the server. */
+  const { terms: warrantyTerms } = useWarrantyTerms();
 
   const [productTypes, setProductTypes] = useState<ProductTypeModel[]>([]);
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -1240,6 +1249,55 @@ export default function InventoryPage() {
                 value={hsnCode}
                 onChange={(e) => setHsnCode(e.target.value)}
               />
+
+              {/* Warranty is a commercial decision taken for the whole
+                  catalogue at once, not per product, so it is stated here
+                  and set in Masters. Shown rather than hidden because the
+                  person pricing a product needs to know what cover goes
+                  with it; read-only because a product page is the wrong
+                  place to change what cover costs across every quotation. */}
+              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-[#0d2336] dark:bg-[#071929]/40">
+                <div className="mb-2 flex items-center gap-1.5">
+                  <FiShield className="text-slate-400" size={13} />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Warranty Terms
+                  </span>
+                </div>
+
+                {warrantyTerms.length === 0 ? (
+                  <p className="text-[11px] text-slate-400">
+                    None set up yet.
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {warrantyTerms.map((term) => (
+                      <li
+                        key={term.id}
+                        className="flex items-center justify-between text-[11px]"
+                      >
+                        <span className="text-slate-600 dark:text-slate-300">
+                          {term.name}
+                          {term.is_default && (
+                            <span className="ml-1.5 text-[10px] text-emerald-600">
+                              standard
+                            </span>
+                          )}
+                        </span>
+
+                        <span className="font-medium text-slate-500">
+                          {describeRate(term)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <p className="mt-2 text-[10px] leading-snug text-slate-400">
+                  Offered against every line on a proposal and applied to the
+                  selling price when it is saved. Change these in
+                  Masters &rsaquo; Warranty Terms.
+                </p>
+              </div>
 
               {/* DYNAMIC FORM SECTION */}
               <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">

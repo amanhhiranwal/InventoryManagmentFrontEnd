@@ -3267,7 +3267,7 @@ function ProductPickerModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-5">
-      <div className="flex h-[590px] w-full max-w-[780px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#051422]">
+      <div className="flex h-[640px] w-full max-w-[940px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#051422]">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5 dark:border-[#17304a]">
           <h2 className="text-sm font-semibold text-slate-800 dark:text-white">
             Add Products to Order
@@ -3317,7 +3317,7 @@ function ProductPickerModal({
           </div>
         </div>
 
-        <div className="grid flex-1 grid-cols-2 gap-5 overflow-hidden px-5 py-4">
+        <div className="grid flex-1 grid-cols-[300px_minmax(0,1fr)] gap-5 overflow-hidden px-5 py-4">
           <div className="space-y-2 overflow-y-auto pr-1">
             {products.map((product) => {
               const checked = picked.some((item) => item.productId === product.id);
@@ -3468,7 +3468,7 @@ function ProductPickerModal({
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-4 gap-2">
+                  <div className="mt-3 grid grid-cols-5 gap-2">
                     <div>
                       <label className="mb-1 block text-[9px] text-slate-500">
                         Unit Price (₹)
@@ -3488,6 +3488,7 @@ function ProductPickerModal({
                       {/* The other way of saying the discount: type what the
                           line sells at and the percentage follows. */}
                       <LineSellingPriceInput
+                        fill
                         unitPrice={item.unitPrice}
                         discount={item.discount}
                         ariaLabel={`Selling price for ${item.model}`}
@@ -3501,6 +3502,7 @@ function ProductPickerModal({
                       </label>
 
                       <LineDiscountInput
+                        fill
                         unitPrice={item.unitPrice}
                         discount={item.discount}
                         ariaLabel={`Discount for ${item.model}`}
@@ -3508,7 +3510,7 @@ function ProductPickerModal({
                       />
                     </div>
 
-                    <div className="col-span-4">
+                    <div>
                       <label className="mb-1 block text-[9px] text-slate-500">
                         Warranty
                       </label>

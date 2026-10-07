@@ -21,11 +21,13 @@ import {
  * cursor, and goes back to following the stored figure once focus leaves.
  */
 
-/* A rupee figure is six or seven characters. Letting the field fill its
-   column made "82,000" look like it was waiting for a paragraph, which is
-   the same reason the percentage fields beside it are fixed at w-14. */
+/* A rupee figure is six or seven characters. In a table, letting the field
+   fill its column made "82,000" look like it was waiting for a paragraph,
+   which is the same reason the percentage fields beside it are fixed at
+   w-14. In a form row of equal columns the opposite is true: a fixed width
+   leaves a gap beside every box, so `fill` lets the field take its column. */
 const FIELD =
-  "h-8 w-24 rounded-md border border-slate-200 bg-white px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
+  "h-8 rounded-md border border-slate-200 bg-white px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
 
 export function LineSellingPriceInput({
   unitPrice,
@@ -33,6 +35,7 @@ export function LineSellingPriceInput({
   onChange,
   ariaLabel,
   disabled,
+  fill,
 }: {
   unitPrice: number;
   discount: number;
@@ -40,6 +43,8 @@ export function LineSellingPriceInput({
   onChange: (discount: number) => void;
   ariaLabel?: string;
   disabled?: boolean;
+  /** Take the whole column, for a form row rather than a table cell. */
+  fill?: boolean;
 }) {
   const settled = sellingPriceFor(unitPrice, discount);
 
@@ -66,7 +71,7 @@ export function LineSellingPriceInput({
         onChange(discountPercentFor(unitPrice, parseAmount(event.target.value)));
       }}
       onBlur={() => setEditing(false)}
-      className={`${FIELD} disabled:cursor-not-allowed disabled:bg-slate-50 dark:disabled:bg-[#0b2034]`}
+      className={`${FIELD} ${fill ? "w-full" : "w-24"} disabled:cursor-not-allowed disabled:bg-slate-50 dark:disabled:bg-[#0b2034]`}
     />
   );
 }
@@ -77,12 +82,15 @@ export function LineDiscountInput({
   onChange,
   ariaLabel,
   disabled,
+  fill,
 }: {
   unitPrice: number;
   discount: number;
   onChange: (discount: number) => void;
   ariaLabel?: string;
   disabled?: boolean;
+  /** Take the whole column, for a form row rather than a table cell. */
+  fill?: boolean;
 }) {
   /* Which way the person is saying it. The stored figure is a percentage
      either way; this only decides what the box shows and how it reads
@@ -100,7 +108,9 @@ export function LineDiscountInput({
   }, [settled, editing]);
 
   return (
-    <div className="flex h-8 w-24 items-center overflow-hidden rounded-md border border-slate-200 bg-white transition focus-within:border-[#233353] dark:border-[#17304a] dark:bg-[#071929]">
+    <div
+      className={`flex h-8 ${fill ? "w-full" : "w-24"} items-center overflow-hidden rounded-md border border-slate-200 bg-white transition focus-within:border-[#233353] dark:border-[#17304a] dark:bg-[#071929]`}
+    >
       <input
         type="text"
         inputMode="decimal"

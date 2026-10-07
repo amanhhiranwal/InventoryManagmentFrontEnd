@@ -22,6 +22,10 @@ import {
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
 import {
+  describeRate,
+  useWarrantyTerms,
+} from "@/features/pricing/warrantyTerms";
+import {
   getNextOrderNumberApi,
   SALES_ORDER_STATUS,
   SALES_ORDER_STATUS_LABEL,
@@ -209,6 +213,9 @@ interface SelectedProduct {
   quantity: number;
   discount: number;
   tax: number;
+  /** The warranty term quoted on this line, by name. What it costs is
+      decided by Masters and applied on the server, never here. */
+  warrantyTerm: string;
 }
 
 /* =========================================================
@@ -436,6 +443,11 @@ export default function OrdersListPage() {
   /* The rate was a module constant, so every order was taxed at 18% with no
      way to quote an exempt supply or a 28% line. */
   const [gstPercent, setGstPercent] = useState(ORDER_GST_PERCENT);
+
+  /* Offered against each line. Only the choice travels with the document;
+     what the cover costs is settled on the server against Masters. */
+  const { terms: warrantyTerms, standard: defaultWarrantyTerm } =
+    useWarrantyTerms();
 
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>(
     [],
@@ -1047,6 +1059,7 @@ export default function OrdersListPage() {
               quantity: Number(item.quantity_case ?? item.qty) || 1,
               discount: Number(item.discount) || 0,
               tax: Number(item.tax_rate) || 0,
+              warrantyTerm: item.warranty_term || "",
             };
           }),
         );
@@ -1410,6 +1423,8 @@ export default function OrdersListPage() {
               quantity: Number(item.quantity) || 1,
               discount: Number(item.discount) || 0,
               tax: Number(item.tax ?? quotation.gst_percent) || 0,
+              /* Whatever cover the proposal quoted comes across with it. */
+              warrantyTerm: item.warranty_term || "",
             };
           }),
         );
@@ -1520,14 +1535,19 @@ export default function OrdersListPage() {
           quantity: 1,
           discount: 0,
           tax: 18,
+          /* The standard term, which is included in the price. */
+          warrantyTerm: defaultWarrantyTerm,
         },
       ];
     });
   };
 
+  /** Fields that hold text rather than a number, and so are not floored. */
+  const TEXT_FIELDS = ["hsn", "warrantyTerm"] as const;
+
   const updateSelectedProduct = (
     id: string,
-    field: "quantity" | "discount" | "tax" | "hsn",
+    field: "quantity" | "discount" | "tax" | "hsn" | "warrantyTerm",
     value: number | string,
   ) => {
     setSelectedProducts((current) =>
@@ -1535,10 +1555,11 @@ export default function OrdersListPage() {
         item.id === id
           ? {
               ...item,
-              /* HSN is a code, not a quantity: it is kept as typed rather
-                 than floored at zero. */
-              [field]:
-                field === "hsn" ? String(value) : Math.max(0, Number(value)),
+              /* An HSN is a code and a warranty term is a name: both are
+                 kept as typed rather than floored at zero. */
+              [field]: (TEXT_FIELDS as readonly string[]).includes(field)
+                ? String(value)
+                : Math.max(0, Number(value)),
             }
           : item,
       ),
@@ -1640,6 +1661,7 @@ export default function OrdersListPage() {
           price: item.price,
           discount: item.discount,
           tax_rate: item.tax,
+          warranty_term: item.warrantyTerm,
         })),
 
         total_amount: subtotal,
@@ -2546,6 +2568,10 @@ export default function OrdersListPage() {
                         </th>
 
                         <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
+                          Warranty
+                        </th>
+
+                        <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
                           Unit Price
                         </th>
 
@@ -2563,7 +2589,7 @@ export default function OrdersListPage() {
                       {selectedProducts.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={8}
+                            colSpan={9}
                             className="py-12 text-center text-xs text-slate-400"
                           >
                             No products added. Click{" "}
@@ -2661,6 +2687,34 @@ export default function OrdersListPage() {
                                   updateSelectedProduct(item.id, "tax", next)
                                 }
                               />
+                            </td>
+
+                            {/* The cover quoted, and nothing about what it
+                                costs: that is settled on the server from
+                                Masters, so it cannot be retyped here. */}
+                            <td className="px-3 py-3">
+                              <select
+                                value={item.warrantyTerm}
+                                aria-label={`Warranty for ${item.name}`}
+                                onChange={(event) =>
+                                  updateSelectedProduct(
+                                    item.id,
+                                    "warrantyTerm",
+                                    event.target.value,
+                                  )
+                                }
+                                className="h-8 w-28 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                              >
+                                {warrantyTerms.length === 0 && (
+                                  <option value="">Standard</option>
+                                )}
+
+                                {warrantyTerms.map((term) => (
+                                  <option key={term.id} value={term.name}>
+                                    {term.name}
+                                  </option>
+                                ))}
+                              </select>
                             </td>
 
                             <td className="px-3 py-3 text-xs text-slate-700">
@@ -3517,6 +3571,35 @@ export default function OrdersListPage() {
                                   )
                                 }
                               />
+                            </div>
+
+                            <div className="col-span-4">
+                              <label className="block text-[9px] text-slate-500 mb-1">
+                                Warranty
+                              </label>
+
+                              <select
+                                value={item.warrantyTerm}
+                                aria-label={`Warranty for ${item.name}`}
+                                onChange={(e) =>
+                                  updateSelectedProduct(
+                                    item.id,
+                                    "warrantyTerm",
+                                    e.target.value,
+                                  )
+                                }
+                                className="w-full h-9 rounded-md border border-slate-200 px-2 text-xs"
+                              >
+                                {warrantyTerms.length === 0 && (
+                                  <option value="">Standard</option>
+                                )}
+
+                                {warrantyTerms.map((term) => (
+                                  <option key={term.id} value={term.name}>
+                                    {term.name} - {describeRate(term)}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
 
                             <div>
