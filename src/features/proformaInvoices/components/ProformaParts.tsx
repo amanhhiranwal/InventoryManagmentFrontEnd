@@ -1242,7 +1242,7 @@ export function ProductPickerModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-5">
-      <div className="flex h-[600px] max-h-[92vh] w-full max-w-[780px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#051422]">
+      <div className="flex h-[640px] max-h-[92vh] w-full max-w-[940px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#051422]">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5 dark:border-[#17304a]">
           <h2 className="text-sm font-semibold text-slate-800 dark:text-white">
             Add Products to Order
@@ -1287,7 +1287,7 @@ export function ProductPickerModal({
           </div>
         </div>
 
-        <div className="grid flex-1 grid-cols-1 gap-5 overflow-hidden px-5 py-4 md:grid-cols-2">
+        <div className="grid flex-1 grid-cols-1 gap-5 overflow-hidden px-5 py-4 md:grid-cols-[300px_minmax(0,1fr)]">
           <div className="space-y-2 overflow-y-auto pr-1">
             {products.map((product) => {
               const checked = selected.some((line) => line.id === product.id);

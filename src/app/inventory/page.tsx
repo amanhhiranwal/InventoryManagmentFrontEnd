@@ -25,6 +25,8 @@ import {
   useWarrantyTerms,
   type ProductWarrantyRates,
 } from "@/features/pricing/warrantyTerms";
+import WarrantyRatesPanel from "@/features/pricing/WarrantyRatesPanel";
+import { useAuthStore } from "@/features/auth/store/auth.store";
 import {
   getInventoryItemsApi,
   createInventoryItemApi,
@@ -48,7 +50,6 @@ import {
   FiUploadCloud,
   FiImage,
   FiX,
-  FiShield,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 
@@ -80,7 +81,18 @@ export default function InventoryPage() {
   const { addToast } = useUIStore();
 
   /* The lengths come from Masters; what each costs on this product is
-     held here and saved onto the product record. */
+     held here and saved onto the product record.
+
+     Only a super admin may move those figures. The warehouse maintains
+     products - counts, codes, case sizes - and what cover costs is a
+     commercial decision that happens to live on the same record, so it is
+     shown to everyone and editable by the people who hold Masters. The
+     API enforces the same rule; this only keeps the screen honest about
+     it. */
+  const superAdmin = useAuthStore(
+    (state) => state.user?.is_super_admin === true,
+  );
+
   const { terms: warrantyTerms } = useWarrantyTerms();
 
   const [warrantyRates, setWarrantyRates] = useState<ProductWarrantyRates>({});
@@ -1284,90 +1296,12 @@ export default function InventoryPage() {
                 onChange={(e) => setHsnCode(e.target.value)}
               />
 
-              {/* What extending the cover costs, for this product. The
-                  lengths are a master - every document offers the same
-                  three - but the price of them is not: five years on a
-                  panel and five years on a camera are different
-                  undertakings, so the figure belongs here.
-
-                  The standard term is included in the price and takes no
-                  rate. A term left blank is not offered on this product. */}
-              <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-[#0d2336] dark:bg-[#071929]/40">
-                <div className="mb-2 flex items-center gap-1.5">
-                  <FiShield className="text-slate-400" size={13} />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Warranty Rates
-                  </span>
-                </div>
-
-                {warrantyTerms.length === 0 ? (
-                  <p className="text-[11px] text-slate-400">
-                    No warranty terms set up yet. Add them under Masters
-                    &rsaquo; Warranty Terms.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {warrantyTerms.map((term) => (
-                      <div
-                        key={term.id}
-                        className="flex items-center justify-between gap-2"
-                      >
-                        <span className="text-[11px] text-slate-600 dark:text-slate-300">
-                          {term.name}
-                          {term.is_default && (
-                            <span className="ml-1.5 text-[10px] text-emerald-600">
-                              standard
-                            </span>
-                          )}
-                        </span>
-
-                        {term.is_default ? (
-                          <span className="text-[11px] text-slate-400">
-                            Included
-                          </span>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              placeholder="0"
-                              aria-label={`${term.name} rate`}
-                              value={warrantyRates[term.name]?.rate ?? ""}
-                              onChange={(e) =>
-                                setWarrantyRate(term.name, {
-                                  rate: e.target.value,
-                                })
-                              }
-                              className="h-8 w-24 rounded-md border border-slate-200 bg-white px-2 text-right text-[11px] outline-none focus:border-[#233353] dark:border-[#0d2336] dark:bg-[#071929] dark:text-white"
-                            />
-
-                            <select
-                              aria-label={`${term.name} rate unit`}
-                              value={warrantyRates[term.name]?.mode || "PERCENT"}
-                              onChange={(e) =>
-                                setWarrantyRate(term.name, {
-                                  mode: e.target.value,
-                                })
-                              }
-                              className="h-8 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] outline-none focus:border-[#233353] dark:border-[#0d2336] dark:bg-[#071929] dark:text-white"
-                            >
-                              <option value="PERCENT">%</option>
-                              <option value="AMOUNT">₹/unit</option>
-                            </select>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <p className="mt-2 text-[10px] leading-snug text-slate-400">
-                  Added to the selling price when the term is quoted on a
-                  proposal, order or invoice. Leave one blank to not offer it
-                  on this product.
-                </p>
-              </div>
+              <WarrantyRatesPanel
+                terms={warrantyTerms}
+                rates={warrantyRates}
+                onChange={setWarrantyRate}
+                editable={superAdmin}
+              />
 
               {/* DYNAMIC FORM SECTION */}
               <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">
@@ -1643,6 +1577,13 @@ export default function InventoryPage() {
                   placeholder="e.g. 8528"
                   value={editHsnCode}
                   onChange={(e) => setEditHsnCode(e.target.value)}
+                />
+
+                <WarrantyRatesPanel
+                  terms={warrantyTerms}
+                  rates={warrantyRates}
+                  onChange={setWarrantyRate}
+                  editable={superAdmin}
                 />
 
                 {/* DYNAMIC FORM SECTION */}

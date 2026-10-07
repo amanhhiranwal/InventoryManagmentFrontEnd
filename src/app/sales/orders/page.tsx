@@ -2725,6 +2725,7 @@ export default function OrdersListPage() {
                                 is meant to see. */}
                             <td className="px-3 py-3">
                               <LineSellingPriceInput
+                                fill
                                 unitPrice={item.price}
                                 discount={item.discount}
                                 ariaLabel={`Selling price for ${item.name}`}
@@ -3286,7 +3287,7 @@ export default function OrdersListPage() {
 
         {showProductModal && (
           <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-5">
-            <div className="w-full max-w-[780px] h-[590px] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col">
+            <div className="w-full max-w-[940px] h-[640px] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col">
               {/* Modal Header */}
 
               <div className="h-14 flex items-center justify-between px-5 border-b border-slate-200">
@@ -3351,7 +3352,7 @@ export default function OrdersListPage() {
 
               {/* Modal Body */}
 
-              <div className="flex-1 grid grid-cols-2 gap-5 px-5 py-4 overflow-hidden">
+              <div className="flex-1 grid grid-cols-[300px_minmax(0,1fr)] gap-5 px-5 py-4 overflow-hidden">
                 {/* Products */}
 
                 <div className="overflow-y-auto pr-1">
@@ -3519,7 +3520,7 @@ export default function OrdersListPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-4 gap-2 mt-3">
+                          <div className="grid grid-cols-5 gap-2 mt-3">
                             <div>
                               <label className="block text-[9px] text-slate-500 mb-1">
                                 Unit Price (₹)
@@ -3558,6 +3559,7 @@ export default function OrdersListPage() {
                               </label>
 
                               <LineDiscountInput
+                                fill
                                 unitPrice={item.price}
                                 discount={item.discount}
                                 ariaLabel={`Discount for ${item.name}`}
@@ -3571,7 +3573,7 @@ export default function OrdersListPage() {
                               />
                             </div>
 
-                            <div className="col-span-4">
+                            <div>
                               <label className="block text-[9px] text-slate-500 mb-1">
                                 Warranty
                               </label>
