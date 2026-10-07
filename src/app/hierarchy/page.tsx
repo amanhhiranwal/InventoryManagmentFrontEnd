@@ -20,7 +20,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FiChevronRight, FiUser, FiUsers } from "react-icons/fi";
+import { FiUsers } from "react-icons/fi";
 
 import PageHeader from "@/components/ui/PageHeader";
 import { ListPage, ListToolbar } from "@/components/crm/ListPageShell";
@@ -88,81 +88,73 @@ function subtreeIds(node: Node): Set<string> {
   return ids;
 }
 
+/**
+ * One person, drawn as a card with their reports beneath them.
+ *
+ * Top-down rather than an indented list, because this is read as a shape:
+ * the sketch it comes from is four AVPs side by side under one CEO, and
+ * that is the thing somebody is checking at a glance. An indented list
+ * says the same and shows none of it.
+ *
+ * The connecting lines are borders on spacer divs rather than SVG - the
+ * tree is as wide as it needs to be and scrolls, and borders reflow with
+ * it where drawn coordinates would not.
+ */
 function Branch({
   node,
-  depth,
   editable,
   everyone,
   onReassign,
   saving,
 }: {
   node: Node;
-  depth: number;
   editable: boolean;
   everyone: User[];
   onReassign: (user: User, managerId: string) => void;
   saving: string | null;
 }) {
-  const [open, setOpen] = useState(true);
   const roles = (node.user.role_names || []).join(", ");
+  const children = node.reports;
 
   /* Their own line is not a choice: making somebody report to their own
      report would take the whole branch off the chart. */
   const forbidden = subtreeIds(node);
 
+  const inactive = node.user.is_active === false;
+
   return (
-    <div>
+    <div className="flex flex-col items-center">
       <div
-        className="flex items-center gap-2 border-b border-slate-100 py-2 dark:border-[#0d2336]"
-        style={{ paddingLeft: `${depth * 26}px` }}
+        className={`w-[188px] shrink-0 rounded-xl border bg-white px-3 py-2 text-center shadow-sm dark:bg-[#071929] ${
+          inactive
+            ? "border-dashed border-slate-300 opacity-60 dark:border-[#17304a]"
+            : "border-slate-200 dark:border-[#17304a]"
+        }`}
       >
-        <button
-          type="button"
-          onClick={() => setOpen((previous) => !previous)}
-          aria-label={open ? `Collapse ${fullName(node.user)}` : `Expand ${fullName(node.user)}`}
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 dark:hover:bg-[#0d2336] ${
-            node.reports.length ? "" : "invisible"
-          }`}
-        >
-          <FiChevronRight
-            size={13}
-            className={`transition-transform ${open ? "rotate-90" : ""}`}
-          />
-        </button>
-
-        <FiUser size={13} className="shrink-0 text-slate-400" />
-
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-slate-800 dark:text-white">
+        <p className="truncate text-[12px] font-bold text-slate-800 dark:text-white">
           {fullName(node.user)}
+        </p>
 
-          {roles && (
-            <span className="ml-2 text-[11px] font-normal text-slate-400">
-              {roles}
-            </span>
-          )}
-
-          {node.user.location && (
-            <span className="ml-2 text-[11px] font-normal text-slate-400">
-              · {node.user.location}
-            </span>
-          )}
-        </span>
-
-        {node.reports.length > 0 && (
-          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-[#0d2336]">
-            {node.reports.length}
-          </span>
+        {roles && (
+          <p className="mt-0.5 truncate text-[10px] font-semibold text-[#233353] dark:text-sky-300">
+            {roles}
+          </p>
         )}
 
-        {editable ? (
+        <p className="mt-0.5 truncate text-[10px] text-slate-400">
+          {node.user.location || "—"}
+          {inactive && " · inactive"}
+        </p>
+
+        {editable && (
           <select
             aria-label={`Who ${fullName(node.user)} reports to`}
             disabled={saving === String(node.user.id)}
             value={node.user.reports_to_id ? String(node.user.reports_to_id) : ""}
             onChange={(event) => onReassign(node.user, event.target.value)}
-            className="h-8 w-48 shrink-0 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[#233353] disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+            className="mt-1.5 h-6 w-full rounded border border-slate-200 bg-slate-50 px-1 text-[10px] text-slate-600 outline-none focus:border-[#233353] disabled:opacity-50 dark:border-[#17304a] dark:bg-[#0b2034] dark:text-slate-300"
           >
-            <option value="">— top of the chart —</option>
+            <option value="">— top —</option>
 
             {everyone
               .filter((candidate) => !forbidden.has(String(candidate.id)))
@@ -172,25 +164,54 @@ function Branch({
                 </option>
               ))}
           </select>
-        ) : (
-          <span className="w-48 shrink-0 text-right text-[11px] text-slate-400">
-            {node.user.reports_to_name || "—"}
-          </span>
         )}
       </div>
 
-      {open &&
-        node.reports.map((child) => (
-          <Branch
-            key={String(child.user.id)}
-            node={child}
-            depth={depth + 1}
-            editable={editable}
-            everyone={everyone}
-            onReassign={onReassign}
-            saving={saving}
-          />
-        ))}
+      {children.length > 0 && (
+        <>
+          {/* Down out of the parent. */}
+          <div className="h-5 w-px bg-slate-300 dark:bg-[#17304a]" />
+
+          <div className="flex items-start">
+            {children.map((child, index) => {
+              const first = index === 0;
+              const last = index === children.length - 1;
+              const only = children.length === 1;
+
+              return (
+                <div key={String(child.user.id)} className="flex flex-col items-center">
+                  {/* The horizontal rail: half-width stubs on the outer
+                      children so it starts and stops at the cards rather
+                      than hanging past them. */}
+                  <div className="flex h-5 w-full items-start">
+                    <div
+                      className={`h-px flex-1 ${
+                        !only && !first ? "bg-slate-300 dark:bg-[#17304a]" : ""
+                      }`}
+                    />
+                    <div className="h-5 w-px bg-slate-300 dark:bg-[#17304a]" />
+                    <div
+                      className={`h-px flex-1 ${
+                        !only && !last ? "bg-slate-300 dark:bg-[#17304a]" : ""
+                      }`}
+                    />
+                  </div>
+
+                  <div className="px-2">
+                    <Branch
+                      node={child}
+                      editable={editable}
+                      everyone={everyone}
+                      onReassign={onReassign}
+                      saving={saving}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -301,7 +322,7 @@ export default function HierarchyPage() {
         }
       />
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-[#0d2336] dark:bg-[#051422]">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white p-4 dark:border-[#0d2336] dark:bg-[#051422]">
         {loading ? (
           <p className="py-10 text-center text-xs text-slate-400">
             Loading the chart...
@@ -318,26 +339,22 @@ export default function HierarchyPage() {
           </div>
         ) : (
           <>
-            <div className="mb-1 flex items-center justify-between border-b border-slate-200 pb-2 dark:border-[#17304a]">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Person
-              </span>
-              <span className="w-48 text-right text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Reports to
-              </span>
+            {/* Several roots are normal: anybody whose manager is not on
+                file stands at the top of their own tree rather than
+                vanishing. They sit side by side and the whole thing
+                scrolls, because an org chart is wider than a screen. */}
+            <div className="flex min-w-max items-start gap-10 px-2 pb-2">
+              {tree.map((node) => (
+                <Branch
+                  key={String(node.user.id)}
+                  node={node}
+                  editable={superAdmin}
+                  everyone={users}
+                  onReassign={reassign}
+                  saving={saving}
+                />
+              ))}
             </div>
-
-            {tree.map((node) => (
-              <Branch
-                key={String(node.user.id)}
-                node={node}
-                depth={0}
-                editable={superAdmin}
-                everyone={users}
-                onReassign={reassign}
-                saving={saving}
-              />
-            ))}
           </>
         )}
       </div>
