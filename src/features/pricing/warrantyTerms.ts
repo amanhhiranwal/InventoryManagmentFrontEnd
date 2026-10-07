@@ -68,3 +68,51 @@ export function useWarrantyTerms() {
 
   return { terms, standard, loading };
 }
+
+/** Per-product rates, keyed by SKU then term name. */
+export type WarrantyRatesBySku = Record<string, ProductWarrantyRates>;
+
+/**
+ * What the chosen term adds to one line.
+ *
+ * Mirrors warranty_uplift_for_sku on the server. The server is what
+ * actually charges it; this exists so the running total on screen moves
+ * as the term is picked, instead of the figure only appearing once the
+ * document has been saved and reloaded.
+ */
+export function upliftFor(
+  rates: WarrantyRatesBySku,
+  sku: string | undefined,
+  termName: string | undefined,
+  unitPrice: number,
+  quantity: number,
+): number {
+  const entry = rates[String(sku || "").toUpperCase()]?.[
+    String(termName || "").trim()
+  ];
+
+  if (!entry || !entry.rate) return 0;
+
+  return entry.mode === "AMOUNT"
+    ? entry.rate * (quantity || 0)
+    : ((unitPrice || 0) * (quantity || 0) * entry.rate) / 100;
+}
+
+/** The rate map, fetched once per screen. */
+export function useWarrantyRates() {
+  const [rates, setRates] = useState<WarrantyRatesBySku>({});
+
+  useEffect(() => {
+    api
+      .get("/api/v1/warranty-terms/rates")
+      .then(({ data }) => setRates(data?.data || {}))
+      .catch((error) => {
+        /* The screen still works: the server prices the document either
+           way, the running total simply will not show cover until it is
+           saved. */
+        console.warn("Warranty rates unavailable.", error);
+      });
+  }, []);
+
+  return rates;
+}
