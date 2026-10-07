@@ -2549,6 +2549,10 @@ export default function OrdersListPage() {
                           Unit Price
                         </th>
 
+                        <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
+                          Selling Price
+                        </th>
+
                         {/* The delete column is unlabelled in the design; the
                             bin icon says what it does. */}
                         <th className="w-12 px-3 py-3" />
@@ -2559,7 +2563,7 @@ export default function OrdersListPage() {
                       {selectedProducts.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={8}
                             className="py-12 text-center text-xs text-slate-400"
                           >
                             No products added. Click{" "}
@@ -2661,6 +2665,25 @@ export default function OrdersListPage() {
 
                             <td className="px-3 py-3 text-xs text-slate-700">
                               {money(item.price)}
+                            </td>
+
+                            {/* What the line actually sells at. Typing here
+                                moves the discount rather than the price list,
+                                so the approval chain still sees the lever it
+                                is meant to see. */}
+                            <td className="px-3 py-3">
+                              <LineSellingPriceInput
+                                unitPrice={item.price}
+                                discount={item.discount}
+                                ariaLabel={`Selling price for ${item.name}`}
+                                onChange={(discount) =>
+                                  updateSelectedProduct(
+                                    item.id,
+                                    "discount",
+                                    discount,
+                                  )
+                                }
+                              />
                             </td>
 
                             <td className="px-3 py-3">

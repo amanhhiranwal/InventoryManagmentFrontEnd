@@ -40,6 +40,7 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
+import { sellingPriceFor } from "@/features/pricing/lineMath";
 import RichTextEditor, { textToHtml } from "@/components/crm/RichTextEditor";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
@@ -111,7 +112,6 @@ import {
   FiMail,
   FiMoreVertical,
   FiSend,
-  FiEdit2,
   FiGrid,
   FiBookmark,
   FiMinus,
@@ -1797,6 +1797,7 @@ export default function QuotationPage() {
                       <Th>Discount</Th>
                       <Th>Tax</Th>
                       <Th>Unit Price</Th>
+                      <Th>Selling Price</Th>
                       <Th />
                     </tr>
                   </thead>
@@ -1805,7 +1806,7 @@ export default function QuotationPage() {
                     {items.length === 0 && (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={9}
                           className="px-4 py-10 text-center text-xs text-slate-400"
                         >
                           No products added yet. Use Add Product to build the
@@ -1974,6 +1975,31 @@ export default function QuotationPage() {
                             </span>
                           </td>
 
+                          {/* What the line actually sells at. Typing here
+                              moves the discount rather than the price list,
+                              so the approval chain still sees the lever it
+                              is meant to see. Closed on a transfer price,
+                              for the same reason the discount is. */}
+                          <td className="px-4 py-3">
+                            {editing && priceBasis === PRICE_BASIS.ECP ? (
+                              <LineSellingPriceInput
+                                unitPrice={item.unitPrice}
+                                discount={item.discount}
+                                ariaLabel={`Selling price for ${item.model}`}
+                                onChange={(discount) =>
+                                  updateItem(item.key, { discount })
+                                }
+                              />
+                            ) : (
+                              <span className="text-[11px] text-slate-600 dark:text-slate-300">
+                                {sellingPriceFor(
+                                  item.unitPrice,
+                                  item.discount,
+                                ).toLocaleString("en-IN")}
+                              </span>
+                            )}
+                          </td>
+
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end">
                               <button
@@ -2006,20 +2032,19 @@ export default function QuotationPage() {
                 {/* The design has no summary-level Total Discount or ORC on a
                     quotation: discount is given per line, in the table's own
                     Discount column, and the totals below follow from that. */}
-                {/* Tick to charge for it. Both are optional on a proposal -
-                    a customer collecting their own panels pays no delivery,
-                    and one with their own AV contractor pays no
-                    installation - and an unticked row is plainly not being
-                    charged rather than silently sitting at zero. */}
+                {/* Both are optional on a proposal - a customer collecting
+                    their own panels pays no delivery, and one with their own
+                    AV contractor pays no installation. The box is always
+                    there to type in; the tick decides whether what is typed
+                    reaches the client. */}
                 <SummaryRow
                   label="Freight Charges"
                   name="Freight Charges"
-                  value={
-                    includeFreight ? `+${money(totals.freight)}` : "Not charged"
-                  }
+                  value={money(totals.freight)}
                   include={{
                     checked: includeFreight,
                     onChange: setIncludeFreight,
+                    hint: "Tick to include the freight charges in the email draft and the PDF.",
                   }}
                   edit={{ amount: freight, onChange: setFreight }}
                 />
@@ -2027,14 +2052,11 @@ export default function QuotationPage() {
                 <SummaryRow
                   label="Installation"
                   name="Installation"
-                  value={
-                    includeInstallation
-                      ? `+${money(totals.installation)}`
-                      : "Not charged"
-                  }
+                  value={money(totals.installation)}
                   include={{
                     checked: includeInstallation,
                     onChange: setIncludeInstallation,
+                    hint: "Tick to include the installation charges in the email draft and the PDF.",
                   }}
                   edit={{ amount: installation, onChange: setInstallation }}
                 />
@@ -2893,11 +2915,13 @@ function SummaryRow({
   tone?: "rose";
   strong?: boolean;
   /** A charge the client can be given or not. Omit for a row that is
-      always counted. Unticked, the row is greyed and contributes nothing;
-      the figure is kept, so ticking it back restores what was typed. */
+      always counted. Unticked, the row contributes nothing; the figure is
+      kept, so ticking it back restores what was typed. */
   include?: {
     checked: boolean;
     onChange: (next: boolean) => void;
+    /** Said under the row, so what the tick does is not a guess. */
+    hint?: string;
   };
   /** Omit for a read-only row. */
   edit?: {
@@ -2910,27 +2934,15 @@ function SummaryRow({
     onModeChange?: (next: AmountMode) => void;
   };
 }) {
-  const [editing, setEditing] = useState(false);
-  const rowRef = useRef<HTMLDivElement | null>(null);
-
-  /* Close on a click outside the row. Relying on the control's own blur
-     proved unreliable once the row scrolled out of view, and this matches
-     how the menus elsewhere on these pages close. */
-  useEffect(() => {
-    if (!editing) return;
-
-    function handleOutside(event: MouseEvent) {
-      if (!rowRef.current?.contains(event.target as Node)) setEditing(false);
-    }
-
-    document.addEventListener("mousedown", handleOutside);
-
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [editing]);
+  /* The figure used to hide behind a pencil: the row showed a total, you
+     clicked the pencil, and only then could you type. An amount that is
+     meant to be filled in should be a box you can type in, so an editable
+     row simply is one. */
 
   return (
-    <div ref={rowRef} className="flex items-center justify-end gap-4">
-      <span
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex w-full items-center justify-end gap-4">
+        <span
         className={`flex items-center gap-1.5 text-[11px] ${
           strong
             ? "font-bold text-slate-800 dark:text-white"
@@ -2948,29 +2960,16 @@ function SummaryRow({
         )}
 
         {label}
-
-        {/* Nothing to edit on a charge that is not being given. */}
-        {edit && (!include || include.checked) && (
-          <button
-            type="button"
-            aria-label={`Edit ${name || label}`}
-            onClick={() => setEditing((previous) => !previous)}
-            className="text-slate-400 transition hover:text-slate-700"
-          >
-            <FiEdit2 size={10} />
-          </button>
-        )}
       </span>
 
-      {/* Fixed width: the input replaces the figure without moving it. */}
+      {/* Fixed width, whether it holds a figure or a box to type one in. */}
       <div className="flex w-36 justify-end">
-        {edit && editing && (!include || include.checked) ? (
+        {edit ? (
           edit.unit === "%" ? (
             /* A rate has no rupee alternative, so it gets a plain input
                rather than the ₹ / % selector the charges use. */
             <div className="flex w-full items-center justify-end gap-1">
               <input
-                autoFocus
                 type="text"
                 inputMode="decimal"
                 aria-label={name || label}
@@ -2978,11 +2977,6 @@ function SummaryRow({
                 onChange={(event) =>
                   edit.onChange(Number(event.target.value.replace(/[^\d.]/g, "")) || 0)
                 }
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === "Escape") {
-                    setEditing(false);
-                  }
-                }}
                 className="field-compact h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
               />
 
@@ -2992,13 +2986,11 @@ function SummaryRow({
             <AmountInput
               ariaLabel={name || label}
               width="w-full"
-              autoFocus
               value={edit.amount}
               mode={edit.mode}
               base={edit.base}
               onChange={edit.onChange}
               onModeChange={edit.onModeChange}
-              onDone={() => setEditing(false)}
             />
           )
         ) : (
@@ -3014,7 +3006,16 @@ function SummaryRow({
             {value}
           </span>
         )}
+        </div>
       </div>
+
+      {/* What the tick actually does, rather than leaving it to be found
+          out by sending a proposal without it. */}
+      {include?.hint && (
+        <p className="max-w-[320px] text-right text-[10px] leading-snug text-slate-400">
+          {include.hint}
+        </p>
+      )}
     </div>
   );
 }
