@@ -75,6 +75,7 @@ import {
   FiClipboard,
   FiFolder,
   FiInfo,
+  FiEdit2,
   FiTrash2,
   FiMinus,
   FiBox,
@@ -2865,10 +2866,14 @@ export default function OrdersListPage() {
                       value={`-${money(orderGst)}`}
                       minus
                     />
+                    {/* The ORC used to come off the taxable amount, so this
+                        row only said where it had already gone. It comes off
+                        here now, and shows the figure like every other
+                        deduction. */}
                     <RevenueLine
                       label="Less ORC"
-                      value={`already deducted above`}
-                      muted
+                      value={`-${money(orderOrc)}`}
+                      minus
                     />
 
                     <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 dark:border-[#17304a]">
@@ -4213,10 +4218,23 @@ function OrderSummaryRow({
     onModeChange?: (next: AmountMode) => void;
   };
 }) {
-  /* The figure used to hide behind a pencil: the row showed a total, you
-     clicked the pencil, and only then could you type. An amount meant to
-     be filled in should be a box you can type in, so an editable row
-     simply is one. */
+  const [editing, setEditing] = useState(false);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+
+  /* Close on a click outside the row. Relying on the control's own blur
+     proved unreliable once the row scrolled out of view, and this matches
+     how the menus elsewhere on these pages close. */
+  useEffect(() => {
+    if (!editing) return;
+
+    function handleOutside(event: MouseEvent) {
+      if (!rowRef.current?.contains(event.target as Node)) setEditing(false);
+    }
+
+    document.addEventListener("mousedown", handleOutside);
+
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [editing]);
 
   const valueTone =
     tone === "rose"
@@ -4226,19 +4244,31 @@ function OrderSummaryRow({
         : "text-slate-800 dark:text-slate-200";
 
   return (
-    <div className="flex flex-col gap-1">
+    <div ref={rowRef} className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-3">
         <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
           {label}
+
+          {edit && (
+            <button
+              type="button"
+              aria-label={`Edit ${name || label}`}
+              onClick={() => setEditing((previous) => !previous)}
+              className="text-slate-400 transition hover:text-slate-700"
+            >
+              <FiEdit2 size={10} />
+            </button>
+          )}
         </span>
 
         <div className="flex w-32 justify-end">
-          {edit ? (
+          {edit && editing ? (
             edit.unit === "%" ? (
               /* A rate has no rupee alternative, so it gets a plain input
                  rather than the ₹ / % selector the charges use. */
               <div className="flex w-full items-center justify-end gap-1">
                 <input
+                  autoFocus
                   type="text"
                   inputMode="decimal"
                   aria-label={name || label}
@@ -4248,6 +4278,11 @@ function OrderSummaryRow({
                       Number(event.target.value.replace(/[^\d.]/g, "")) || 0,
                     )
                   }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === "Escape") {
+                      setEditing(false);
+                    }
+                  }}
                   className="field-compact h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-xs text-slate-800 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
                 />
 
@@ -4257,11 +4292,13 @@ function OrderSummaryRow({
               <AmountInput
                 ariaLabel={name || label}
                 width="w-full"
+                autoFocus
                 value={edit.amount}
                 mode={edit.mode}
                 base={edit.base}
                 onChange={edit.onChange}
                 onModeChange={edit.onModeChange}
+                onDone={() => setEditing(false)}
               />
             )
           ) : (

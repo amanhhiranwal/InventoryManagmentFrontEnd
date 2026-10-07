@@ -21,8 +21,11 @@ import {
  * cursor, and goes back to following the stored figure once focus leaves.
  */
 
+/* A rupee figure is six or seven characters. Letting the field fill its
+   column made "82,000" look like it was waiting for a paragraph, which is
+   the same reason the percentage fields beside it are fixed at w-14. */
 const FIELD =
-  "h-8 w-full rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
+  "h-8 w-24 rounded-md border border-slate-200 bg-white px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
 
 export function LineSellingPriceInput({
   unitPrice,
@@ -97,9 +100,7 @@ export function LineDiscountInput({
   }, [settled, editing]);
 
   return (
-    <div
-      className="flex h-8 items-center overflow-hidden rounded-md border border-slate-200 bg-white transition focus-within:border-[#233353] dark:border-[#17304a] dark:bg-[#071929]"
-    >
+    <div className="flex h-8 w-24 items-center overflow-hidden rounded-md border border-slate-200 bg-white transition focus-within:border-[#233353] dark:border-[#17304a] dark:bg-[#071929]">
       <input
         type="text"
         inputMode="decimal"
@@ -121,7 +122,7 @@ export function LineDiscountInput({
           );
         }}
         onBlur={() => setEditing(false)}
-        className="field-compact h-full min-w-0 flex-1 bg-transparent px-2 text-[11px] text-slate-800 outline-none disabled:cursor-not-allowed dark:text-white"
+        className="field-compact h-full min-w-0 flex-1 bg-transparent px-2 text-right text-[11px] text-slate-800 outline-none disabled:cursor-not-allowed dark:text-white"
       />
 
       <select

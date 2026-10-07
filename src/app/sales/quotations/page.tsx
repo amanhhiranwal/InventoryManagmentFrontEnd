@@ -2962,8 +2962,10 @@ function SummaryRow({
         {label}
       </span>
 
-      {/* Fixed width, whether it holds a figure or a box to type one in. */}
-      <div className="flex w-36 justify-end">
+        {/* Fixed width, whether it holds a figure or a box to type one in.
+            The box is sized to the figure rather than to the column - a
+            freight charge is six characters, not a paragraph. */}
+        <div className="flex w-24 justify-end">
         {edit ? (
           edit.unit === "%" ? (
             /* A rate has no rupee alternative, so it gets a plain input
@@ -2985,7 +2987,7 @@ function SummaryRow({
           ) : (
             <AmountInput
               ariaLabel={name || label}
-              width="w-full"
+              width="w-24"
               value={edit.amount}
               mode={edit.mode}
               base={edit.base}
