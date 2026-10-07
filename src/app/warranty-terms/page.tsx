@@ -3,14 +3,14 @@
 /**
  * Warranty Terms master.
  *
- * How long the cover runs, and what extending to it costs. One term is the
- * standard one: it is included in the price and adds nothing, and every
- * line falls back to it when nobody picks another.
+ * How long the cover runs. One term is the standard one: it is the cover
+ * already included in the price, and every line falls back to it when
+ * nobody picks another.
  *
- * The cost is either a percentage of the line or a flat amount per unit,
- * because which one makes sense depends on the product. Whichever it is,
- * it is applied on the server when a document is saved - a salesperson
- * quoting cover cannot retype what cover costs.
+ * What each term costs is not here. Five years on a panel and five years
+ * on a camera are different undertakings, so the rate is held against
+ * each product, on the product record, and applied on the server when a
+ * document is saved.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -23,7 +23,6 @@ import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import api from "@/lib/axios";
-import { formatRupees } from "@/lib/money";
 import { useUIStore } from "@/lib/store/ui.store";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 
@@ -31,23 +30,9 @@ export interface WarrantyTerm {
   id: string;
   name: string;
   years: number;
-  rate_mode: "PERCENT" | "AMOUNT";
-  rate: number;
   is_default: boolean;
   description?: string | null;
   is_active: boolean;
-}
-
-/** "5% of the line" / "₹2,500 a unit" / "Included". */
-export function describeWarrantyRate(term: {
-  rate: number;
-  rate_mode: string;
-}): string {
-  if (!term.rate) return "Included";
-
-  return term.rate_mode === "AMOUNT"
-    ? `${formatRupees(term.rate)} a unit`
-    : `${term.rate}% of the line`;
 }
 
 export default function WarrantyTermsPage() {
@@ -69,8 +54,6 @@ export default function WarrantyTermsPage() {
 
   const [name, setName] = useState("");
   const [years, setYears] = useState("");
-  const [rate, setRate] = useState("");
-  const [rateMode, setRateMode] = useState<"PERCENT" | "AMOUNT">("PERCENT");
   const [isDefault, setIsDefault] = useState(false);
   const [description, setDescription] = useState("");
 
@@ -95,8 +78,6 @@ export default function WarrantyTermsPage() {
     setEditing(null);
     setName("");
     setYears("");
-    setRate("");
-    setRateMode("PERCENT");
     setIsDefault(false);
     setDescription("");
     setShowForm(true);
@@ -106,8 +87,6 @@ export default function WarrantyTermsPage() {
     setEditing(term);
     setName(term.name || "");
     setYears(String(term.years ?? ""));
-    setRate(String(term.rate ?? ""));
-    setRateMode(term.rate_mode === "AMOUNT" ? "AMOUNT" : "PERCENT");
     setIsDefault(term.is_default);
     setDescription(term.description || "");
     setShowForm(true);
@@ -121,19 +100,12 @@ export default function WarrantyTermsPage() {
       return;
     }
 
-    if (Number(rate) < 0) {
-      addToast("A warranty rate cannot be negative.", "warning");
-      return;
-    }
-
     setSubmitting(true);
 
     try {
       const payload = {
         name: name.trim(),
         years: Number(years) || 0,
-        rate: Number(rate) || 0,
-        rate_mode: rateMode,
         is_default: isDefault,
         description: description.trim() || undefined,
       };
@@ -190,7 +162,7 @@ export default function WarrantyTermsPage() {
     <ListPage>
       <PageHeader
         title="Warranty Terms Master"
-        description="How long the cover runs and what extending to it costs. Offered against every product line on a proposal, and applied to the selling price when it is saved."
+        description="How long the cover runs. Offered against every product line on a proposal; what each term costs is set per product, on the product."
       />
 
       <ListToolbar
@@ -207,7 +179,7 @@ export default function WarrantyTermsPage() {
       />
 
       <Table
-        headers={["Term", "Years", "Costs", "Description", "Actions"]}
+        headers={["Term", "Years", "Priced", "Description", "Actions"]}
         loading={loading}
       >
         {filtered.map((row) => (
@@ -230,8 +202,8 @@ export default function WarrantyTermsPage() {
 
             <td className="px-5 py-4 text-sm text-slate-500">{row.years}</td>
 
-            <td className="px-5 py-4 text-sm text-slate-600 dark:text-slate-300">
-              {describeWarrantyRate(row)}
+            <td className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
+              {row.is_default ? "Included in the price" : "On each product"}
             </td>
 
             <td className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
@@ -291,39 +263,6 @@ export default function WarrantyTermsPage() {
             value={years}
             onChange={(event) => setYears(event.target.value)}
           />
-
-          <div>
-            <label className="mb-1.5 block text-xs text-[#777777] dark:text-slate-400">
-              What extending to it costs
-            </label>
-
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                placeholder="0"
-                value={rate}
-                onChange={(event) => setRate(event.target.value)}
-              />
-
-              <select
-                aria-label="Warranty rate unit"
-                value={rateMode}
-                onChange={(event) =>
-                  setRateMode(event.target.value as "PERCENT" | "AMOUNT")
-                }
-                className="h-[42px] shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-primary dark:border-[#0d2336] dark:bg-[#071929] dark:text-white"
-              >
-                <option value="PERCENT">% of the line</option>
-                <option value="AMOUNT">₹ a unit</option>
-              </select>
-            </div>
-
-            <p className="mt-1 text-[11px] text-slate-400">
-              Leave it at 0 for cover that is included in the price.
-            </p>
-          </div>
 
           <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input

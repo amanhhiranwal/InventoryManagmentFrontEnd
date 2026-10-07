@@ -103,6 +103,10 @@ export interface ProformaInvoiceItem {
   /** Carried from the product, through the quotation and the order. A GST
       document has to print the code the goods were classified under. */
   hsn?: string;
+  /** The warranty term quoted on this line, by name. */
+  warranty_term?: string;
+  /** What that cover added, as the server worked it out. Read-only. */
+  warranty_uplift?: number;
 }
 
 export interface ProformaAddress {

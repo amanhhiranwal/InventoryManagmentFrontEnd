@@ -15,7 +15,6 @@ import { useUIStore } from "@/lib/store/ui.store";
 import { parseAmount } from "@/components/crm/AmountInput";
 import { formatRupees } from "@/lib/money";
 import {
-  describeRate,
   useWarrantyTerms,
   type WarrantyTermOption,
 } from "@/features/pricing/warrantyTerms";
@@ -4081,8 +4080,9 @@ function NewOpportunityPage({
                             </td>
 
                             {/* The cover quoted, and nothing about what it
-                                costs: that is settled on the server from
-                                Masters, so it cannot be retyped here. */}
+                                costs: that is held against the product and
+                                applied on the server, so it cannot be
+                                retyped here. */}
                             <td className="px-2 py-2.5">
                               <select
                                 value={item.warrantyTerm}
@@ -4695,8 +4695,8 @@ function OpportunityProductModal({
 
                       {/* The cover quoted on this line. What it costs is
                           settled on the server from Masters, so the figure
-                          beside each option states the rate rather than
-                          being something typed here. */}
+                          cannot be typed here. The rate is not named on
+                          the option because it differs by product. */}
                       <select
                         value={item.warrantyTerm}
                         aria-label={`Warranty for ${item.model}`}
@@ -4711,7 +4711,7 @@ function OpportunityProductModal({
 
                         {warrantyTerms.map((term) => (
                           <option key={term.id} value={term.name}>
-                            {term.name} - {describeRate(term)}
+                            {term.name}
                           </option>
                         ))}
                       </select>

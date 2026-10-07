@@ -42,7 +42,6 @@ import {
 } from "@/features/pricing/LinePriceInputs";
 import { sellingPriceFor } from "@/features/pricing/lineMath";
 import {
-  describeRate,
   useWarrantyTerms,
   type WarrantyTermOption,
 } from "@/features/pricing/warrantyTerms";
@@ -3516,9 +3515,8 @@ function ProductPickerModal({
                       </label>
 
                       {/* The cover quoted on this line. The price of it is
-                          settled on the server from Masters, so the figure
-                          beside each option is a statement of the rate
-                          rather than something typed here. */}
+                          held against the product and applied on the
+                          server, so it cannot be typed here. */}
                       <select
                         value={item.warrantyTerm}
                         onChange={(event) =>
@@ -3533,7 +3531,7 @@ function ProductPickerModal({
 
                         {warrantyTerms.map((term) => (
                           <option key={term.id} value={term.name}>
-                            {term.name} - {describeRate(term)}
+                            {term.name}
                           </option>
                         ))}
                       </select>

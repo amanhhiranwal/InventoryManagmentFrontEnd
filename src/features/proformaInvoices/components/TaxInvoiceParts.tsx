@@ -264,6 +264,18 @@ export function GoodsTable({
                   {item.sku && (
                     <p className="text-[9px] text-slate-400">SKU: {item.sku}</p>
                   )}
+                  {/* The cover sold with the line. It is part of what the
+                      customer is paying for, so it belongs on the document
+                      they are given rather than only on the form. */}
+                  {item.warranty_term && (
+                    <p className="text-[9px] text-slate-500">
+                      Warranty: {item.warranty_term}
+                      {Number(item.warranty_uplift || 0) > 0 &&
+                        ` (+₹${Math.round(
+                          Number(item.warranty_uplift),
+                        ).toLocaleString("en-IN")})`}
+                    </p>
+                  )}
                   {discount > 0 && (
                     <p className="text-[9px] italic text-slate-500">
                       less {discount}% on the line

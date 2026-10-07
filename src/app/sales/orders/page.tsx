@@ -21,10 +21,7 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
-import {
-  describeRate,
-  useWarrantyTerms,
-} from "@/features/pricing/warrantyTerms";
+import { useWarrantyTerms } from "@/features/pricing/warrantyTerms";
 import {
   getNextOrderNumberApi,
   SALES_ORDER_STATUS,
@@ -2690,8 +2687,9 @@ export default function OrdersListPage() {
                             </td>
 
                             {/* The cover quoted, and nothing about what it
-                                costs: that is settled on the server from
-                                Masters, so it cannot be retyped here. */}
+                                costs: that is held against the product and
+                                applied on the server, so it cannot be
+                                retyped here. */}
                             <td className="px-3 py-3">
                               <select
                                 value={item.warrantyTerm}
@@ -3596,7 +3594,7 @@ export default function OrdersListPage() {
 
                                 {warrantyTerms.map((term) => (
                                   <option key={term.id} value={term.name}>
-                                    {term.name} - {describeRate(term)}
+                                    {term.name}
                                   </option>
                                 ))}
                               </select>
