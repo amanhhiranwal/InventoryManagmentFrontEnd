@@ -42,7 +42,10 @@ import {
 } from "@/features/pricing/LinePriceInputs";
 import { sellingPriceFor } from "@/features/pricing/lineMath";
 import {
+  upliftFor,
+  useWarrantyRates,
   useWarrantyTerms,
+  type WarrantyRatesBySku,
   type WarrantyTermOption,
 } from "@/features/pricing/warrantyTerms";
 import RichTextEditor, { textToHtml } from "@/components/crm/RichTextEditor";
@@ -302,6 +305,7 @@ function getInitials(name?: string | null) {
  */
 function computeTotals(
   items: LineItem[],
+  warrantyRates: WarrantyRatesBySku,
   charges: {
     discountMode: AmountMode;
     discountInput: number | null;
@@ -328,7 +332,17 @@ function computeTotals(
   let lineDiscount = 0;
 
   for (const item of items) {
-    const lineTotal = (item.quantity || 0) * (item.unitPrice || 0);
+    /* Extended cover is part of the line, as it is on the server: the
+       figure on screen has to be the figure the document will carry. */
+    const cover = upliftFor(
+      warrantyRates,
+      item.sku,
+      item.warrantyTerm,
+      item.unitPrice || 0,
+      item.quantity || 0,
+    );
+
+    const lineTotal = (item.quantity || 0) * (item.unitPrice || 0) + cover;
 
     subtotal += lineTotal;
     lineDiscount += (lineTotal * (item.discount || 0)) / 100;
@@ -546,6 +560,10 @@ export default function QuotationPage() {
   const { terms: warrantyTerms, standard: defaultWarrantyTerm } =
     useWarrantyTerms();
 
+  /* What each product charges for each term, so the running total moves
+     as a term is picked rather than only once the document is saved. */
+  const warrantyRates = useWarrantyRates();
+
   /* ---- send dialog ---- */
   const [sendTarget, setSendTarget] = useState<QuotationModel | null>(null);
   const [sender, setSender] = useState<QuotationSender | null>(null);
@@ -751,7 +769,7 @@ export default function QuotationPage() {
 
   const totals = useMemo(
     () =>
-      computeTotals(items, {
+      computeTotals(items, warrantyRates, {
         discountMode,
         discountInput,
         orcMode,
@@ -763,6 +781,7 @@ export default function QuotationPage() {
       }),
     [
       items,
+      warrantyRates,
       discountMode,
       discountInput,
       orcMode,

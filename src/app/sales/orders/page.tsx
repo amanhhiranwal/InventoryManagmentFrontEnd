@@ -21,7 +21,11 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
-import { useWarrantyTerms } from "@/features/pricing/warrantyTerms";
+import {
+  upliftFor,
+  useWarrantyRates,
+  useWarrantyTerms,
+} from "@/features/pricing/warrantyTerms";
 import {
   getNextOrderNumberApi,
   SALES_ORDER_STATUS,
@@ -445,6 +449,10 @@ export default function OrdersListPage() {
      what the cover costs is settled on the server against Masters. */
   const { terms: warrantyTerms, standard: defaultWarrantyTerm } =
     useWarrantyTerms();
+
+  /* What each product charges for each term, so the running total moves
+     as a term is picked rather than only once the order is saved. */
+  const warrantyRates = useWarrantyRates();
 
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>(
     [],
@@ -1824,13 +1832,25 @@ export default function OrdersListPage() {
      them. */
   const assignedUserDisplay = newOrder.assignedTo.trim() || "Not Assigned";
 
+  /* Extended cover is part of the line, as it is on the server: the
+     figure on screen has to be the figure the order will carry. */
+  const lineWithCover = (item: SelectedProduct) =>
+    item.price * item.quantity +
+    upliftFor(
+      warrantyRates,
+      productSku(item.id),
+      item.warrantyTerm,
+      item.price,
+      item.quantity,
+    );
+
   const orderSubtotal = selectedProducts.reduce(
-    (sum, item) => sum + item.price * item.quantity,
+    (sum, item) => sum + lineWithCover(item),
     0,
   );
 
   const orderLineDiscount = selectedProducts.reduce(
-    (sum, item) => sum + item.price * item.quantity * (item.discount / 100),
+    (sum, item) => sum + lineWithCover(item) * (item.discount / 100),
     0,
   );
 
@@ -2606,10 +2626,18 @@ export default function OrdersListPage() {
                             key={item.id}
                             className="border-b border-slate-100"
                           >
+                            {/* The family and the SKU, as the proposal
+                                shows them. This was a dropdown holding a
+                                single option: nothing to pick, and it took
+                                the width of a control to say one word. */}
                             <td className="px-3 py-3">
-                              <select className="h-9 rounded-md border border-slate-200 px-2 text-[11px] bg-white">
-                                <option>{item.category}</option>
-                              </select>
+                              <p className="text-[11px] font-bold text-slate-800 dark:text-white">
+                                {item.category}
+                              </p>
+
+                              <p className="mt-0.5 text-[10px] text-slate-400">
+                                SKU: {productSku(item.id)}
+                              </p>
                             </td>
 
                             <td className="px-3 py-3 text-[10px] text-slate-600 max-w-[150px]">
@@ -3286,7 +3314,7 @@ export default function OrdersListPage() {
 
         {showProductModal && (
           <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-5">
-            <div className="w-full max-w-[780px] h-[590px] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col">
+            <div className="w-full max-w-[940px] h-[640px] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col">
               {/* Modal Header */}
 
               <div className="h-14 flex items-center justify-between px-5 border-b border-slate-200">
@@ -3351,7 +3379,7 @@ export default function OrdersListPage() {
 
               {/* Modal Body */}
 
-              <div className="flex-1 grid grid-cols-2 gap-5 px-5 py-4 overflow-hidden">
+              <div className="flex-1 grid grid-cols-[300px_minmax(0,1fr)] gap-5 px-5 py-4 overflow-hidden">
                 {/* Products */}
 
                 <div className="overflow-y-auto pr-1">
@@ -3519,7 +3547,7 @@ export default function OrdersListPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-4 gap-2 mt-3">
+                          <div className="grid grid-cols-5 gap-2 mt-3">
                             <div>
                               <label className="block text-[9px] text-slate-500 mb-1">
                                 Unit Price (₹)
@@ -3539,6 +3567,7 @@ export default function OrdersListPage() {
                                   what the line sells at and the percentage
                                   follows. */}
                               <LineSellingPriceInput
+                                fill
                                 unitPrice={item.price}
                                 discount={item.discount}
                                 ariaLabel={`Selling price for ${item.name}`}
@@ -3558,6 +3587,7 @@ export default function OrdersListPage() {
                               </label>
 
                               <LineDiscountInput
+                                fill
                                 unitPrice={item.price}
                                 discount={item.discount}
                                 ariaLabel={`Discount for ${item.name}`}
@@ -3571,7 +3601,7 @@ export default function OrdersListPage() {
                               />
                             </div>
 
-                            <div className="col-span-4">
+                            <div>
                               <label className="block text-[9px] text-slate-500 mb-1">
                                 Warranty
                               </label>
