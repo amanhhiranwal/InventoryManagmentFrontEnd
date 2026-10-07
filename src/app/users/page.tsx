@@ -7,8 +7,9 @@ import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
 import { getCompaniesApi, Company } from "@/features/companies/api/companies.api";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
+import api from "@/lib/axios";
 import { hasPermission } from "@/features/auth/utils/permissions";
-import { FiPlus, FiUser, FiMail, FiPhone, FiTag, FiCheckCircle, FiTrash2, FiEdit2 } from "react-icons/fi";
+import { FiPlus, FiUser, FiMail, FiPhone, FiTag, FiCheckCircle, FiSlash, FiTrash2, FiEdit2 } from "react-icons/fi";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
@@ -117,6 +118,31 @@ export default function UserListPage() {
   const [editPhoneNumber, setEditPhoneNumber] = useState("");
   const [editEmployeeId, setEditEmployeeId] = useState("");
   const [editLocation, setEditLocation] = useState("");
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  /* Switching somebody off signs them out and stops the password working.
+     Kept apart from delete: a person who has left still owns the leads
+     they raised, and those have to keep pointing at somebody. */
+  const toggleActive = async (u: User) => {
+    setTogglingId(u.id);
+
+    try {
+      const { data } = await api.put(`/api/v1/users/${u.id}/status`, {
+        is_active: !u.is_active,
+      });
+
+      addToast(data?.message || "Account updated.", "success");
+
+      await fetchData();
+    } catch (error) {
+      const detail =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "That account could not be changed.";
+      addToast(detail, "error");
+    } finally {
+      setTogglingId(null);
+    }
+  };
   const [editRoleIds, setEditRoleIds] = useState<string[]>([]);
   const [editCompanyIds, setEditCompanyIds] = useState<string[]>([]);
   const [editReportsToId, setEditReportsToId] = useState("");
@@ -442,6 +468,15 @@ export default function UserListPage() {
                         {u.reports_to_name || "—"}
                       </span>
                     </p>
+
+                    {/* Where they are based. On the record and read by the
+                        staffing import, but nowhere on this list. */}
+                    <p className="text-xs text-slate-400">
+                      Location:{" "}
+                      <span className="font-semibold text-slate-600 dark:text-slate-300">
+                        {u.location || "—"}
+                      </span>
+                    </p>
                   </div>
                 </td>
                 <td className="py-4 px-5 text-right">
@@ -464,10 +499,27 @@ export default function UserListPage() {
                         </button>
                       </>
                     )}
-                    <span className="inline-flex items-center gap-1 text-emerald-500 font-semibold text-xs ml-2">
-                      <FiCheckCircle />
-                      <span>Active</span>
-                    </span>
+                    {/* This said "Active" on every row whatever the
+                        account was, because nothing could switch one off.
+                        It is the switch now. */}
+                    <button
+                      type="button"
+                      onClick={() => toggleActive(u)}
+                      disabled={togglingId === u.id}
+                      title={
+                        u.is_active
+                          ? `Switch ${u.first_name} off — they are signed out and cannot sign back in`
+                          : `Switch ${u.first_name} back on`
+                      }
+                      className={`ml-2 inline-flex items-center gap-1 rounded-lg border-none bg-transparent px-1.5 py-1 text-xs font-semibold transition disabled:opacity-50 ${
+                        u.is_active
+                          ? "text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                          : "text-slate-400 hover:bg-slate-100 dark:hover:bg-[#0d2336]"
+                      }`}
+                    >
+                      {u.is_active ? <FiCheckCircle /> : <FiSlash />}
+                      <span>{u.is_active ? "Active" : "Inactive"}</span>
+                    </button>
                   </div>
                 </td>
               </tr>

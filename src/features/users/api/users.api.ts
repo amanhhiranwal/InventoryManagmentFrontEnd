@@ -18,6 +18,8 @@ export interface User {
   reports_to_name?: string | null;
   /** Where they are based, as the staffing sheet records it. */
   location?: string;
+  /** Off means the password stops working and any live session ends. */
+  is_active?: boolean;
 }
 
 export interface CreateUserPayload {
