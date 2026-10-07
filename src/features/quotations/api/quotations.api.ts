@@ -82,6 +82,11 @@ export interface QuotationItem {
   unit_price?: number;
   discount?: number;
   tax?: number;
+  /** The warranty term quoted, by name. What it costs is settled by the
+      server against Masters, so only the choice travels. */
+  warranty_term?: string;
+  /** What that cover added, as the server worked it out. Read-only. */
+  warranty_uplift?: number;
 }
 
 export interface QuotationAddress {

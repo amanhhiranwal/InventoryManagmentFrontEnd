@@ -18,6 +18,11 @@ import AmountInput, {
   type AmountMode,
 } from "@/components/crm/AmountInput";
 import {
+  LineDiscountInput,
+  LineSellingPriceInput,
+} from "@/features/pricing/LinePriceInputs";
+import { useWarrantyTerms } from "@/features/pricing/warrantyTerms";
+import {
   getNextOrderNumberApi,
   SALES_ORDER_STATUS,
   SALES_ORDER_STATUS_LABEL,
@@ -66,12 +71,12 @@ import {
   FiSearch,
   FiPlus,
   FiMoreVertical,
-  FiEdit2,
   FiX,
   FiCalendar,
   FiClipboard,
   FiFolder,
   FiInfo,
+  FiEdit2,
   FiTrash2,
   FiMinus,
   FiBox,
@@ -205,6 +210,9 @@ interface SelectedProduct {
   quantity: number;
   discount: number;
   tax: number;
+  /** The warranty term quoted on this line, by name. What it costs is
+      decided by Masters and applied on the server, never here. */
+  warrantyTerm: string;
 }
 
 /* =========================================================
@@ -432,6 +440,11 @@ export default function OrdersListPage() {
   /* The rate was a module constant, so every order was taxed at 18% with no
      way to quote an exempt supply or a 28% line. */
   const [gstPercent, setGstPercent] = useState(ORDER_GST_PERCENT);
+
+  /* Offered against each line. Only the choice travels with the document;
+     what the cover costs is settled on the server against Masters. */
+  const { terms: warrantyTerms, standard: defaultWarrantyTerm } =
+    useWarrantyTerms();
 
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>(
     [],
@@ -1043,6 +1056,7 @@ export default function OrdersListPage() {
               quantity: Number(item.quantity_case ?? item.qty) || 1,
               discount: Number(item.discount) || 0,
               tax: Number(item.tax_rate) || 0,
+              warrantyTerm: item.warranty_term || "",
             };
           }),
         );
@@ -1406,6 +1420,8 @@ export default function OrdersListPage() {
               quantity: Number(item.quantity) || 1,
               discount: Number(item.discount) || 0,
               tax: Number(item.tax ?? quotation.gst_percent) || 0,
+              /* Whatever cover the proposal quoted comes across with it. */
+              warrantyTerm: item.warranty_term || "",
             };
           }),
         );
@@ -1516,14 +1532,19 @@ export default function OrdersListPage() {
           quantity: 1,
           discount: 0,
           tax: 18,
+          /* The standard term, which is included in the price. */
+          warrantyTerm: defaultWarrantyTerm,
         },
       ];
     });
   };
 
+  /** Fields that hold text rather than a number, and so are not floored. */
+  const TEXT_FIELDS = ["hsn", "warrantyTerm"] as const;
+
   const updateSelectedProduct = (
     id: string,
-    field: "quantity" | "discount" | "tax" | "hsn",
+    field: "quantity" | "discount" | "tax" | "hsn" | "warrantyTerm",
     value: number | string,
   ) => {
     setSelectedProducts((current) =>
@@ -1531,10 +1552,11 @@ export default function OrdersListPage() {
         item.id === id
           ? {
               ...item,
-              /* HSN is a code, not a quantity: it is kept as typed rather
-                 than floored at zero. */
-              [field]:
-                field === "hsn" ? String(value) : Math.max(0, Number(value)),
+              /* An HSN is a code and a warranty term is a name: both are
+                 kept as typed rather than floored at zero. */
+              [field]: (TEXT_FIELDS as readonly string[]).includes(field)
+                ? String(value)
+                : Math.max(0, Number(value)),
             }
           : item,
       ),
@@ -1636,6 +1658,7 @@ export default function OrdersListPage() {
           price: item.price,
           discount: item.discount,
           tax_rate: item.tax,
+          warranty_term: item.warrantyTerm,
         })),
 
         total_amount: subtotal,
@@ -1830,15 +1853,14 @@ export default function OrdersListPage() {
     ? (orderOrc / orderSubtotal) * 100
     : 0;
 
-  /* The ORC comes off, as it does on the server. It was being added here,
-     so the form showed one total and the saved order held another on every
-     order that carried a commission. */
+  /* What the customer is billed. The ORC and the shifting charge are
+     deliberately absent: neither is something the customer pays for - the
+     ORC is a commission we pay out and shifting is a cost we absorb - so
+     recording either one must not move the invoice. The ORC used to come
+     off here, which quietly reduced the GST and the total the customer
+     was shown. Mirrors compute_order_totals on the server. */
   const orderTaxableAmount =
-    orderSubtotal -
-    orderDiscount -
-    orderOrc +
-    freightCharges +
-    installationLumpsum;
+    orderSubtotal - orderDiscount + freightCharges + installationLumpsum;
 
   const orderGst = (orderTaxableAmount * gstPercent) / 100;
 
@@ -1846,11 +1868,12 @@ export default function OrdersListPage() {
 
   /* What the customer pays, and what the order leaves us, are two
      different questions. Delivery and installation pass straight through,
-     the GST goes to the government, and shifting is ours to carry. The ORC
-     is already out of the grand total - it came off the taxable amount
-     above - so taking it off again would count the commission twice. */
+     the GST goes to the government, and the ORC and shifting are both ours
+     to carry - so they come off here, where margin is worked out, rather
+     than off the customer's invoice. */
   const orderRevenue =
     orderGrandTotal -
+    orderOrc -
     freightCharges -
     installationLumpsum -
     shiftingCharges -
@@ -2542,7 +2565,15 @@ export default function OrdersListPage() {
                         </th>
 
                         <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
+                          Warranty
+                        </th>
+
+                        <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
                           Unit Price
+                        </th>
+
+                        <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
+                          Selling Price
                         </th>
 
                         {/* The delete column is unlabelled in the design; the
@@ -2555,7 +2586,7 @@ export default function OrdersListPage() {
                       {selectedProducts.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={9}
                             className="py-12 text-center text-xs text-slate-400"
                           >
                             No products added. Click{" "}
@@ -2655,8 +2686,56 @@ export default function OrdersListPage() {
                               />
                             </td>
 
+                            {/* The cover quoted, and nothing about what it
+                                costs: that is held against the product and
+                                applied on the server, so it cannot be
+                                retyped here. */}
+                            <td className="px-3 py-3">
+                              <select
+                                value={item.warrantyTerm}
+                                aria-label={`Warranty for ${item.name}`}
+                                onChange={(event) =>
+                                  updateSelectedProduct(
+                                    item.id,
+                                    "warrantyTerm",
+                                    event.target.value,
+                                  )
+                                }
+                                className="h-8 w-28 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                              >
+                                {warrantyTerms.length === 0 && (
+                                  <option value="">Standard</option>
+                                )}
+
+                                {warrantyTerms.map((term) => (
+                                  <option key={term.id} value={term.name}>
+                                    {term.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+
                             <td className="px-3 py-3 text-xs text-slate-700">
                               {money(item.price)}
+                            </td>
+
+                            {/* What the line actually sells at. Typing here
+                                moves the discount rather than the price list,
+                                so the approval chain still sees the lever it
+                                is meant to see. */}
+                            <td className="px-3 py-3">
+                              <LineSellingPriceInput
+                                unitPrice={item.price}
+                                discount={item.discount}
+                                ariaLabel={`Selling price for ${item.name}`}
+                                onChange={(discount) =>
+                                  updateSelectedProduct(
+                                    item.id,
+                                    "discount",
+                                    discount,
+                                  )
+                                }
+                              />
                             </td>
 
                             <td className="px-3 py-3">
@@ -2711,11 +2790,16 @@ export default function OrdersListPage() {
                         }}
                       />
 
+                      {/* A commission we pay out, not a charge the customer
+                          is billed, so it is recorded here and comes off the
+                          revenue below rather than off the order value. The
+                          figure is shown plainly: a leading minus read as
+                          though it were coming off the customer's total. */}
                       <OrderSummaryRow
                         label={`ORC (${orderOrcPercent.toFixed(2)}%)`}
                         name="ORC"
-                        value={`-${money(orderOrc)}`}
-                        tone="rose"
+                        value={money(orderOrc)}
+                        hint="Recorded against margin. Does not change the order value."
                         edit={{
                           amount: orcInput,
                           mode: orcMode,
@@ -2749,8 +2833,8 @@ export default function OrdersListPage() {
                       <OrderSummaryRow
                         label="Shifting (our cost)"
                         name="Shifting"
-                        value={`-${money(shiftingCharges)}`}
-                        tone="rose"
+                        value={money(shiftingCharges)}
+                        hint="Recorded against margin. Does not change the order value."
                         edit={{
                           amount: shiftingCharges,
                           onChange: setShiftingCharges,
@@ -2834,10 +2918,14 @@ export default function OrdersListPage() {
                       value={`-${money(orderGst)}`}
                       minus
                     />
+                    {/* The ORC used to come off the taxable amount, so this
+                        row only said where it had already gone. It comes off
+                        here now, and shows the figure like every other
+                        deduction. */}
                     <RevenueLine
                       label="Less ORC"
-                      value={`already deducted above`}
-                      muted
+                      value={`-${money(orderOrc)}`}
+                      minus
                     />
 
                     <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 dark:border-[#17304a]">
@@ -3431,7 +3519,7 @@ export default function OrdersListPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-2 mt-3">
+                          <div className="grid grid-cols-4 gap-2 mt-3">
                             <div>
                               <label className="block text-[9px] text-slate-500 mb-1">
                                 Unit Price (₹)
@@ -3444,23 +3532,72 @@ export default function OrdersListPage() {
 
                             <div>
                               <label className="block text-[9px] text-slate-500 mb-1">
-                                Discount (%)
+                                Selling Price (₹)
                               </label>
 
-                              <input
-                                type="number"
-                                value={item.discount}
-                                min="0"
-                                max="100"
-                                onChange={(e) =>
+                              {/* The other way of saying the discount: type
+                                  what the line sells at and the percentage
+                                  follows. */}
+                              <LineSellingPriceInput
+                                unitPrice={item.price}
+                                discount={item.discount}
+                                ariaLabel={`Selling price for ${item.name}`}
+                                onChange={(discount) =>
                                   updateSelectedProduct(
                                     item.id,
                                     "discount",
-                                    Number(e.target.value),
+                                    discount,
+                                  )
+                                }
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[9px] text-slate-500 mb-1">
+                                Discount
+                              </label>
+
+                              <LineDiscountInput
+                                unitPrice={item.price}
+                                discount={item.discount}
+                                ariaLabel={`Discount for ${item.name}`}
+                                onChange={(discount) =>
+                                  updateSelectedProduct(
+                                    item.id,
+                                    "discount",
+                                    discount,
+                                  )
+                                }
+                              />
+                            </div>
+
+                            <div className="col-span-4">
+                              <label className="block text-[9px] text-slate-500 mb-1">
+                                Warranty
+                              </label>
+
+                              <select
+                                value={item.warrantyTerm}
+                                aria-label={`Warranty for ${item.name}`}
+                                onChange={(e) =>
+                                  updateSelectedProduct(
+                                    item.id,
+                                    "warrantyTerm",
+                                    e.target.value,
                                   )
                                 }
                                 className="w-full h-9 rounded-md border border-slate-200 px-2 text-xs"
-                              />
+                              >
+                                {warrantyTerms.length === 0 && (
+                                  <option value="">Standard</option>
+                                )}
+
+                                {warrantyTerms.map((term) => (
+                                  <option key={term.id} value={term.name}>
+                                    {term.name}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
 
                             <div>
@@ -4141,6 +4278,7 @@ function OrderSummaryRow({
   name,
   value,
   tone,
+  hint,
   edit,
 }: {
   label: string;
@@ -4149,6 +4287,8 @@ function OrderSummaryRow({
   name?: string;
   value: string;
   tone?: "rose" | "emerald";
+  /** Said under the row, for a figure whose effect is not obvious. */
+  hint?: string;
   edit?: {
     amount: number;
     mode?: AmountMode;
@@ -4185,66 +4325,74 @@ function OrderSummaryRow({
         : "text-slate-800 dark:text-slate-200";
 
   return (
-    <div ref={rowRef} className="flex items-center justify-between gap-3">
-      <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
-        {label}
+    <div ref={rowRef} className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
+          {label}
 
-        {edit && (
-          <button
-            type="button"
-            aria-label={`Edit ${name || label}`}
-            onClick={() => setEditing((previous) => !previous)}
-            className="text-slate-400 transition hover:text-slate-700"
-          >
-            <FiEdit2 size={10} />
-          </button>
-        )}
-      </span>
+          {edit && (
+            <button
+              type="button"
+              aria-label={`Edit ${name || label}`}
+              onClick={() => setEditing((previous) => !previous)}
+              className="text-slate-400 transition hover:text-slate-700"
+            >
+              <FiEdit2 size={10} />
+            </button>
+          )}
+        </span>
 
-      <div className="flex w-32 justify-end">
-        {edit && editing ? (
-          edit.unit === "%" ? (
-            /* A rate has no rupee alternative, so it gets a plain input
-               rather than the ₹ / % selector the charges use. */
-            <div className="flex w-full items-center justify-end gap-1">
-              <input
-                autoFocus
-                type="text"
-                inputMode="decimal"
-                aria-label={name || label}
-                value={String(edit.amount)}
-                onChange={(event) =>
-                  edit.onChange(
-                    Number(event.target.value.replace(/[^\d.]/g, "")) || 0,
-                  )
-                }
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === "Escape") {
-                    setEditing(false);
+        <div className="flex w-32 justify-end">
+          {edit && editing ? (
+            edit.unit === "%" ? (
+              /* A rate has no rupee alternative, so it gets a plain input
+                 rather than the ₹ / % selector the charges use. */
+              <div className="flex w-full items-center justify-end gap-1">
+                <input
+                  autoFocus
+                  type="text"
+                  inputMode="decimal"
+                  aria-label={name || label}
+                  value={String(edit.amount)}
+                  onChange={(event) =>
+                    edit.onChange(
+                      Number(event.target.value.replace(/[^\d.]/g, "")) || 0,
+                    )
                   }
-                }}
-                className="field-compact h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-xs text-slate-800 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
-              />
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === "Escape") {
+                      setEditing(false);
+                    }
+                  }}
+                  className="field-compact h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-xs text-slate-800 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                />
 
-              <span className="text-xs text-slate-500">%</span>
-            </div>
+                <span className="text-xs text-slate-500">%</span>
+              </div>
+            ) : (
+              <AmountInput
+                ariaLabel={name || label}
+                width="w-full"
+                autoFocus
+                value={edit.amount}
+                mode={edit.mode}
+                base={edit.base}
+                onChange={edit.onChange}
+                onModeChange={edit.onModeChange}
+                onDone={() => setEditing(false)}
+              />
+            )
           ) : (
-          <AmountInput
-            ariaLabel={name || label}
-            width="w-full"
-            autoFocus
-            value={edit.amount}
-            mode={edit.mode}
-            base={edit.base}
-            onChange={edit.onChange}
-            onModeChange={edit.onModeChange}
-            onDone={() => setEditing(false)}
-          />
-          )
-        ) : (
-          <span className={`text-xs font-semibold ${valueTone}`}>{value}</span>
-        )}
+            <span className={`text-xs font-semibold ${valueTone}`}>{value}</span>
+          )}
+        </div>
       </div>
+
+      {hint && (
+        <p className="text-right text-[10px] leading-snug text-slate-400">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }

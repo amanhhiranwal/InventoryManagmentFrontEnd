@@ -197,11 +197,20 @@ const LEAD_PIPELINE: { label: string; status: string }[] = [
 
 /* Mirrors LEAD_TRANSITIONS in app/core/workflow_status.py. Kept here so the
    UI only ever offers a step the backend will accept, rather than firing the
-   call and surfacing a 400. CONVERTED and LOST are terminal. */
+   call and surfacing a 400.
+
+   A lead may skip ahead, the same way an opportunity may: somebody who
+   arrives already knowing what they want is qualified on the first call,
+   and making the salesperson mark them Contacted first records a
+   conversation that never happened. Going back is not offered.
+
+   CONVERTED is absent on purpose. It is reached by converting - which also
+   creates the opportunity - and the backend refuses to set it from the
+   status menu or the activity log. CONVERTED and LOST are terminal. */
 const LEAD_NEXT_STATUSES: Record<string, string[]> = {
-  NEW: ["CONTACTED", "LOST"],
+  NEW: ["CONTACTED", "QUALIFIED", "LOST"],
   CONTACTED: ["QUALIFIED", "LOST"],
-  QUALIFIED: ["CONVERTED", "LOST"],
+  QUALIFIED: ["LOST"],
   CONVERTED: [],
   LOST: [],
 };
@@ -222,6 +231,14 @@ function leadStatusLabel(status?: string) {
 
 function canAdvanceLead(lead: Lead, target: string) {
   return (LEAD_NEXT_STATUSES[lead.status] || []).includes(target);
+}
+
+/* Converting has its own gate rather than a line in the transition map,
+   because it is not a status change the menu may make: it creates the
+   opportunity and the lead follows. Anything still live may be converted,
+   from wherever it stands. */
+function canConvertLead(lead: Lead) {
+  return lead.status !== "CONVERTED" && lead.status !== "LOST";
 }
 
 /* What the Log Activity form may move a lead to. CONVERTED is excluded on
@@ -1286,14 +1303,10 @@ export default function LeadsPage() {
       return;
     }
 
-    /* Qualification is the gate into the opportunity pipeline. */
-    if (lead.status !== "QUALIFIED") {
-      addToast(
-        "Mark this lead as Qualified before converting it.",
-        "warning",
-      );
-      return;
-    }
+    /* No qualification gate: raising an opportunity is itself the act of
+       qualifying, and requiring the status to be set first - which meant
+       logging a call that may never have happened - only added steps
+       between a salesperson and the deal. */
 
     setRowMenuLeadId(null);
     setShowDetailsModal(false);
@@ -2291,7 +2304,7 @@ export default function LeadsPage() {
                                     </RowAction>
                                   )}
 
-                                  {canAdvanceLead(lead, "CONVERTED") && (
+                                  {canConvertLead(lead) && (
                                     <RowAction
                                       icon={<FiArrowUpRight />}
                                       success
@@ -3195,7 +3208,7 @@ function LeadDetailsModal({
           <button
             type="button"
             onClick={onConvert}
-            disabled={lead.status !== "QUALIFIED"}
+            disabled={!canConvertLead(lead)}
             className="
               rounded-lg
               bg-[#1d2b45]

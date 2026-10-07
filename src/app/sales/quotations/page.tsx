@@ -9,6 +9,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { formatRupees } from "@/lib/money";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
@@ -35,6 +36,15 @@ import AmountInput, {
   resolveAmount,
   type AmountMode,
 } from "@/components/crm/AmountInput";
+import {
+  LineDiscountInput,
+  LineSellingPriceInput,
+} from "@/features/pricing/LinePriceInputs";
+import { sellingPriceFor } from "@/features/pricing/lineMath";
+import {
+  useWarrantyTerms,
+  type WarrantyTermOption,
+} from "@/features/pricing/warrantyTerms";
 import RichTextEditor, { textToHtml } from "@/components/crm/RichTextEditor";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
@@ -106,7 +116,6 @@ import {
   FiMail,
   FiMoreVertical,
   FiSend,
-  FiEdit2,
   FiGrid,
   FiBookmark,
   FiMinus,
@@ -131,6 +140,9 @@ interface LineItem {
   unitPrice: number;
   discount: number;
   tax: number;
+  /** The warranty term quoted on this line, by name. What it costs is
+      decided by Masters and applied on the server, never here. */
+  warrantyTerm: string;
 }
 
 interface AddressState {
@@ -239,15 +251,8 @@ const ROWS_PER_PAGE = 10;
 const money = (value: number | null | undefined) =>
   `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 
-/** Compact form used by the KPI cards, e.g. ₹4.82 Cr / ₹52.4 L. */
-function compactMoney(value: number) {
-  const amount = Number(value || 0);
-
-  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)} Cr`;
-  if (amount >= 100000) return `₹${(amount / 100000).toFixed(1)} L`;
-
-  return money(amount);
-}
+/** The KPI cards used to read "₹52.4 L"; they show the figure in full. */
+const compactMoney = formatRupees;
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -535,6 +540,11 @@ export default function QuotationPage() {
   const [productSearch, setProductSearch] = useState("");
   const [productCategory, setProductCategory] = useState("All");
   const [picked, setPicked] = useState<LineItem[]>([]);
+
+  /* Offered against each line. Only the choice travels with the document;
+     what the cover costs is settled on the server against Masters. */
+  const { terms: warrantyTerms, standard: defaultWarrantyTerm } =
+    useWarrantyTerms();
 
   /* ---- send dialog ---- */
   const [sendTarget, setSendTarget] = useState<QuotationModel | null>(null);
@@ -994,6 +1004,9 @@ export default function QuotationPage() {
             unitPrice: Number(item.unit_price) || 0,
             discount: Number(item.discount) || 0,
             tax: Number(item.tax) || 0,
+            /* The term the document was saved quoting, kept as it stands.
+               An empty one falls back to the standard term. */
+            warrantyTerm: item.warranty_term || "",
           })),
         );
 
@@ -1132,6 +1145,7 @@ export default function QuotationPage() {
         unitPrice: num("unit_price", "unitPrice", "price"),
         discount: num("discount"),
         tax: num("tax", "tax_rate"),
+        warrantyTerm: text("warranty_term"),
       };
     });
 
@@ -1224,6 +1238,7 @@ export default function QuotationPage() {
       unit_price: item.unitPrice,
       discount: item.discount,
       tax: item.tax,
+      warranty_term: item.warrantyTerm,
     })),
 
     discount_mode: discountMode,
@@ -1436,6 +1451,9 @@ export default function QuotationPage() {
           unitPrice: rateFor(product, priceBasis),
           discount: 0,
           tax: 18,
+          /* The standard term, which is included in the price. A line
+             always starts on the cover the customer gets anyway. */
+          warrantyTerm: defaultWarrantyTerm,
         },
       ];
     });
@@ -1798,7 +1816,9 @@ export default function QuotationPage() {
                       <Th>Qty</Th>
                       <Th>Discount</Th>
                       <Th>Tax</Th>
+                      <Th>Warranty</Th>
                       <Th>Unit Price</Th>
+                      <Th>Selling Price</Th>
                       <Th />
                     </tr>
                   </thead>
@@ -1807,7 +1827,7 @@ export default function QuotationPage() {
                     {items.length === 0 && (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={10}
                           className="px-4 py-10 text-center text-xs text-slate-400"
                         >
                           No products added yet. Use Add Product to build the
@@ -1964,6 +1984,38 @@ export default function QuotationPage() {
                             )}
                           </td>
 
+                          {/* The cover quoted, and nothing about what it
+                              costs: that is settled on the server from
+                              Masters, so it cannot be retyped here. */}
+                          <td className="px-4 py-3">
+                            {editing ? (
+                              <select
+                                value={item.warrantyTerm}
+                                aria-label={`Warranty for ${item.model}`}
+                                onChange={(event) =>
+                                  updateItem(item.key, {
+                                    warrantyTerm: event.target.value,
+                                  })
+                                }
+                                className="h-8 w-28 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                              >
+                                {warrantyTerms.length === 0 && (
+                                  <option value="">Standard</option>
+                                )}
+
+                                {warrantyTerms.map((term) => (
+                                  <option key={term.id} value={term.name}>
+                                    {term.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-[11px] text-slate-600 dark:text-slate-300">
+                                {item.warrantyTerm || "Standard"}
+                              </span>
+                            )}
+                          </td>
+
                           {/* The price list decides the price. Which list
                               follows from the customer type, and the figure
                               on it is the company's — the discount is
@@ -1974,6 +2026,31 @@ export default function QuotationPage() {
                             <span className="text-[11px] text-slate-600 dark:text-slate-300">
                               {item.unitPrice.toLocaleString("en-IN")}
                             </span>
+                          </td>
+
+                          {/* What the line actually sells at. Typing here
+                              moves the discount rather than the price list,
+                              so the approval chain still sees the lever it
+                              is meant to see. Closed on a transfer price,
+                              for the same reason the discount is. */}
+                          <td className="px-4 py-3">
+                            {editing && priceBasis === PRICE_BASIS.ECP ? (
+                              <LineSellingPriceInput
+                                unitPrice={item.unitPrice}
+                                discount={item.discount}
+                                ariaLabel={`Selling price for ${item.model}`}
+                                onChange={(discount) =>
+                                  updateItem(item.key, { discount })
+                                }
+                              />
+                            ) : (
+                              <span className="text-[11px] text-slate-600 dark:text-slate-300">
+                                {sellingPriceFor(
+                                  item.unitPrice,
+                                  item.discount,
+                                ).toLocaleString("en-IN")}
+                              </span>
+                            )}
                           </td>
 
                           <td className="px-4 py-3">
@@ -2008,20 +2085,19 @@ export default function QuotationPage() {
                 {/* The design has no summary-level Total Discount or ORC on a
                     quotation: discount is given per line, in the table's own
                     Discount column, and the totals below follow from that. */}
-                {/* Tick to charge for it. Both are optional on a proposal -
-                    a customer collecting their own panels pays no delivery,
-                    and one with their own AV contractor pays no
-                    installation - and an unticked row is plainly not being
-                    charged rather than silently sitting at zero. */}
+                {/* Both are optional on a proposal - a customer collecting
+                    their own panels pays no delivery, and one with their own
+                    AV contractor pays no installation. The box is always
+                    there to type in; the tick decides whether what is typed
+                    reaches the client. */}
                 <SummaryRow
                   label="Freight Charges"
                   name="Freight Charges"
-                  value={
-                    includeFreight ? `+${money(totals.freight)}` : "Not charged"
-                  }
+                  value={money(totals.freight)}
                   include={{
                     checked: includeFreight,
                     onChange: setIncludeFreight,
+                    hint: "Tick to include the freight charges in the email draft and the PDF.",
                   }}
                   edit={{ amount: freight, onChange: setFreight }}
                 />
@@ -2029,14 +2105,11 @@ export default function QuotationPage() {
                 <SummaryRow
                   label="Installation"
                   name="Installation"
-                  value={
-                    includeInstallation
-                      ? `+${money(totals.installation)}`
-                      : "Not charged"
-                  }
+                  value={money(totals.installation)}
                   include={{
                     checked: includeInstallation,
                     onChange: setIncludeInstallation,
+                    hint: "Tick to include the installation charges in the email draft and the PDF.",
                   }}
                   edit={{ amount: installation, onChange: setInstallation }}
                 />
@@ -2289,6 +2362,7 @@ export default function QuotationPage() {
             onUpdate={updatePicked}
             onClose={() => setShowProductModal(false)}
             onConfirm={confirmProducts}
+            warrantyTerms={warrantyTerms}
           />
         )}
       </div>
@@ -2895,11 +2969,13 @@ function SummaryRow({
   tone?: "rose";
   strong?: boolean;
   /** A charge the client can be given or not. Omit for a row that is
-      always counted. Unticked, the row is greyed and contributes nothing;
-      the figure is kept, so ticking it back restores what was typed. */
+      always counted. Unticked, the row contributes nothing; the figure is
+      kept, so ticking it back restores what was typed. */
   include?: {
     checked: boolean;
     onChange: (next: boolean) => void;
+    /** Said under the row, so what the tick does is not a guess. */
+    hint?: string;
   };
   /** Omit for a read-only row. */
   edit?: {
@@ -2912,27 +2988,15 @@ function SummaryRow({
     onModeChange?: (next: AmountMode) => void;
   };
 }) {
-  const [editing, setEditing] = useState(false);
-  const rowRef = useRef<HTMLDivElement | null>(null);
-
-  /* Close on a click outside the row. Relying on the control's own blur
-     proved unreliable once the row scrolled out of view, and this matches
-     how the menus elsewhere on these pages close. */
-  useEffect(() => {
-    if (!editing) return;
-
-    function handleOutside(event: MouseEvent) {
-      if (!rowRef.current?.contains(event.target as Node)) setEditing(false);
-    }
-
-    document.addEventListener("mousedown", handleOutside);
-
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [editing]);
+  /* The figure used to hide behind a pencil: the row showed a total, you
+     clicked the pencil, and only then could you type. An amount that is
+     meant to be filled in should be a box you can type in, so an editable
+     row simply is one. */
 
   return (
-    <div ref={rowRef} className="flex items-center justify-end gap-4">
-      <span
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex w-full items-center justify-end gap-4">
+        <span
         className={`flex items-center gap-1.5 text-[11px] ${
           strong
             ? "font-bold text-slate-800 dark:text-white"
@@ -2950,29 +3014,18 @@ function SummaryRow({
         )}
 
         {label}
-
-        {/* Nothing to edit on a charge that is not being given. */}
-        {edit && (!include || include.checked) && (
-          <button
-            type="button"
-            aria-label={`Edit ${name || label}`}
-            onClick={() => setEditing((previous) => !previous)}
-            className="text-slate-400 transition hover:text-slate-700"
-          >
-            <FiEdit2 size={10} />
-          </button>
-        )}
       </span>
 
-      {/* Fixed width: the input replaces the figure without moving it. */}
-      <div className="flex w-36 justify-end">
-        {edit && editing && (!include || include.checked) ? (
+        {/* Fixed width, whether it holds a figure or a box to type one in.
+            The box is sized to the figure rather than to the column - a
+            freight charge is six characters, not a paragraph. */}
+        <div className="flex w-24 justify-end">
+        {edit ? (
           edit.unit === "%" ? (
             /* A rate has no rupee alternative, so it gets a plain input
                rather than the ₹ / % selector the charges use. */
             <div className="flex w-full items-center justify-end gap-1">
               <input
-                autoFocus
                 type="text"
                 inputMode="decimal"
                 aria-label={name || label}
@@ -2980,11 +3033,6 @@ function SummaryRow({
                 onChange={(event) =>
                   edit.onChange(Number(event.target.value.replace(/[^\d.]/g, "")) || 0)
                 }
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === "Escape") {
-                    setEditing(false);
-                  }
-                }}
                 className="field-compact h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
               />
 
@@ -2993,14 +3041,12 @@ function SummaryRow({
           ) : (
             <AmountInput
               ariaLabel={name || label}
-              width="w-full"
-              autoFocus
+              width="w-24"
               value={edit.amount}
               mode={edit.mode}
               base={edit.base}
               onChange={edit.onChange}
               onModeChange={edit.onModeChange}
-              onDone={() => setEditing(false)}
             />
           )
         ) : (
@@ -3016,7 +3062,16 @@ function SummaryRow({
             {value}
           </span>
         )}
+        </div>
       </div>
+
+      {/* What the tick actually does, rather than leaving it to be found
+          out by sending a proposal without it. */}
+      {include?.hint && (
+        <p className="max-w-[320px] text-right text-[10px] leading-snug text-slate-400">
+          {include.hint}
+        </p>
+      )}
     </div>
   );
 }
@@ -3184,9 +3239,13 @@ function ProductPickerModal({
   onUpdate,
   onClose,
   onConfirm,
+  warrantyTerms,
 }: {
   products: CatalogProduct[];
   picked: LineItem[];
+  /** Offered against each picked line. What a term costs is settled on
+      the server, so only the choice is made here. */
+  warrantyTerms: WarrantyTermOption[];
   /** Which price list to show, so the figure in the picker is the one the
       line will actually take. */
   priceBasis: PriceBasis;
@@ -3207,7 +3266,7 @@ function ProductPickerModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-5">
-      <div className="flex h-[590px] w-full max-w-[780px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#051422]">
+      <div className="flex h-[640px] w-full max-w-[940px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#051422]">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5 dark:border-[#17304a]">
           <h2 className="text-sm font-semibold text-slate-800 dark:text-white">
             Add Products to Order
@@ -3257,7 +3316,7 @@ function ProductPickerModal({
           </div>
         </div>
 
-        <div className="grid flex-1 grid-cols-2 gap-5 overflow-hidden px-5 py-4">
+        <div className="grid flex-1 grid-cols-[300px_minmax(0,1fr)] gap-5 overflow-hidden px-5 py-4">
           <div className="space-y-2 overflow-y-auto pr-1">
             {products.map((product) => {
               const checked = picked.some((item) => item.productId === product.id);
@@ -3408,7 +3467,7 @@ function ProductPickerModal({
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="mt-3 grid grid-cols-5 gap-2">
                     <div>
                       <label className="mb-1 block text-[9px] text-slate-500">
                         Unit Price (₹)
@@ -3422,19 +3481,60 @@ function ProductPickerModal({
 
                     <div>
                       <label className="mb-1 block text-[9px] text-slate-500">
-                        Discount (%)
+                        Selling Price (₹)
                       </label>
 
-                      <input
-                        type="number"
-                        value={item.discount}
-                        onChange={(event) =>
-                          onUpdate(item.key, {
-                            discount: Number(event.target.value) || 0,
-                          })
-                        }
-                        className={CELL_INPUT}
+                      {/* The other way of saying the discount: type what the
+                          line sells at and the percentage follows. */}
+                      <LineSellingPriceInput
+                        fill
+                        unitPrice={item.unitPrice}
+                        discount={item.discount}
+                        ariaLabel={`Selling price for ${item.model}`}
+                        onChange={(discount) => onUpdate(item.key, { discount })}
                       />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[9px] text-slate-500">
+                        Discount
+                      </label>
+
+                      <LineDiscountInput
+                        fill
+                        unitPrice={item.unitPrice}
+                        discount={item.discount}
+                        ariaLabel={`Discount for ${item.model}`}
+                        onChange={(discount) => onUpdate(item.key, { discount })}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[9px] text-slate-500">
+                        Warranty
+                      </label>
+
+                      {/* The cover quoted on this line. The price of it is
+                          held against the product and applied on the
+                          server, so it cannot be typed here. */}
+                      <select
+                        value={item.warrantyTerm}
+                        onChange={(event) =>
+                          onUpdate(item.key, { warrantyTerm: event.target.value })
+                        }
+                        aria-label={`Warranty for ${item.model}`}
+                        className={CELL_INPUT}
+                      >
+                        {warrantyTerms.length === 0 && (
+                          <option value="">Standard</option>
+                        )}
+
+                        {warrantyTerms.map((term) => (
+                          <option key={term.id} value={term.name}>
+                            {term.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <div>

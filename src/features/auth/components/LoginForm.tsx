@@ -99,7 +99,7 @@ export default function LoginForm() {
     >
       <div className="text-center">
         <h1 className="text-2xl font-semibold tracking-tight text-primary dark:text-white">
-          Sign In To Sales CRM
+          Sign in to Synergy Sync
         </h1>
 
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
