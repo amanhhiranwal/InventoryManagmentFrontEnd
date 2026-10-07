@@ -868,12 +868,15 @@ export default function QuotationPage() {
   const awaitingApproval =
     editingRow?.status === QUOTATION_STATUS.PENDING_APPROVAL;
 
-  /* Every proposal carries the CEO's signature before it reaches a
-     client, so the question is not only "is an approval open" but "has one
-     been granted". A draft nobody ever sent up has nothing open either,
-     and used to sail past a guard that only looked for a pending one.
-     An unsaved proposal cannot have been signed, so it is blocked too. */
-  const emailBlocked = !editingRow || !editingRow.is_approved;
+  /* A proposal needs no signature to go out. It is a price put in front
+     of a customer to see what they say; the commitment is the sales
+     order, and the approval sits there now.
+
+     It still has to be saved first - there is nothing to attach to an
+     email otherwise - and an approval somebody has already sent up is
+     allowed to finish rather than being overtaken by the email it was
+     raised for. */
+  const emailBlocked = !editingRow || awaitingApproval;
 
   /** Saves the quotation, then sends the discount up for approval. */
   const sendForApproval = async () => {
@@ -2344,9 +2347,9 @@ export default function QuotationPage() {
                     disabled={saving || emailBlocked}
                     title={
                       awaitingApproval
-                        ? "Waiting on approval — the proposal can be emailed once it is signed off."
+                        ? "Waiting on an approval that was already sent up — it can be emailed once that is cleared."
                         : emailBlocked
-                          ? "Not approved yet — send it for approval first."
+                          ? "Save the proposal first, so there is something to attach."
                           : undefined
                     }
                     className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#233353] text-xs font-semibold text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
@@ -2359,8 +2362,8 @@ export default function QuotationPage() {
                 {emailBlocked && (
                   <p className="mt-2 text-[10px] leading-4 text-amber-600 dark:text-amber-400">
                     {awaitingApproval
-                      ? "Waiting on approval. The proposal can be emailed to the client once it has been signed off."
-                      : "Not approved yet. Every proposal is signed by the CEO before it goes to a client — use Send For Approval first."}
+                      ? "An approval is already in flight on this proposal. It can be emailed once that is cleared."
+                      : "Save the proposal first, so there is something to attach."}
                   </p>
                 )}
               </FormSectionBlock>
