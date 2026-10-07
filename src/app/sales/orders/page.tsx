@@ -70,7 +70,6 @@ import {
   FiSearch,
   FiPlus,
   FiMoreVertical,
-  FiEdit2,
   FiX,
   FiCalendar,
   FiClipboard,
@@ -1834,15 +1833,14 @@ export default function OrdersListPage() {
     ? (orderOrc / orderSubtotal) * 100
     : 0;
 
-  /* The ORC comes off, as it does on the server. It was being added here,
-     so the form showed one total and the saved order held another on every
-     order that carried a commission. */
+  /* What the customer is billed. The ORC and the shifting charge are
+     deliberately absent: neither is something the customer pays for - the
+     ORC is a commission we pay out and shifting is a cost we absorb - so
+     recording either one must not move the invoice. The ORC used to come
+     off here, which quietly reduced the GST and the total the customer
+     was shown. Mirrors compute_order_totals on the server. */
   const orderTaxableAmount =
-    orderSubtotal -
-    orderDiscount -
-    orderOrc +
-    freightCharges +
-    installationLumpsum;
+    orderSubtotal - orderDiscount + freightCharges + installationLumpsum;
 
   const orderGst = (orderTaxableAmount * gstPercent) / 100;
 
@@ -1850,11 +1848,12 @@ export default function OrdersListPage() {
 
   /* What the customer pays, and what the order leaves us, are two
      different questions. Delivery and installation pass straight through,
-     the GST goes to the government, and shifting is ours to carry. The ORC
-     is already out of the grand total - it came off the taxable amount
-     above - so taking it off again would count the commission twice. */
+     the GST goes to the government, and the ORC and shifting are both ours
+     to carry - so they come off here, where margin is worked out, rather
+     than off the customer's invoice. */
   const orderRevenue =
     orderGrandTotal -
+    orderOrc -
     freightCharges -
     installationLumpsum -
     shiftingCharges -
@@ -2738,11 +2737,16 @@ export default function OrdersListPage() {
                         }}
                       />
 
+                      {/* A commission we pay out, not a charge the customer
+                          is billed, so it is recorded here and comes off the
+                          revenue below rather than off the order value. The
+                          figure is shown plainly: a leading minus read as
+                          though it were coming off the customer's total. */}
                       <OrderSummaryRow
                         label={`ORC (${orderOrcPercent.toFixed(2)}%)`}
                         name="ORC"
-                        value={`-${money(orderOrc)}`}
-                        tone="rose"
+                        value={money(orderOrc)}
+                        hint="Recorded against margin. Does not change the order value."
                         edit={{
                           amount: orcInput,
                           mode: orcMode,
@@ -2776,8 +2780,8 @@ export default function OrdersListPage() {
                       <OrderSummaryRow
                         label="Shifting (our cost)"
                         name="Shifting"
-                        value={`-${money(shiftingCharges)}`}
-                        tone="rose"
+                        value={money(shiftingCharges)}
+                        hint="Recorded against margin. Does not change the order value."
                         edit={{
                           amount: shiftingCharges,
                           onChange: setShiftingCharges,
@@ -4188,6 +4192,7 @@ function OrderSummaryRow({
   name,
   value,
   tone,
+  hint,
   edit,
 }: {
   label: string;
@@ -4196,6 +4201,8 @@ function OrderSummaryRow({
   name?: string;
   value: string;
   tone?: "rose" | "emerald";
+  /** Said under the row, for a figure whose effect is not obvious. */
+  hint?: string;
   edit?: {
     amount: number;
     mode?: AmountMode;
@@ -4206,23 +4213,10 @@ function OrderSummaryRow({
     onModeChange?: (next: AmountMode) => void;
   };
 }) {
-  const [editing, setEditing] = useState(false);
-  const rowRef = useRef<HTMLDivElement | null>(null);
-
-  /* Close on a click outside the row. Relying on the control's own blur
-     proved unreliable once the row scrolled out of view, and this matches
-     how the menus elsewhere on these pages close. */
-  useEffect(() => {
-    if (!editing) return;
-
-    function handleOutside(event: MouseEvent) {
-      if (!rowRef.current?.contains(event.target as Node)) setEditing(false);
-    }
-
-    document.addEventListener("mousedown", handleOutside);
-
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [editing]);
+  /* The figure used to hide behind a pencil: the row showed a total, you
+     clicked the pencil, and only then could you type. An amount meant to
+     be filled in should be a box you can type in, so an editable row
+     simply is one. */
 
   const valueTone =
     tone === "rose"
@@ -4232,66 +4226,55 @@ function OrderSummaryRow({
         : "text-slate-800 dark:text-slate-200";
 
   return (
-    <div ref={rowRef} className="flex items-center justify-between gap-3">
-      <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
-        {label}
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
+          {label}
+        </span>
 
-        {edit && (
-          <button
-            type="button"
-            aria-label={`Edit ${name || label}`}
-            onClick={() => setEditing((previous) => !previous)}
-            className="text-slate-400 transition hover:text-slate-700"
-          >
-            <FiEdit2 size={10} />
-          </button>
-        )}
-      </span>
-
-      <div className="flex w-32 justify-end">
-        {edit && editing ? (
-          edit.unit === "%" ? (
-            /* A rate has no rupee alternative, so it gets a plain input
-               rather than the ₹ / % selector the charges use. */
-            <div className="flex w-full items-center justify-end gap-1">
-              <input
-                autoFocus
-                type="text"
-                inputMode="decimal"
-                aria-label={name || label}
-                value={String(edit.amount)}
-                onChange={(event) =>
-                  edit.onChange(
-                    Number(event.target.value.replace(/[^\d.]/g, "")) || 0,
-                  )
-                }
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === "Escape") {
-                    setEditing(false);
+        <div className="flex w-32 justify-end">
+          {edit ? (
+            edit.unit === "%" ? (
+              /* A rate has no rupee alternative, so it gets a plain input
+                 rather than the ₹ / % selector the charges use. */
+              <div className="flex w-full items-center justify-end gap-1">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  aria-label={name || label}
+                  value={String(edit.amount)}
+                  onChange={(event) =>
+                    edit.onChange(
+                      Number(event.target.value.replace(/[^\d.]/g, "")) || 0,
+                    )
                   }
-                }}
-                className="field-compact h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-xs text-slate-800 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
-              />
+                  className="field-compact h-7 w-16 rounded-md border border-slate-200 px-2 text-right text-xs text-slate-800 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
+                />
 
-              <span className="text-xs text-slate-500">%</span>
-            </div>
+                <span className="text-xs text-slate-500">%</span>
+              </div>
+            ) : (
+              <AmountInput
+                ariaLabel={name || label}
+                width="w-full"
+                value={edit.amount}
+                mode={edit.mode}
+                base={edit.base}
+                onChange={edit.onChange}
+                onModeChange={edit.onModeChange}
+              />
+            )
           ) : (
-          <AmountInput
-            ariaLabel={name || label}
-            width="w-full"
-            autoFocus
-            value={edit.amount}
-            mode={edit.mode}
-            base={edit.base}
-            onChange={edit.onChange}
-            onModeChange={edit.onModeChange}
-            onDone={() => setEditing(false)}
-          />
-          )
-        ) : (
-          <span className={`text-xs font-semibold ${valueTone}`}>{value}</span>
-        )}
+            <span className={`text-xs font-semibold ${valueTone}`}>{value}</span>
+          )}
+        </div>
       </div>
+
+      {hint && (
+        <p className="text-right text-[10px] leading-snug text-slate-400">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }
