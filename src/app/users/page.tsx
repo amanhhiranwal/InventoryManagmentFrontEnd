@@ -100,6 +100,7 @@ export default function UserListPage() {
     password: "",
     phone_number: "",
     employee_id: "",
+    location: "",
     role_ids: [] as string[],
     company_ids: [] as string[],
     reports_to_id: "",
@@ -115,6 +116,7 @@ export default function UserListPage() {
   const [editLastName, setEditLastName] = useState("");
   const [editPhoneNumber, setEditPhoneNumber] = useState("");
   const [editEmployeeId, setEditEmployeeId] = useState("");
+  const [editLocation, setEditLocation] = useState("");
   const [editRoleIds, setEditRoleIds] = useState<string[]>([]);
   const [editCompanyIds, setEditCompanyIds] = useState<string[]>([]);
   const [editReportsToId, setEditReportsToId] = useState("");
@@ -173,6 +175,7 @@ export default function UserListPage() {
     setEditLastName(u.last_name);
     setEditPhoneNumber(u.phone_number || "");
     setEditEmployeeId(u.employee_id || "");
+    setEditLocation(u.location || "");
     setEditRoleIds(u.role_ids || []);
     setEditCompanyIds(u.company_ids || []);
     setEditReportsToId(u.reports_to_id || "");
@@ -193,6 +196,7 @@ export default function UserListPage() {
         last_name: editLastName,
         phone_number: editPhoneNumber,
         employee_id: editEmployeeId,
+        location: editLocation,
         role_ids: editRoleIds,
         company_ids: editCompanyIds,
         reports_to_id: editReportsToId || null,
@@ -253,6 +257,7 @@ export default function UserListPage() {
         password: "",
         phone_number: "",
         employee_id: "",
+    location: "",
         role_ids: [],
         company_ids: [],
         reports_to_id: "",
@@ -522,6 +527,16 @@ export default function UserListPage() {
             />
           </div>
 
+          {/* Where they are based. A city for most people, a state for
+              those covering one - the staffing sheet records both, so it
+              is typed rather than picked from the Locations master. */}
+          <Input
+            label="Location"
+            placeholder="e.g. Delhi/NCR"
+            value={formData.location}
+            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+          />
+
           <SearchableMultiSelect
             label="Assigned Roles"
             placeholder="Select roles..."
@@ -592,6 +607,13 @@ export default function UserListPage() {
                 onChange={(e) => setEditEmployeeId(e.target.value)}
               />
             </div>
+
+            <Input
+              label="Location"
+              placeholder="e.g. Delhi/NCR"
+              value={editLocation}
+              onChange={(e) => setEditLocation(e.target.value)}
+            />
 
             <SearchableMultiSelect
               label="Assigned Roles"

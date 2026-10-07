@@ -872,11 +872,12 @@ export default function QuotationPage() {
      of a customer to see what they say; the commitment is the sales
      order, and the approval sits there now.
 
-     It still has to be saved first - there is nothing to attach to an
-     email otherwise - and an approval somebody has already sent up is
-     allowed to finish rather than being overtaken by the email it was
-     raised for. */
-  const emailBlocked = !editingRow || awaitingApproval;
+     Nor does it need saving first: the button saves it and then opens the
+     send dialog, so demanding a save beforehand asked for something it
+     was about to do anyway. The one thing that still holds it is an
+     approval somebody already sent up, which is allowed to finish rather
+     than being overtaken by the email it was raised for. */
+  const emailBlocked = awaitingApproval;
 
   /** Saves the quotation, then sends the discount up for approval. */
   const sendForApproval = async () => {
@@ -2348,9 +2349,7 @@ export default function QuotationPage() {
                     title={
                       awaitingApproval
                         ? "Waiting on an approval that was already sent up — it can be emailed once that is cleared."
-                        : emailBlocked
-                          ? "Save the proposal first, so there is something to attach."
-                          : undefined
+                        : undefined
                     }
                     className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#233353] text-xs font-semibold text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -2361,9 +2360,8 @@ export default function QuotationPage() {
 
                 {emailBlocked && (
                   <p className="mt-2 text-[10px] leading-4 text-amber-600 dark:text-amber-400">
-                    {awaitingApproval
-                      ? "An approval is already in flight on this proposal. It can be emailed once that is cleared."
-                      : "Save the proposal first, so there is something to attach."}
+                    An approval is already in flight on this proposal. It can
+                    be emailed once that is cleared.
                   </p>
                 )}
               </FormSectionBlock>
