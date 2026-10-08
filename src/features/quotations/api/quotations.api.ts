@@ -106,6 +106,9 @@ export interface QuotationAttachment {
   name: string;
   size?: number;
   type?: string;
+  /** Where the file itself is stored, so it can be opened again. Absent
+   *  on anything attached before the CRM kept the bytes. */
+  key?: string;
 }
 
 export interface QuotationModel {

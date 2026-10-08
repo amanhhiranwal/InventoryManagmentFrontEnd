@@ -29,6 +29,13 @@ import FormPageHeader, {
   SubmitButton,
 } from "@/components/crm/FormPageHeader";
 import { useUIStore } from "@/lib/store/ui.store";
+import {
+  MAX_ATTACHMENT_BYTES,
+  StoredAttachment,
+  asAttachments,
+  uploadAttachments,
+} from "@/features/attachments/attachments.api";
+import { AttachmentList } from "@/features/attachments/AttachmentList";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import {
   CustomerPayload,
@@ -77,7 +84,7 @@ interface CustomerForm {
   leadSource: string;
   assignedToId: string;
   remarks: string;
-  attachments: string[];
+  attachments: StoredAttachment[];
 }
 
 type FormErrors = Partial<Record<keyof CustomerForm, string>>;
@@ -136,6 +143,7 @@ export default function CustomerFormPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState<"draft" | "order" | "save" | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(0);
 
   const [customerTypes, setCustomerTypes] = useState<string[]>(FALLBACK_CUSTOMER_TYPES);
   const [states, setStates] = useState<string[]>([]);
@@ -221,7 +229,7 @@ export default function CustomerFormPage() {
           leadSource: customer.lead_source || "",
           assignedToId: customer.assigned_to_id || "",
           remarks: customer.remarks || "",
-          attachments: customer.attachments || [],
+          attachments: asAttachments(customer.attachments),
         });
       })
       .catch((error) => {
@@ -348,20 +356,34 @@ export default function CustomerFormPage() {
     save(convertedLeadId ? "save" : "order");
   };
 
-  /* Only the names are kept - there is no file store behind the form yet,
-     the same as the lead form's attachments. */
-  const addFiles = (files: FileList | null) => {
+  /* Stored as they are chosen, so the customer keeps the file and not
+     just what it was called. */
+  const addFiles = async (files: FileList | null) => {
     const accepted = Array.from(files || []).filter((file) => {
-      const ok = /\.(pdf|docx?|xlsx?)$/i.test(file.name) && file.size <= 10 * 1024 * 1024;
+      const ok =
+        /\.(pdf|docx?|xlsx?)$/i.test(file.name) &&
+        file.size <= MAX_ATTACHMENT_BYTES;
       if (!ok) addToast(`${file.name}: PDF, DOC or XLS up to 10MB only.`, "warning");
       return ok;
     });
 
-    if (accepted.length) {
+    if (!accepted.length) return;
+
+    setUploading((count) => count + accepted.length);
+
+    try {
+      const stored = await uploadAttachments(accepted, (file, reason) =>
+        addToast(`${file.name}: ${reason}`, "warning"),
+      );
+
+      const already = new Set(form.attachments.map((file) => file.name));
+
       update("attachments", [
         ...form.attachments,
-        ...accepted.map((file) => file.name).filter((name) => !form.attachments.includes(name)),
+        ...stored.filter((file) => !already.has(file.name)),
       ]);
+    } finally {
+      setUploading((count) => Math.max(0, count - accepted.length));
     }
   };
 
@@ -644,7 +666,7 @@ export default function CustomerFormPage() {
                     onDrop={(event: DragEvent<HTMLLabelElement>) => {
                       event.preventDefault();
                       setDragging(false);
-                      addFiles(event.dataTransfer.files);
+                      void addFiles(event.dataTransfer.files);
                     }}
                     className={`flex min-h-[112px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-5 text-center transition ${
                       dragging
@@ -661,37 +683,26 @@ export default function CustomerFormPage() {
                       accept=".pdf,.doc,.docx,.xls,.xlsx"
                       className="hidden"
                       onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                        addFiles(event.target.files);
+                        void addFiles(event.target.files);
                         event.target.value = "";
                       }}
                     />
                   </label>
 
-                  {form.attachments.length > 0 && (
-                    <ul className="mt-2 space-y-1.5">
-                      {form.attachments.map((name) => (
-                        <li
-                          key={name}
-                          className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-600 dark:bg-[#0b2034] dark:text-slate-300"
-                        >
-                          <span className="truncate">{name}</span>
-                          <button
-                            type="button"
-                            aria-label={`Remove ${name}`}
-                            onClick={() =>
-                              update(
-                                "attachments",
-                                form.attachments.filter((item) => item !== name),
-                              )
-                            }
-                            className="shrink-0 text-slate-400 hover:text-rose-500"
-                          >
-                            <FiX size={12} />
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <div className="mt-2">
+                    <AttachmentList
+                      files={form.attachments}
+                      uploadingCount={uploading}
+                      onRemove={(index) =>
+                        update(
+                          "attachments",
+                          form.attachments.filter(
+                            (_, position) => position !== index,
+                          ),
+                        )
+                      }
+                    />
+                  </div>
                 </div>
               </div>
             </FormSectionBlock>

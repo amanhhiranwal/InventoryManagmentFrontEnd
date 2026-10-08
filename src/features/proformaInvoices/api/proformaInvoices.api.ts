@@ -207,7 +207,7 @@ export interface ProformaInvoiceModel {
   place_of_supply?: string | null;
   seller_state_code?: string | null;
   buyer_state_code?: string | null;
-  attachments: { name: string; size?: number; type?: string }[];
+  attachments: { name: string; size?: number; type?: string; key?: string }[];
 
   generated_at?: string | null;
   sent_at?: string | null;
@@ -237,7 +237,7 @@ export interface ProformaInvoicePayload {
   commercial_terms?: string[];
   payment_terms?: string;
   technical_notes?: string;
-  attachments?: { name: string; size?: number; type?: string }[];
+  attachments?: { name: string; size?: number; type?: string; key?: string }[];
 }
 
 export interface CompanyProfile {

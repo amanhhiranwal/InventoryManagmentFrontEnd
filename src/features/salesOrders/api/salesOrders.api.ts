@@ -195,7 +195,7 @@ export interface SalesOrderModel {
   commercial_terms?: string[] | null;
   payment_terms?: string | null;
   technical_notes?: string | null;
-  attachments?: Array<{ name: string; size?: number; type?: string }> | null;
+  attachments?: Array<{ name: string; size?: number; type?: string; key?: string }> | null;
 
   creator_id?: string | null;
   creator_name?: string | null;
@@ -261,7 +261,7 @@ export interface CreateSalesOrderPayload {
   commercial_terms?: string[];
   payment_terms?: string;
   technical_notes?: string;
-  attachments?: Array<{ name: string; size?: number; type?: string }>;
+  attachments?: Array<{ name: string; size?: number; type?: string; key?: string }>;
 }
 
 export type UpdateSalesOrderPayload = Partial<

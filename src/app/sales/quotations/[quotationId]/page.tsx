@@ -39,6 +39,7 @@ import {
   updateQuotationApi,
   type QuotationBrand,
 } from "@/features/quotations/api/quotations.api";
+import { useAttachmentPreview } from "@/features/attachments/AttachmentList";
 import QuotationDocument from "@/features/quotations/components/QuotationDocument";
 import ApprovalPanel from "@/features/approvals/components/ApprovalPanel";
 
@@ -142,6 +143,8 @@ function remarksToLines(html?: string | null) {
 ========================================================= */
 
 export default function QuotationDetailPage() {
+  const attachmentPreview = useAttachmentPreview();
+
   const params = useParams<{ quotationId: string }>();
   const router = useRouter();
   const { addToast } = useUIStore();
@@ -1130,7 +1133,13 @@ export default function QuotationDetailPage() {
                       }`}
                     />
 
-                    <span className="truncate">{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => attachmentPreview.open(file)}
+                      className="max-w-[200px] truncate hover:underline"
+                    >
+                      {file.name}
+                    </button>
 
                     {editable && (
                       <button
@@ -1151,6 +1160,8 @@ export default function QuotationDetailPage() {
                 No annexures attached to this quotation.
               </p>
             )}
+
+            {attachmentPreview.preview}
           </Card>
 
           {/* ACTIVITY HISTORY */}
