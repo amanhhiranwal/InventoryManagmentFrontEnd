@@ -491,17 +491,43 @@ export default function UserListPage() {
                 )}
               </td>
 
+              {/* The status is the switch: reading it and changing it
+                  are the same gesture, so there is no second control in
+                  Actions saying the same thing. A super admin's own row,
+                  and anyone who may not update users, get the plain chip
+                  because pressing it would do nothing. */}
               <td className="px-4 py-3">
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                    u.is_active === false
-                      ? "bg-slate-100 text-slate-500 dark:bg-[#0d2336] dark:text-slate-400"
-                      : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-                  }`}
-                >
-                  {u.is_active === false ? <FiSlash size={10} /> : <FiCheckCircle size={10} />}
-                  {u.is_active === false ? "Inactive" : "Active"}
-                </span>
+                {canUpdateRole && !u.is_super_admin ? (
+                  <button
+                    type="button"
+                    onClick={() => setToToggle(u)}
+                    disabled={togglingId === u.id}
+                    title={
+                      u.is_active === false
+                        ? `Switch ${u.first_name} back on`
+                        : `Switch ${u.first_name} off`
+                    }
+                    className={`inline-flex cursor-pointer items-center gap-1 rounded-full border-none px-2 py-0.5 text-[11px] font-semibold transition hover:ring-1 disabled:opacity-50 ${
+                      u.is_active === false
+                        ? "bg-slate-100 text-slate-500 hover:ring-slate-300 dark:bg-[#0d2336] dark:text-slate-400"
+                        : "bg-emerald-50 text-emerald-600 hover:ring-emerald-300 dark:bg-emerald-500/10 dark:text-emerald-400"
+                    }`}
+                  >
+                    {u.is_active === false ? <FiSlash size={10} /> : <FiCheckCircle size={10} />}
+                    {u.is_active === false ? "Inactive" : "Active"}
+                  </button>
+                ) : (
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                      u.is_active === false
+                        ? "bg-slate-100 text-slate-500 dark:bg-[#0d2336] dark:text-slate-400"
+                        : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                    }`}
+                  >
+                    {u.is_active === false ? <FiSlash size={10} /> : <FiCheckCircle size={10} />}
+                    {u.is_active === false ? "Inactive" : "Active"}
+                  </span>
+                )}
               </td>
 
               <td className="px-4 py-3">
@@ -514,26 +540,6 @@ export default function UserListPage() {
                         className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-[#0d2336]"
                       >
                         <FiEdit2 className="text-sm" />
-                      </button>
-
-                      {/* Switching off is not deleting, and both
-                          ask first: one signs somebody out, the
-                          other takes the record away. */}
-                      <button
-                        onClick={() => setToToggle(u)}
-                        disabled={togglingId === u.id}
-                        title={
-                          u.is_active === false
-                            ? `Switch ${u.first_name} back on`
-                            : `Switch ${u.first_name} off`
-                        }
-                        className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-amber-600 disabled:opacity-50 dark:hover:bg-[#0d2336]"
-                      >
-                        {u.is_active === false ? (
-                          <FiCheckCircle className="text-sm" />
-                        ) : (
-                          <FiSlash className="text-sm" />
-                        )}
                       </button>
 
                       <button
