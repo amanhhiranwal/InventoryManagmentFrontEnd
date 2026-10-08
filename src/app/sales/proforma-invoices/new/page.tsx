@@ -83,7 +83,7 @@ interface Source {
   discountInput?: number | null;
   orcMode?: string | null;
   orcInput?: number | null;
-  attachments: { name: string; size?: number; type?: string }[];
+  attachments: { name: string; size?: number; type?: string; key?: string }[];
 }
 
 const addDays = (date: Date, days: number) => {

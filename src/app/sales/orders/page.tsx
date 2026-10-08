@@ -50,6 +50,11 @@ import {
   type PaymentTermOption,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
+import {
+  StoredAttachment,
+  uploadAttachments,
+} from "@/features/attachments/attachments.api";
+import { useAttachmentPreview } from "@/features/attachments/AttachmentList";
 import StatCard from "@/components/crm/StatCard";
 import { FORM_FIELDS } from "@/components/crm/FormCard";
 import { monthOverMonth } from "@/components/crm/kpiChange";
@@ -465,8 +470,12 @@ export default function OrdersListPage() {
      second order. */
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
 
-  const [attachments, setAttachments] = useState<File[]>([]);
+  /* Stored as soon as they are chosen, so the record keeps a file rather
+     than only its name - and so it can be opened again from here. */
+  const [attachments, setAttachments] = useState<StoredAttachment[]>([]);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const attachmentPreview = useAttachmentPreview();
 
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -862,7 +871,7 @@ export default function OrdersListPage() {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ];
 
-  const addAttachments = (files: File[]) => {
+  const addAttachments = async (files: File[]) => {
     const validFiles: File[] = [];
 
     files.forEach((file) => {
@@ -882,18 +891,28 @@ export default function OrdersListPage() {
       validFiles.push(file);
     });
 
-    if (validFiles.length > 0) {
+    if (!validFiles.length) return;
+
+    // Up to the server now rather than at save: the file is then on the
+    // record whatever happens to this tab, and can be opened from the
+    // list the moment it finishes.
+    setUploadingCount((count) => count + validFiles.length);
+
+    try {
+      const stored = await uploadAttachments(validFiles, (file, reason) =>
+        addToast(`${file.name}: ${reason}`, "warning"),
+      );
+
       setAttachments((current) => {
-        const existingNames = new Set(
-          current.map((file) => `${file.name}-${file.size}`),
-        );
+        const already = new Set(current.map((file) => file.key || file.name));
 
-        const newFiles = validFiles.filter(
-          (file) => !existingNames.has(`${file.name}-${file.size}`),
-        );
-
-        return [...current, ...newFiles];
+        return [
+          ...current,
+          ...stored.filter((file) => !already.has(file.key || file.name)),
+        ];
       });
+    } finally {
+      setUploadingCount((count) => Math.max(0, count - validFiles.length));
     }
   };
 
@@ -903,7 +922,7 @@ export default function OrdersListPage() {
     const files = Array.from(event.target.files || []);
 
     if (files.length > 0) {
-      addAttachments(files);
+      void addAttachments(files);
     }
 
     // Allows selecting the same file again after removing it.
@@ -918,7 +937,7 @@ export default function OrdersListPage() {
     const files = Array.from(event.dataTransfer.files || []);
 
     if (files.length > 0) {
-      addAttachments(files);
+      void addAttachments(files);
     }
   };
 
@@ -1701,13 +1720,9 @@ export default function OrdersListPage() {
         payment_terms: newOrder.paymentTerms || undefined,
         technical_notes: newOrder.technicalNotes || undefined,
 
-        /* Only the file metadata is stored; there is no upload endpoint yet,
-           so the bytes stay in the browser. */
-        attachments: attachments.map((file) => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        })),
+        /* Already uploaded, so each one carries the key the file was
+           stored under and can be opened again from the order. */
+        attachments,
 
         customer_information: {
           customer_name: newOrder.customerName,
@@ -3261,12 +3276,12 @@ export default function OrdersListPage() {
 
                   {/* Selected Attachments */}
 
-                  {attachments.length > 0 && (
+                  {(attachments.length > 0 || uploadingCount > 0) && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {attachments.map((file, index) => (
                         <span
-                          key={`${file.name}-${file.size}-${index}`}
-                          title={formatFileSize(file.size)}
+                          key={`${file.key || file.name}-${index}`}
+                          title={formatFileSize(file.size || 0)}
                           className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 dark:border-[#17304a] dark:bg-[#0b2034] dark:text-slate-300"
                         >
                           {/* Spreadsheets get the green mark the design uses,
@@ -3280,7 +3295,19 @@ export default function OrdersListPage() {
                             }`}
                           />
 
-                          <span className="truncate">{file.name}</span>
+                          {/* Clickable the moment it has finished
+                              uploading, so a wrong file is noticed here
+                              rather than after the order is raised. */}
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              attachmentPreview.open(file);
+                            }}
+                            className="max-w-[180px] truncate hover:underline"
+                          >
+                            {file.name}
+                          </button>
 
                           <button
                             type="button"
@@ -3295,8 +3322,20 @@ export default function OrdersListPage() {
                           </button>
                         </span>
                       ))}
+
+                      {Array.from({ length: uploadingCount }).map((_, index) => (
+                        <span
+                          key={`uploading-${index}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-[10px] font-medium text-slate-400 dark:border-[#17304a]"
+                        >
+                          <FiFileText size={11} className="shrink-0" />
+                          Uploading...
+                        </span>
+                      ))}
                     </div>
                   )}
+
+                  {attachmentPreview.preview}
                 </div>
               </div>
             </div>

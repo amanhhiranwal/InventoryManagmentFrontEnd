@@ -134,7 +134,7 @@ export interface OpportunityModel {
   lead_source?: string | null;
   /** Buying window, e.g. "Immediate (0-15 days)". */
   purchase_timeline?: string | null;
-  attachments?: { name: string; size?: number; type?: string }[] | null;
+  attachments?: { name: string; size?: number; type?: string; key?: string }[] | null;
   compliance_documents?: Record<string, unknown> | null;
 
   customer_type_id?: number | null;
@@ -195,7 +195,7 @@ export interface CreateOpportunityPayload {
 
   lead_source?: string;
   purchase_timeline?: string;
-  attachments?: { name: string; size?: number; type?: string }[];
+  attachments?: { name: string; size?: number; type?: string; key?: string }[];
   compliance_documents?: Record<string, unknown>;
 
   customer_type_id?: number;

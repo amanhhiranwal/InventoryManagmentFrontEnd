@@ -29,6 +29,13 @@ export type CustomerActivityType = (typeof CUSTOMER_ACTIVITY_TYPES)[number];
    TYPES
 ========================================================= */
 
+export interface CustomerAttachment {
+  name: string;
+  size?: number;
+  type?: string;
+  key?: string;
+}
+
 export interface CustomerModel {
   id: string;
   customer_code?: string;
@@ -69,7 +76,9 @@ export interface CustomerModel {
   creator_name?: string | null;
 
   converted_lead_id?: number | null;
-  attachments?: string[];
+  /* A bare filename on anything saved before the CRM kept the file
+     itself; a stored attachment since. */
+  attachments?: Array<string | CustomerAttachment>;
 
   created_at?: string;
   updated_at?: string;

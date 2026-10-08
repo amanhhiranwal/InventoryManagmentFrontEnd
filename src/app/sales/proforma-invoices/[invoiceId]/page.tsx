@@ -58,6 +58,11 @@ import {
   SALES_ORDER_STATUS,
   salesOrderStatusLabel,
 } from "@/features/salesOrders/api/salesOrders.api";
+import { asAttachments } from "@/features/attachments/attachments.api";
+import {
+  AttachmentRow,
+  useAttachmentPreview,
+} from "@/features/attachments/AttachmentList";
 import type { SalesOrderStatus } from "@/features/salesOrders/api/salesOrders.api";
 import {
   AddressFields,
@@ -95,6 +100,8 @@ export default function ProformaInvoiceDetailPage() {
 }
 
 function ProformaInvoiceDetail() {
+  const attachmentPreview = useAttachmentPreview();
+
   const params = useParams<{ invoiceId: string }>();
   const search = useSearchParams();
   const router = useRouter();
@@ -647,22 +654,16 @@ function ProformaInvoiceDetail() {
                 onView={openPreview}
               />
 
-              {invoice.attachments.map((file) => (
-                <div
-                  key={file.name}
-                  className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2.5 dark:bg-[#0b2034]"
-                >
-                  {/\.(xlsx?|csv)$/i.test(file.name) ? (
-                    <LuFileSpreadsheet size={13} className="shrink-0 text-emerald-600" />
-                  ) : (
-                    <LuFileText size={13} className="shrink-0 text-rose-500" />
-                  )}
-                  <span className="truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                    {file.name}
-                  </span>
-                </div>
+              {asAttachments(invoice.attachments).map((file, index) => (
+                <AttachmentRow
+                  key={`${file.key || file.name}-${index}`}
+                  file={file}
+                  onOpen={attachmentPreview.open}
+                />
               ))}
             </div>
+
+            {attachmentPreview.preview}
           </SideCard>
 
           <SideCard

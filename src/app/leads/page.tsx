@@ -28,6 +28,13 @@ import {
 } from "@/lib/fieldChecks";
 
 import { useUIStore } from "@/lib/store/ui.store";
+import {
+  MAX_ATTACHMENT_BYTES,
+  StoredAttachment,
+  asAttachments,
+  uploadAttachments,
+} from "@/features/attachments/attachments.api";
+import { AttachmentList } from "@/features/attachments/AttachmentList";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { hasPermission } from "@/features/auth/utils/permissions";
 
@@ -123,7 +130,11 @@ interface LeadDetails {
 
   leadSource: string;
   remarks: string;
-  attachments: string[];
+
+  /* Stored files, not just their names. A lead saved before the CRM kept
+     the bytes carries a bare string, which asAttachments() reads as a
+     name with nothing behind it. */
+  attachments: StoredAttachment[];
 }
 
 interface LeadFormState extends LeadDetails {
@@ -302,7 +313,7 @@ function parseLeadDescription(description?: string): LeadDetails {
         ...result,
         ...parsed,
         attachments: Array.isArray(parsed.attachments)
-          ? parsed.attachments
+          ? asAttachments(parsed.attachments)
           : [],
       };
     } catch {
@@ -386,7 +397,7 @@ function getLeadDetails(lead: Lead): LeadDetails {
     email: lead.email || parsed.email || "",
     leadSource: lead.lead_source_name || parsed.leadSource || "",
     remarks: lead.remarks || parsed.remarks || "",
-    attachments: parsed.attachments || [],
+    attachments: asAttachments(parsed.attachments),
   };
 }
 
@@ -644,6 +655,7 @@ export default function LeadsPage() {
   const [pageMode, setPageMode] = useState<"list" | "create" | "edit">("list");
 
   const [form, setForm] = useState<LeadFormState>(EMPTY_FORM);
+  const [uploadingAttachments, setUploadingAttachments] = useState(0);
 
   const [rowMenuLeadId, setRowMenuLeadId] = useState<number | string | null>(null);
 
@@ -1680,27 +1692,45 @@ export default function LeadsPage() {
      ATTACHMENTS
   -------------------------------------------------------------------------- */
 
-  const addAttachment = (event: ChangeEvent<HTMLInputElement>) => {
+  const addAttachment = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
+
+    // Cleared straight away: the upload is awaited below, and the input
+    // keeping the file means choosing the same one again does nothing.
+    event.target.value = "";
 
     if (!files.length) return;
 
-    const validFiles = files.filter((file) => file.size <= 10 * 1024 * 1024);
+    const validFiles = files.filter(
+      (file) => file.size <= MAX_ATTACHMENT_BYTES,
+    );
 
     if (validFiles.length !== files.length) {
       addToast("Files above 10MB were ignored.", "warning");
     }
 
-    setForm((previous) => ({
-      ...previous,
+    if (!validFiles.length) return;
 
-      attachments: [
-        ...previous.attachments,
-        ...validFiles.map((file) => file.name),
-      ],
-    }));
+    setUploadingAttachments((count) => count + validFiles.length);
 
-    event.target.value = "";
+    try {
+      // Stored now, so the GSTIN or PAN document can be opened from the
+      // lead afterwards. It used to keep the filename and drop the file.
+      const stored = await uploadAttachments(validFiles, (file, reason) =>
+        addToast(`${file.name}: ${reason}`, "warning"),
+      );
+
+      if (stored.length) {
+        setForm((previous) => ({
+          ...previous,
+          attachments: [...previous.attachments, ...stored],
+        }));
+      }
+    } finally {
+      setUploadingAttachments((count) =>
+        Math.max(0, count - validFiles.length),
+      );
+    }
   };
 
   /* ==========================================================================
@@ -1720,6 +1750,7 @@ export default function LeadsPage() {
         onChange={updateForm}
         onSubmit={pageMode === "create" ? handleCreateLead : handleUpdateLead}
         onAttachment={addAttachment}
+        uploadingAttachments={uploadingAttachments}
         onClose={closeLeadForm}
       />
     );
@@ -2568,6 +2599,7 @@ function LeadFormPage({
   onChange,
   onSubmit,
   onAttachment,
+  uploadingAttachments,
   onClose,
 }: {
   title: string;
@@ -2583,6 +2615,7 @@ function LeadFormPage({
   ) => void;
   onSubmit: (event: FormEvent) => void;
   onAttachment: (event: ChangeEvent<HTMLInputElement>) => void;
+  uploadingAttachments: number;
   onClose: () => void;
 }) {
   /* A field complains once it has been left, not while it is being filled:
@@ -2752,6 +2785,30 @@ function LeadFormPage({
                 onFile={onAttachment}
               />
             </div>
+
+            {/* What those three Upload Doc buttons have put on the lead.
+                There was nothing here before: a file was chosen, its name
+                went into the record, and the person never saw it again. */}
+            {(form.attachments.length > 0 || uploadingAttachments > 0) && (
+              <div className="mt-4">
+                <p className="mb-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                  Uploaded Documents
+                </p>
+
+                <AttachmentList
+                  files={form.attachments}
+                  uploadingCount={uploadingAttachments}
+                  onRemove={(index) =>
+                    onChange(
+                      "attachments",
+                      form.attachments.filter(
+                        (_, position) => position !== index,
+                      ),
+                    )
+                  }
+                />
+              </div>
+            )}
           </FormSectionBlock>
 
           <FormSectionBlock icon={<FiUser />} title="Primary Contact">

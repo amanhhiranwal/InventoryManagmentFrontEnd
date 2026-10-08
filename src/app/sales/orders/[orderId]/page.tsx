@@ -18,6 +18,11 @@ import {
   requestApprovalApi,
 } from "@/features/approvals/api/approvals.api";
 import ApprovalPanel from "@/features/approvals/components/ApprovalPanel";
+import { asAttachments } from "@/features/attachments/attachments.api";
+import {
+  AttachmentRow,
+  useAttachmentPreview,
+} from "@/features/attachments/AttachmentList";
 import {
   SALES_ORDER_PIPELINE,
   SALES_ORDER_STATUS,
@@ -204,6 +209,8 @@ export default function SalesOrderDetailPage() {
   const { addToast } = useUIStore();
 
   const orderId = params?.orderId;
+
+  const attachmentPreview = useAttachmentPreview();
 
   const [order, setOrder] = useState<SalesOrderModel | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1174,19 +1181,16 @@ export default function SalesOrderDetailPage() {
                 }
               />
 
-              {order.attachments?.map((file, index) => (
-                <div
-                  key={`${file.name}-${index}`}
-                  className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-[#0b2034]"
-                >
-                  <FiFileText size={12} className="shrink-0 text-rose-500" />
-
-                  <span className="truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                    {file.name}
-                  </span>
-                </div>
+              {asAttachments(order.attachments).map((file, index) => (
+                <AttachmentRow
+                  key={`${file.key || file.name}-${index}`}
+                  file={file}
+                  onOpen={attachmentPreview.open}
+                />
               ))}
             </div>
+
+            {attachmentPreview.preview}
           </Card>
 
           {/* ACTIVITY HISTORY */}
