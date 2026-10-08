@@ -88,6 +88,7 @@ export default function CompanyProfilePage() {
         company_offerings: profile.company_offerings,
         signatory_name: profile.signatory_name,
         signatory_title: profile.signatory_title,
+        app_base_url: profile.app_base_url,
 
 
       });
@@ -291,6 +292,22 @@ export default function CompanyProfilePage() {
                   value={profile.signatory_title}
                   onChange={(event) => set("signatory_title", event.target.value)}
                   placeholder="Director"
+                  className={INPUT}
+                />
+              </Field>
+
+              {/* The approval emails carry a link back here. Without this
+                  they are built from whatever address the server was
+                  started with, which on a laptop is localhost - a link
+                  nobody receiving the email can open. */}
+              <Field
+                label="CRM Address"
+                hint="Where this CRM answers. Every link in an approval or notification email is built from it, so set it to the address people actually use."
+              >
+                <input
+                  value={profile.app_base_url}
+                  onChange={(event) => set("app_base_url", event.target.value)}
+                  placeholder="https://synergy-sync.com"
                   className={INPUT}
                 />
               </Field>

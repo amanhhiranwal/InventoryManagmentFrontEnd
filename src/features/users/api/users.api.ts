@@ -16,6 +16,10 @@ export interface User {
   /** The manager this user reports to. */
   reports_to_id?: string | null;
   reports_to_name?: string | null;
+  /** Where they are based, as the staffing sheet records it. */
+  location?: string;
+  /** Off means the password stops working and any live session ends. */
+  is_active?: boolean;
 }
 
 export interface CreateUserPayload {
@@ -28,6 +32,8 @@ export interface CreateUserPayload {
   role_ids?: string[];
   company_ids?: string[];
   reports_to_id?: string | null;
+  /** Where they are based, as the staffing sheet records it. */
+  location?: string;
 }
 
 export const getUsersApi = async (page: number = 1, size: number = 20, options?: { skipErrorToast?: boolean }): Promise<{ data: User[]; total: number }> => {
