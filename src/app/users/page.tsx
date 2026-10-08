@@ -9,7 +9,7 @@ import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
 import api from "@/lib/axios";
 import { hasPermission } from "@/features/auth/utils/permissions";
-import { FiPlus, FiUser, FiMail, FiPhone, FiTag, FiCheckCircle, FiSlash, FiTrash2, FiEdit2 } from "react-icons/fi";
+import { FiPlus, FiUser, FiMail, FiCheckCircle, FiSlash, FiTrash2, FiEdit2 } from "react-icons/fi";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
@@ -120,11 +120,17 @@ export default function UserListPage() {
   const [editLocation, setEditLocation] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
+  /* Switching somebody off signs them out of a session they are in the
+     middle of, so it is asked rather than done on one click - the same
+     way deleting is. */
+  const [toToggle, setToToggle] = useState<User | null>(null);
+
   /* Switching somebody off signs them out and stops the password working.
      Kept apart from delete: a person who has left still owns the leads
      they raised, and those have to keep pointing at somebody. */
   const toggleActive = async (u: User) => {
     setTogglingId(u.id);
+    setToToggle(null);
 
     try {
       const { data } = await api.put(`/api/v1/users/${u.id}/status`, {
@@ -377,154 +383,173 @@ export default function UserListPage() {
       />
 
         <Table
-          headers={["User", "Roles", "Companies", "ID / Details", "Actions"]}
+          headers={[
+            "User",
+            "Role",
+            "Location",
+            "Reports To",
+            "Emp ID",
+            "Companies",
+            "Status",
+            "Actions",
+          ]}
           loading={loading}
           currentPage={currentPage}
           totalItems={totalItems}
           pageSize={pageSize}
           onPageChange={setCurrentPage}
         >
-          {filteredUsers.map((u) => {
-            /* The roles master is only loaded for someone allowed to read
-               it. Without it, fall back to the names the user record
-               carries, so the column reads "Area Manager" rather than
-               claiming they have no role at all. */
-            const userRoles = roles.length
-              ? roles.filter((r) => u.role_ids?.includes(r.id))
-              : (u.role_names || []).map((name, i) => ({ id: `${u.id}-${i}`, name }));
-            const userCompanies = companies.filter((c) => u.company_ids?.includes(c.id));
+        {filteredUsers.map((u) => {
+          /* The roles master is only loaded for someone allowed
+             to read it. Without it, fall back to the names the
+             user record carries, so the column reads "Area
+             Manager" rather than claiming they have no role. */
+          const userRoles = roles.length
+            ? roles.filter((r) => u.role_ids?.includes(r.id))
+            : (u.role_names || []).map((name, i) => ({
+                id: `${u.id}-${i}`,
+                name,
+              }));
 
-            return (
-              <tr
-                key={u.id}
-                className="group hover:bg-slate-50/50 dark:hover:bg-[#071929]/20 transition-all duration-150"
-              >
-                <td className="py-4 px-5">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light/30 dark:bg-primary-light/5 text-primary text-base font-bold">
-                      {u.first_name?.[0]?.toUpperCase() || <FiUser />}
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-800 dark:text-white text-sm">
-                        {u.first_name} {u.last_name}
-                        {u.is_super_admin && (
-                          <span className="ml-2 inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
-                            Super Admin
-                          </span>
+          const userCompanies = companies.filter((c) =>
+            u.company_ids?.includes(c.id),
+          );
+
+          return (
+            <tr
+              key={u.id}
+              className="border-t border-[#f0f0f0] transition hover:bg-slate-50/60 dark:border-[#0d2336] dark:hover:bg-[#071929]/30"
+            >
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-light/30 text-sm font-bold text-primary dark:bg-primary-light/5">
+                    {u.first_name?.[0]?.toUpperCase() || <FiUser />}
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold text-slate-800 dark:text-white">
+                      {u.first_name} {u.last_name}
+
+                      {u.is_super_admin && (
+                        <span className="ml-2 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                          Super Admin
+                        </span>
+                      )}
+                    </p>
+
+                    <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-[#777777] dark:text-slate-400">
+                      <FiMail className="shrink-0" size={10} />
+                      {u.email}
+                    </p>
+                  </div>
+                </div>
+              </td>
+
+              <td className="px-4 py-3">
+                {userRoles.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {userRoles.map((r) => (
+                      <span
+                        key={r.id}
+                        className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:bg-[#0d2336] dark:text-slate-300"
+                      >
+                        {r.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-slate-400">—</span>
+                )}
+              </td>
+
+              <td className="px-4 py-3 text-[12px] text-slate-600 dark:text-slate-300">
+                {u.location || "—"}
+              </td>
+
+              <td className="px-4 py-3 text-[12px] text-slate-600 dark:text-slate-300">
+                {u.reports_to_name || "—"}
+              </td>
+
+              <td className="px-4 py-3 text-[12px] text-slate-600 dark:text-slate-300">
+                {u.employee_id || "—"}
+              </td>
+
+              <td className="px-4 py-3">
+                {userCompanies.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {userCompanies.map((c) => (
+                      <span
+                        key={c.id}
+                        className="rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                      >
+                        {c.company_name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-slate-400">All</span>
+                )}
+              </td>
+
+              <td className="px-4 py-3">
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                    u.is_active === false
+                      ? "bg-slate-100 text-slate-500 dark:bg-[#0d2336] dark:text-slate-400"
+                      : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+                  }`}
+                >
+                  {u.is_active === false ? <FiSlash size={10} /> : <FiCheckCircle size={10} />}
+                  {u.is_active === false ? "Inactive" : "Active"}
+                </span>
+              </td>
+
+              <td className="px-4 py-3">
+                <div className="flex items-center justify-center gap-1">
+                  {canUpdateRole && !u.is_super_admin && (
+                    <>
+                      <button
+                        onClick={() => handleOpenEditModal(u)}
+                        title={`Edit ${u.first_name}`}
+                        className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-[#0d2336]"
+                      >
+                        <FiEdit2 className="text-sm" />
+                      </button>
+
+                      {/* Switching off is not deleting, and both
+                          ask first: one signs somebody out, the
+                          other takes the record away. */}
+                      <button
+                        onClick={() => setToToggle(u)}
+                        disabled={togglingId === u.id}
+                        title={
+                          u.is_active === false
+                            ? `Switch ${u.first_name} back on`
+                            : `Switch ${u.first_name} off`
+                        }
+                        className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-amber-600 disabled:opacity-50 dark:hover:bg-[#0d2336]"
+                      >
+                        {u.is_active === false ? (
+                          <FiCheckCircle className="text-sm" />
+                        ) : (
+                          <FiSlash className="text-sm" />
                         )}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
-                        <FiMail className="shrink-0" />
-                        <span>{u.email}</span>
-                      </p>
-                    </div>
-                  </div>
-                </td>
-                <td className="py-4 px-5">
-                  <div className="flex flex-wrap gap-1.5">
-                    {userRoles.length > 0 ? (
-                      userRoles.map((r) => (
-                        <span
-                          key={r.id}
-                          className="inline-flex items-center gap-1 rounded bg-slate-100 dark:bg-[#0d2336] px-2 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300"
-                        >
-                          <FiTag className="text-[10px]" />
-                          {r.name}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-slate-400 italic">No Roles</span>
-                    )}
-                  </div>
-                </td>
-                <td className="py-4 px-5">
-                  <div className="flex flex-wrap gap-1.5">
-                    {userCompanies.length > 0 ? (
-                      userCompanies.map((c) => (
-                        <span
-                          key={c.id}
-                          className="inline-flex items-center gap-1 rounded bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400"
-                        >
-                          {c.company_name}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-slate-400 italic">No Companies</span>
-                    )}
-                  </div>
-                </td>
-                <td className="py-4 px-5">
-                  <div className="text-xs space-y-0.5">
-                    <p className="text-slate-400">
-                      Emp ID: <span className="font-semibold text-slate-600 dark:text-slate-300">{u.employee_id || "N/A"}</span>
-                    </p>
-                    <p className="text-slate-400 flex items-center gap-1">
-                      <FiPhone className="shrink-0 text-[10px]" />
-                      <span>{u.phone_number || "N/A"}</span>
-                    </p>
-                    <p className="text-slate-400">
-                      Reports to:{" "}
-                      <span className="font-semibold text-slate-600 dark:text-slate-300">
-                        {u.reports_to_name || "—"}
-                      </span>
-                    </p>
+                      </button>
 
-                    {/* Where they are based. On the record and read by the
-                        staffing import, but nowhere on this list. */}
-                    <p className="text-xs text-slate-400">
-                      Location:{" "}
-                      <span className="font-semibold text-slate-600 dark:text-slate-300">
-                        {u.location || "—"}
-                      </span>
-                    </p>
-                  </div>
-                </td>
-                <td className="py-4 px-5 text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    {canUpdateRole && !u.is_super_admin && (
-                      <>
-                        <button
-                          onClick={() => handleOpenEditModal(u)}
-                          className="p-1.5 text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-[#0d2336] rounded-lg transition-all border-none bg-transparent cursor-pointer"
-                          title="Edit User Profile"
-                        >
-                          <FiEdit2 className="text-sm" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenDeleteModal(u)}
-                          className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-[#0d2336] rounded-lg transition-all border-none bg-transparent cursor-pointer"
-                          title="Delete User"
-                        >
-                          <FiTrash2 className="text-sm" />
-                        </button>
-                      </>
-                    )}
-                    {/* This said "Active" on every row whatever the
-                        account was, because nothing could switch one off.
-                        It is the switch now. */}
-                    <button
-                      type="button"
-                      onClick={() => toggleActive(u)}
-                      disabled={togglingId === u.id}
-                      title={
-                        u.is_active
-                          ? `Switch ${u.first_name} off — they are signed out and cannot sign back in`
-                          : `Switch ${u.first_name} back on`
-                      }
-                      className={`ml-2 inline-flex items-center gap-1 rounded-lg border-none bg-transparent px-1.5 py-1 text-xs font-semibold transition disabled:opacity-50 ${
-                        u.is_active
-                          ? "text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
-                          : "text-slate-400 hover:bg-slate-100 dark:hover:bg-[#0d2336]"
-                      }`}
-                    >
-                      {u.is_active ? <FiCheckCircle /> : <FiSlash />}
-                      <span>{u.is_active ? "Active" : "Inactive"}</span>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
+                      <button
+                        onClick={() => handleOpenDeleteModal(u)}
+                        title={`Delete ${u.first_name}`}
+                        className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-rose-500 dark:hover:bg-[#0d2336]"
+                      >
+                        <FiTrash2 className="text-sm" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
         </Table>
 
       {/* User Creation Modal */}
@@ -703,6 +728,61 @@ export default function UserListPage() {
           </form>
         )}
       </Modal>
+
+      {/* Switching an account off signs somebody out mid-session and
+          stops their password working, so it is asked for rather than
+          done on one click. */}
+      {toToggle && (
+        <Modal
+          isOpen
+          onClose={() => setToToggle(null)}
+          title={
+            toToggle.is_active === false
+              ? "Switch this account back on"
+              : "Switch this account off"
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+              {toToggle.is_active === false ? (
+                <>
+                  Switch{" "}
+                  <span className="font-bold text-slate-800 dark:text-white">
+                    {toToggle.first_name} {toToggle.last_name}
+                  </span>{" "}
+                  back on? Their password will work again and they will be
+                  able to sign in.
+                </>
+              ) : (
+                <>
+                  Switch{" "}
+                  <span className="font-bold text-slate-800 dark:text-white">
+                    {toToggle.first_name} {toToggle.last_name}
+                  </span>{" "}
+                  off? They are signed out straight away, even if they are
+                  working now, and their password stops working. Everything
+                  they raised stays where it is, and you can switch them
+                  back on at any time.
+                </>
+              )}
+            </p>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-3 dark:border-[#0d2336]">
+              <Button variant="outline" onClick={() => setToToggle(null)}>
+                Cancel
+              </Button>
+
+              <Button
+                variant={toToggle.is_active === false ? "primary" : "danger"}
+                loading={togglingId === toToggle.id}
+                onClick={() => toggleActive(toToggle)}
+              >
+                {toToggle.is_active === false ? "Switch On" : "Switch Off"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Delete User Confirmation Modal */}
       {showDeleteModal && userToDelete && (
