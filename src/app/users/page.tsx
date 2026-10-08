@@ -117,6 +117,7 @@ export default function UserListPage() {
   const [editLastName, setEditLastName] = useState("");
   const [editPhoneNumber, setEditPhoneNumber] = useState("");
   const [editEmployeeId, setEditEmployeeId] = useState("");
+  const [editEmail, setEditEmail] = useState("");
   const [editLocation, setEditLocation] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
@@ -207,6 +208,7 @@ export default function UserListPage() {
     setEditLastName(u.last_name);
     setEditPhoneNumber(u.phone_number || "");
     setEditEmployeeId(u.employee_id || "");
+    setEditEmail(u.email || "");
     setEditLocation(u.location || "");
     setEditRoleIds(u.role_ids || []);
     setEditCompanyIds(u.company_ids || []);
@@ -228,6 +230,7 @@ export default function UserListPage() {
         last_name: editLastName,
         phone_number: editPhoneNumber,
         employee_id: editEmployeeId,
+        email: editEmail,
         location: editLocation,
         role_ids: editRoleIds,
         company_ids: editCompanyIds,
@@ -690,6 +693,20 @@ export default function UserListPage() {
                 onChange={(e) => setEditEmployeeId(e.target.value)}
               />
             </div>
+
+            {/* The address they sign in with, so correcting one does not
+                mean deleting the account and losing everything it owns. */}
+            <Input
+              label="Email Address"
+              type="email"
+              placeholder="name@company.com"
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+            />
+            <p className="-mt-2 text-[11px] text-slate-400">
+              This is their login. Changing it means they sign in with the
+              new address from then on.
+            </p>
 
             <Input
               label="Location"
