@@ -15,6 +15,9 @@ export interface CompanyProfile {
   company_website: string;
   company_email: string;
   company_phone: string;
+  /** Where the CRM answers. Every link in an email it sends is built
+      from this, so it has to be the address people actually use. */
+  app_base_url: string;
   company_about: string;
   company_offerings: string;
   company_logo_path: string;
