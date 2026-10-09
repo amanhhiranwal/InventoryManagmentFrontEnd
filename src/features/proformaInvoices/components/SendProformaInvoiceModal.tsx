@@ -132,6 +132,12 @@ export default function SendProformaInvoiceModal({
         subject,
         body,
         body_html: bodyHtml,
+        /* What is still in the Attached Documents list. It used to be
+           shown and then left behind - the customer was told a document
+           was attached and the message arrived with nothing on it. */
+        attachment_keys: files
+          .filter((file) => file.key)
+          .map((file) => file.key as string),
         ...options,
         test_only: testOnly,
       });

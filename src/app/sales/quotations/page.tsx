@@ -40,6 +40,10 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
+import {
+  StoredAttachment,
+  uploadAttachments,
+} from "@/features/attachments/attachments.api";
 import { sellingPriceFor } from "@/features/pricing/lineMath";
 import {
   upliftFor,
@@ -156,11 +160,7 @@ interface AddressState {
   zipCode: string;
 }
 
-interface AttachmentState {
-  name: string;
-  size: number;
-  type: string;
-}
+type AttachmentState = StoredAttachment;
 
 interface TermState {
   label: string;
@@ -865,19 +865,20 @@ export default function QuotationPage() {
       ? undefined
       : quotations.find((row) => row.id === editingId);
 
-  const awaitingApproval =
-    editingRow?.status === QUOTATION_STATUS.PENDING_APPROVAL;
+  /* A proposal needs no signature to go out, and nothing holds the
+     email back. It is a price put in front of a customer to see what
+     they say; the commitment is the sales order, and the approval sits
+     there.
 
-  /* A proposal needs no signature to go out. It is a price put in front
-     of a customer to see what they say; the commitment is the sales
-     order, and the approval sits there now.
+     An approval left in flight on a proposal used to block it. Under
+     the current workflow none is ever raised on one, so that only
+     caught rows from the old flow - and it stopped a salesperson
+     emailing a customer over a signature the business no longer asks
+     for.
 
-     Nor does it need saving first: the button saves it and then opens the
-     send dialog, so demanding a save beforehand asked for something it
-     was about to do anyway. The one thing that still holds it is an
-     approval somebody already sent up, which is allowed to finish rather
-     than being overtaken by the email it was raised for. */
-  const emailBlocked = awaitingApproval;
+     Nor does it need saving first: the button saves it and then opens
+     the send dialog, so demanding a save beforehand asked for something
+     it was about to do anyway. */
 
   /** Saves the quotation, then sends the discount up for approval. */
   const sendForApproval = async () => {
@@ -1360,9 +1361,21 @@ export default function QuotationPage() {
     setSaving(true);
 
     try {
-      const created = await createQuotationApi(toPayload(QUOTATION_STATUS.DRAFT));
+      /* Editing goes through update, the same as Save and as Download
+         PDF. This alone called create, so pressing Email Draft while
+         editing tried to raise a second proposal against the same
+         opportunity and was refused - the one place in the form where
+         the button did not do what the other two did. */
+      const created = editingId
+        ? await updateQuotationApi(editingId, toPayload(QUOTATION_STATUS.DRAFT))
+        : await createQuotationApi(toPayload(QUOTATION_STATUS.DRAFT));
 
-      addToast(`Proposal ${created.quote_number} saved as draft.`, "success");
+      addToast(
+        editingId
+          ? `Proposal ${created.quote_number} updated.`
+          : `Proposal ${created.quote_number} saved as draft.`,
+        "success",
+      );
 
       await fetchQuotations();
       setPageMode("list");
@@ -2338,19 +2351,13 @@ export default function QuotationPage() {
                     Download PDF
                   </button>
 
-                  {/* Nothing goes to a client on a discount nobody has
-                      signed for yet. The chain exists so a price leaves the
-                      building only once somebody with the authority has
-                      agreed to it, and an email cannot be recalled. */}
+                  {/* A price may go to a customer whenever the person
+                      selling says so. The signature the business asks for
+                      is on the sales order, not on the proposal. */}
                   <button
                     type="button"
                     onClick={saveAndEmail}
-                    disabled={saving || emailBlocked}
-                    title={
-                      awaitingApproval
-                        ? "Waiting on an approval that was already sent up — it can be emailed once that is cleared."
-                        : undefined
-                    }
+                    disabled={saving}
                     className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-[#233353] text-xs font-semibold text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <FiMail size={13} />
@@ -2358,12 +2365,6 @@ export default function QuotationPage() {
                   </button>
                 </div>
 
-                {emailBlocked && (
-                  <p className="mt-2 text-[10px] leading-4 text-amber-600 dark:text-amber-400">
-                    An approval is already in flight on this proposal. It can
-                    be emailed once that is cleared.
-                  </p>
-                )}
               </FormSectionBlock>
             </FormCard>
           </div>
@@ -3727,6 +3728,11 @@ function SendQuotationModal({
         to: recipients.length ? recipients : [quotation.email || ""],
         cc,
         bcc,
+        /* What the sender left in the Attached Documents list. Dropping
+           one here now actually drops it from the message. */
+        attachment_keys: [...(quotation.attachments || []), ...extraFiles]
+          .filter((file) => !dropped.includes(file.name) && file.key)
+          .map((file) => file.key as string),
         subject,
         body,
         body_html: bodyHtml,
@@ -3876,16 +3882,18 @@ function SendQuotationModal({
                   setBodyHtml(html);
                   setBody(text);
                 }}
-                onAttach={(files) =>
-                  setExtraFiles((current) => [
-                    ...current,
-                    ...files.map((file) => ({
-                      name: file.name,
-                      size: file.size,
-                      type: file.type,
-                    })),
-                  ])
-                }
+                onAttach={async (files) => {
+                  /* Stored, not just named. These used to be listed and
+                     then left behind: the message went with the proposal
+                     PDF alone. */
+                  const stored = await uploadAttachments(files, (file, why) =>
+                    onError(`${file.name}: ${why}`),
+                  );
+
+                  if (stored.length) {
+                    setExtraFiles((current) => [...current, ...stored]);
+                  }
+                }}
                 ariaLabel="Message body"
                 minHeight={260}
               />

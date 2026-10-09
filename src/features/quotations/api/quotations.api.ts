@@ -234,6 +234,11 @@ export interface SendQuotationPayload {
    *  the text/html part so bold/italic/underline survive. */
   body_html?: string;
 
+  /** The annexures to put in the message, by stored key. The server
+   *  honours a key only when it is on this proposal or the sender
+   *  uploaded it, so this cannot post any stored file anywhere. */
+  attachment_keys?: string[];
+
   track_opens?: boolean;
   alert_on_download?: boolean;
   attach_gst_audit_trail?: boolean;
