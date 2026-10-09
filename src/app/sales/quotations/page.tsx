@@ -40,6 +40,10 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
+import {
+  StoredAttachment,
+  uploadAttachments,
+} from "@/features/attachments/attachments.api";
 import { sellingPriceFor } from "@/features/pricing/lineMath";
 import {
   upliftFor,
@@ -156,11 +160,7 @@ interface AddressState {
   zipCode: string;
 }
 
-interface AttachmentState {
-  name: string;
-  size: number;
-  type: string;
-}
+type AttachmentState = StoredAttachment;
 
 interface TermState {
   label: string;
@@ -3728,6 +3728,11 @@ function SendQuotationModal({
         to: recipients.length ? recipients : [quotation.email || ""],
         cc,
         bcc,
+        /* What the sender left in the Attached Documents list. Dropping
+           one here now actually drops it from the message. */
+        attachment_keys: [...(quotation.attachments || []), ...extraFiles]
+          .filter((file) => !dropped.includes(file.name) && file.key)
+          .map((file) => file.key as string),
         subject,
         body,
         body_html: bodyHtml,
@@ -3877,16 +3882,18 @@ function SendQuotationModal({
                   setBodyHtml(html);
                   setBody(text);
                 }}
-                onAttach={(files) =>
-                  setExtraFiles((current) => [
-                    ...current,
-                    ...files.map((file) => ({
-                      name: file.name,
-                      size: file.size,
-                      type: file.type,
-                    })),
-                  ])
-                }
+                onAttach={async (files) => {
+                  /* Stored, not just named. These used to be listed and
+                     then left behind: the message went with the proposal
+                     PDF alone. */
+                  const stored = await uploadAttachments(files, (file, why) =>
+                    onError(`${file.name}: ${why}`),
+                  );
+
+                  if (stored.length) {
+                    setExtraFiles((current) => [...current, ...stored]);
+                  }
+                }}
                 ariaLabel="Message body"
                 minHeight={260}
               />

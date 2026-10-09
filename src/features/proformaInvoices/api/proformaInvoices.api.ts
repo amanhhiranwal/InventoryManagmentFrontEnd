@@ -374,6 +374,8 @@ export const sendProformaInvoiceApi = async (
     subject?: string;
     body?: string;
     body_html?: string;
+    /** The documents to put in the message, by stored key. */
+    attachment_keys?: string[];
     track_opens?: boolean;
     alert_on_download?: boolean;
     attach_gst_audit_trail?: boolean;
