@@ -102,9 +102,9 @@ export default function LoginForm() {
           Welcome to Synergy Sync
         </h1>
 
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+        {/* <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
           Access your sales workspace &amp; manage your pipeline.
-        </p>
+        </p> */}
       </div>
 
       {errorMsg && (
