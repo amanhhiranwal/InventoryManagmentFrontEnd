@@ -146,6 +146,13 @@ export default function InventoryPage() {
 
   // New Item Core Fields
   const [name, setName] = useState("");
+  /* The manufacturer's model, kept apart from the name: the name says
+     what a thing is, the model says which one. */
+  const [modelNumber, setModelNumber] = useState("");
+  /* Free text. What matters about a panel and what matters about a
+     fertiliser have nothing in common, so anything worth filtering or
+     pricing on belongs in the category's own fields instead. */
+  const [specification, setSpecification] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
   const [selectedTypeCode, setSelectedTypeCode] = useState("");
   const [imageBase64, setImageBase64] = useState<string | null>(null);
@@ -179,6 +186,8 @@ export default function InventoryPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<InventoryItem | null>(null);
   const [editName, setEditName] = useState("");
+  const [editModelNumber, setEditModelNumber] = useState("");
+  const [editSpecification, setEditSpecification] = useState("");
   const [editSerialNumber, setEditSerialNumber] = useState("");
   const [editSelectedTypeCode, setEditSelectedTypeCode] = useState("");
   const [editImageBase64, setEditImageBase64] = useState<string | null>(null);
@@ -434,6 +443,8 @@ export default function InventoryPage() {
   const handleOpenEditModal = (item: InventoryItem) => {
     setItemToEdit(item);
     setEditName(item.name);
+    setEditModelNumber(item.attributes?.model_number?.toString() || "");
+    setEditSpecification(item.attributes?.specification?.toString() || "");
     setEditSerialNumber(item.serial_number);
     setEditSelectedTypeCode(item.product_type_code);
     setEditImageBase64(item.image_base64 || null);
@@ -487,7 +498,7 @@ export default function InventoryPage() {
     const caseSizeVal = parseFloat(caseSize) ?? -1;
 
     if (rate.trim() === "" || rateVal < 0) {
-      addToast("Rate per quantity is required and must be 0 or greater.", "warning");
+      addToast("The ECP rate is required and must be 0 or greater.", "warning");
       return;
     }
     if (!unit) {
@@ -515,6 +526,8 @@ export default function InventoryPage() {
       setCreating(true);
       const mergedAttributes = {
         ...dynamicValues,
+        model_number: modelNumber.trim(),
+        specification: specification.trim(),
         rate: rateVal,
         rate_per_unit: rateVal,
         dtp_rate: Number(dtpRate) || 0,
@@ -538,6 +551,8 @@ export default function InventoryPage() {
 
       addToast("Inventory item added successfully!", "success");
       setName("");
+      setModelNumber("");
+      setSpecification("");
       setSerialNumber("");
       setRate("");
       setInstock("");
@@ -569,7 +584,7 @@ export default function InventoryPage() {
     const caseSizeVal = parseFloat(editCaseSize) ?? -1;
 
     if (editRate.trim() === "" || rateVal < 0) {
-      addToast("Rate per quantity is required and must be 0 or greater.", "warning");
+      addToast("The ECP rate is required and must be 0 or greater.", "warning");
       return;
     }
     if (!editUnit) {
@@ -597,6 +612,8 @@ export default function InventoryPage() {
       setUpdating(true);
       const mergedEditAttributes = {
         ...editDynamicValues,
+        model_number: editModelNumber.trim(),
+        specification: editSpecification.trim(),
         rate: rateVal,
         rate_per_unit: rateVal,
         dtp_rate: Number(editDtpRate) || 0,
@@ -1023,7 +1040,7 @@ export default function InventoryPage() {
                       );
                     })}
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Rate per quantity</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ECP Rate</span>
                       <span className="font-semibold text-primary font-mono text-xs">
                         ₹{(itemView.attributes.rate ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })} / {itemView.attributes.unit ?? "Unit"}
                       </span>
@@ -1111,6 +1128,17 @@ export default function InventoryPage() {
                 Product Identity
               </h4>
 
+              {/* The manufacturer's model, which is what a customer reads
+                  on a proposal line and what a service call is logged
+                  against. Kept apart from the name: "Interactive Flat
+                  Panel" is what it is, "SPX-75 V100" is which one. */}
+              <Input
+                label="Model Number"
+                placeholder="e.g. SPX-75 (Lango V100)"
+                value={modelNumber}
+                onChange={(e) => setModelNumber(e.target.value)}
+              />
+
               <Input
                 label="Product Name *"
                 required
@@ -1118,6 +1146,23 @@ export default function InventoryPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
+
+              {/* Free text, because what matters about a panel and what
+                  matters about a fertiliser have nothing in common. The
+                  category's own fields are below for anything that is
+                  worth filtering or pricing on. */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Specification
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. 75&quot; 4K UHD, 20-point touch, Android 13, 8GB / 128GB"
+                  value={specification}
+                  onChange={(e) => setSpecification(e.target.value)}
+                  className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary/10 dark:border-[#0d2336] dark:bg-[#071929]/50 dark:text-white"
+                />
+              </div>
 
               <Input
                 label="Hardware Serial Number (Unique) *"
@@ -1220,9 +1265,19 @@ export default function InventoryPage() {
                 Mandatory Stock Parameters
               </h4>
 
+              {/* THE TWO PRICE LISTS, SIDE BY SIDE
+
+                  ECP is what an end customer pays; DTP is the fixed
+                  figure a dealer, distributor or OEM is bought through
+                  at. Which one a document uses follows from the customer
+                  type on it, so nobody picks a price list by hand - and
+                  seeing them together is the only way to notice that one
+                  of them is wrong. Left blank, a dealer document falls
+                  back to the ECP rate and marks the line rather than
+                  quoting nothing. */}
               <div className="grid grid-cols-2 gap-3.5">
                 <Input
-                  label="Rate per unit (Exc. GST) *"
+                  label="ECP Rate (End Customer Price) *"
                   required
                   type="number"
                   placeholder="e.g. 450"
@@ -1230,23 +1285,13 @@ export default function InventoryPage() {
                   onChange={(e) => setRate(e.target.value)}
                 />
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Select Unit *
-                  </label>
-                  <select
-                    className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                  >
-                    {unitsList.map((u) => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                    {unitsList.length === 0 && (
-                      <option value="">No units created in master...</option>
-                    )}
-                  </select>
-                </div>
+                <Input
+                  label="DTP Rate (Dealer Transfer Price)"
+                  type="number"
+                  placeholder="Blank if not sold through the channel"
+                  value={dtpRate}
+                  onChange={(e) => setDtpRate(e.target.value)}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3.5">
@@ -1269,32 +1314,36 @@ export default function InventoryPage() {
                 />
               </div>
 
-              {/* Every line of a GST invoice has to carry one, and it is a
-                  property of the product rather than of the sale - so it is
-                  captured here once and travels onto every document the
-                  product appears on. */}
-              {/* THE TWO PRICE LISTS
+              <div className="grid grid-cols-2 gap-3.5">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Select Unit *
+                  </label>
+                  <select
+                    className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                  >
+                    {unitsList.map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                    {unitsList.length === 0 && (
+                      <option value="">No units created in master...</option>
+                    )}
+                  </select>
+                </div>
 
-                  "Rate" above is the end customer price. This is the fixed
-                  figure a dealer, a distributor or an OEM is bought through
-                  at. Which one a proposal uses follows from the customer
-                  type on it, so nobody picks a price list by hand. Left
-                  blank, a dealer document falls back to the end customer
-                  rate and marks the line, rather than quoting nothing. */}
-              <Input
-                label="DTP Rate (Dealer Transfer Price)"
-                type="number"
-                placeholder="Leave blank if this is not sold through the channel"
-                value={dtpRate}
-                onChange={(e) => setDtpRate(e.target.value)}
-              />
-
-              <Input
-                label="HSN / SAC Code"
-                placeholder="e.g. 8528"
-                value={hsnCode}
-                onChange={(e) => setHsnCode(e.target.value)}
-              />
+                {/* Every line of a GST invoice has to carry one, and it is
+                    a property of the product rather than of the sale - so
+                    it is captured here once and travels onto every
+                    document the product appears on. */}
+                <Input
+                  label="HSN / SAC Code"
+                  placeholder="e.g. 8528"
+                  value={hsnCode}
+                  onChange={(e) => setHsnCode(e.target.value)}
+                />
+              </div>
 
               <WarrantyRatesPanel
                 terms={warrantyTerms}
@@ -1412,12 +1461,32 @@ export default function InventoryPage() {
                 </h4>
 
                 <Input
+                  label="Model Number"
+                  placeholder="e.g. SPX-75 (Lango V100)"
+                  value={editModelNumber}
+                  onChange={(e) => setEditModelNumber(e.target.value)}
+                />
+
+                <Input
                   label="Product Name *"
                   required
                   placeholder="e.g. Fertilizer NPK 19-19-19"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                 />
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Specification
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g. 75&quot; 4K UHD, 20-point touch, Android 13, 8GB / 128GB"
+                    value={editSpecification}
+                    onChange={(e) => setEditSpecification(e.target.value)}
+                    className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary/10 dark:border-[#0d2336] dark:bg-[#071929]/50 dark:text-white"
+                  />
+                </div>
 
                 <Input
                   label="Hardware Serial Number (Unique) *"
@@ -1514,9 +1583,10 @@ export default function InventoryPage() {
                   Mandatory Stock Parameters
                 </h4>
 
+                {/* The two price lists together, as on the add form. */}
                 <div className="grid grid-cols-2 gap-3.5">
                   <Input
-                    label="Rate per unit (Exc. GST) *"
+                    label="ECP Rate (End Customer Price) *"
                     required
                     type="number"
                     placeholder="e.g. 450"
@@ -1524,23 +1594,13 @@ export default function InventoryPage() {
                     onChange={(e) => setEditRate(e.target.value)}
                   />
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      Select Unit *
-                    </label>
-                    <select
-                      className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
-                      value={editUnit}
-                      onChange={(e) => setEditUnit(e.target.value)}
-                    >
-                      {unitsList.map((u) => (
-                        <option key={u} value={u}>{u}</option>
-                      ))}
-                      {unitsList.length === 0 && (
-                        <option value="">No units created in master...</option>
-                      )}
-                    </select>
-                  </div>
+                  <Input
+                    label="DTP Rate (Dealer Transfer Price)"
+                    type="number"
+                    placeholder="Blank if not sold through the channel"
+                    value={editDtpRate}
+                    onChange={(e) => setEditDtpRate(e.target.value)}
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3.5">
@@ -1563,21 +1623,32 @@ export default function InventoryPage() {
                   />
                 </div>
 
-                {/* The fixed transfer price. See the note on the add form. */}
-                <Input
-                  label="DTP Rate (Dealer Transfer Price)"
-                  type="number"
-                  placeholder="Leave blank if this is not sold through the channel"
-                  value={editDtpRate}
-                  onChange={(e) => setEditDtpRate(e.target.value)}
-                />
+                <div className="grid grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Select Unit *
+                    </label>
+                    <select
+                      className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white outline-none"
+                      value={editUnit}
+                      onChange={(e) => setEditUnit(e.target.value)}
+                    >
+                      {unitsList.map((u) => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                      {unitsList.length === 0 && (
+                        <option value="">No units created in master...</option>
+                      )}
+                    </select>
+                  </div>
 
-                <Input
-                  label="HSN / SAC Code"
-                  placeholder="e.g. 8528"
-                  value={editHsnCode}
-                  onChange={(e) => setEditHsnCode(e.target.value)}
-                />
+                  <Input
+                    label="HSN / SAC Code"
+                    placeholder="e.g. 8528"
+                    value={editHsnCode}
+                    onChange={(e) => setEditHsnCode(e.target.value)}
+                  />
+                </div>
 
                 <WarrantyRatesPanel
                   terms={warrantyTerms}
