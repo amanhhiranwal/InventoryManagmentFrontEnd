@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { FiMapPin, FiPlus, FiTrash2 } from "react-icons/fi";
+import { FiEdit2, FiMapPin, FiPlus, FiTrash2 } from "react-icons/fi";
 
 import PageHeader from "@/components/ui/PageHeader";
 import { ListPage, ListToolbar, PrimaryAction } from "@/components/crm/ListPageShell";
@@ -30,6 +30,9 @@ interface StateRow {
   id: string;
   name: string;
   code?: string | null;
+  /** The two-digit GST code as set on this screen. Blank means the
+   *  statutory table decides it. */
+  gst_code?: string | null;
   country?: string | null;
 }
 
@@ -68,6 +71,7 @@ const GST_STATE_CODES: Record<string, string> = {
   chhattisgarh: "22",
   "madhya pradesh": "23",
   gujarat: "24",
+  "dadra and nagar haveli and daman and diu": "26",
   maharashtra: "27",
   karnataka: "29",
   goa: "30",
@@ -95,8 +99,11 @@ export default function StatesPage() {
   const [showForm, setShowForm] = useState(false);
   const [toDelete, setToDelete] = useState<StateRow | null>(null);
 
+  const [editing, setEditing] = useState<StateRow | null>(null);
+
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  const [gstCode, setGstCode] = useState("");
   const [country, setCountry] = useState("India");
 
   const fetchStates = useCallback(async () => {
@@ -121,9 +128,20 @@ export default function StatesPage() {
   const official = GST_STATE_CODES[name.trim().toLowerCase()];
 
   const openAdd = () => {
+    setEditing(null);
     setName("");
     setCode("");
+    setGstCode("");
     setCountry("India");
+    setShowForm(true);
+  };
+
+  const openEdit = (state: StateRow) => {
+    setEditing(state);
+    setName(state.name || "");
+    setCode(String(state.code || ""));
+    setGstCode(String(state.gst_code || ""));
+    setCountry(state.country || "India");
     setShowForm(true);
   };
 
@@ -135,16 +153,33 @@ export default function StatesPage() {
       return;
     }
 
+    const digits = gstCode.replace(/\D/g, "");
+
+    if (gstCode.trim() && digits.length !== 2) {
+      addToast("A GST state code is two digits, for example 23.", "warning");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
-      await api.post("/api/v1/states/", {
+      const payload = {
         name: name.trim(),
         code: code.trim().toUpperCase() || undefined,
+        /* Empty means "use the statutory code", which is what most
+           states want - so it is sent as an empty string rather than
+           left out, or an edit could never clear an override. */
+        gst_code: digits,
         country: country.trim() || "India",
-      });
+      };
 
-      addToast("State added.", "success");
+      if (editing) {
+        await api.put(`/api/v1/states/${editing.id}`, payload);
+      } else {
+        await api.post("/api/v1/states/", payload);
+      }
+
+      addToast(editing ? "State updated." : "State added.", "success");
       setShowForm(false);
       fetchStates();
     } catch (error) {
@@ -189,7 +224,7 @@ export default function StatesPage() {
     <ListPage>
       <PageHeader
         title="States Master"
-        description="The states we trade in. The GST code is resolved from the state's name and is what decides whether a sale is taxed as CGST + SGST or as IGST; the abbreviation is what the dropdowns show."
+        description="The states we trade in. The GST code decides whether a sale is taxed as CGST + SGST or as IGST, and can be set here; left blank it follows the statutory code for the name. The abbreviation is what the dropdowns show."
       />
 
       <ListToolbar
@@ -210,14 +245,18 @@ export default function StatesPage() {
         loading={loading}
       >
         {filtered.map((state) => {
-          const gst = GST_STATE_CODES[String(state.name || "").toLowerCase()];
-          const stored = String(state.code || "").trim();
+          const statutory = GST_STATE_CODES[String(state.name || "").toLowerCase()];
+          const set = String(state.gst_code || "").trim();
+          const abbreviation = String(state.code || "").trim();
 
-          /* Only a numeric code can contradict the statutory one. "UP" is
-             an abbreviation, not a wrong GST code, and colouring it red
-             would send somebody correcting thirteen rows that are fine. */
-          const numeric = /^\d+$/.test(stored);
-          const wrong = Boolean(gst && numeric && stored.padStart(2, "0") !== gst);
+          /* What the tax will actually use: what somebody set here, and
+             the statutory table only where nothing has been. */
+          const effective = set || statutory;
+
+          /* Not an error - overriding is the point of the field - but
+             worth saying out loud, because it is the one row that will
+             not behave the way the statute book reads. */
+          const overridden = Boolean(set && statutory && set !== statutory);
 
           return (
             <tr
@@ -231,27 +270,27 @@ export default function StatesPage() {
                 </div>
               </td>
 
-              {/* What the tax actually uses, resolved from the name. */}
+              {/* What the tax will actually use. */}
               <td className="px-5 py-4 font-mono text-xs">
-                {gst ? (
-                  <span className={wrong ? "text-rose-500" : "text-slate-700"}>
-                    {gst}
+                {effective ? (
+                  <span className="text-slate-700 dark:text-slate-200">
+                    {effective}
                   </span>
                 ) : (
                   <span className="font-sans text-[11px] text-amber-600">
-                    no GST code for this name
+                    not set - add one to tax this state
                   </span>
                 )}
 
-                {wrong && (
-                  <span className="ml-2 font-sans text-[10px] text-rose-500">
-                    stored as {stored}
+                {overridden && (
+                  <span className="ml-2 font-sans text-[10px] text-amber-600">
+                    set here; statute says {statutory}
                   </span>
                 )}
               </td>
 
               <td className="px-5 py-4 font-mono text-xs text-slate-500">
-                {stored || "-"}
+                {abbreviation || "-"}
               </td>
 
               <td className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
@@ -260,6 +299,16 @@ export default function StatesPage() {
 
               <td className="px-5 py-4 text-right">
                 <div className="flex justify-end gap-1.5">
+                  {superAdmin && (
+                    <button
+                      onClick={() => openEdit(state)}
+                      className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 hover:bg-slate-100 hover:text-[#233353] dark:hover:bg-[#0d2336] dark:hover:text-white"
+                      title={`Edit ${state.name}`}
+                    >
+                      <FiEdit2 className="text-sm" />
+                    </button>
+                  )}
+
                   {superAdmin && (
                     <button
                       onClick={() => setToDelete(state)}
@@ -276,7 +325,11 @@ export default function StatesPage() {
         })}
       </Table>
 
-      <Modal isOpen={showForm} onClose={() => setShowForm(false)} title="Add State">
+      <Modal
+        isOpen={showForm}
+        onClose={() => setShowForm(false)}
+        title={editing ? `Edit ${editing.name}` : "Add State"}
+      >
         <form onSubmit={save} className="space-y-4">
           <Input
             label="State Name *"
@@ -293,22 +346,45 @@ export default function StatesPage() {
             onChange={(event) => setCode(event.target.value)}
           />
 
-          {/* Stated rather than asked for. The GST code follows from the
-              name and is not somebody's to choose, so the form shows what
-              this state will be taxed as instead of offering a field that
-              could be filled in wrongly. */}
+          {/* The code the tax reads. Left blank it follows the statute
+              book, which is what nearly every state wants; filled in, it
+              wins - so a state the shipped table has never heard of can
+              be taxed correctly from this screen rather than waiting on
+              a release. */}
+          <Input
+            label="GST State Code"
+            inputMode="numeric"
+            maxLength={2}
+            placeholder={official ? `${official} (statutory)` : "e.g. 23"}
+            value={gstCode}
+            onChange={(event) =>
+              setGstCode(event.target.value.replace(/\D/g, "").slice(0, 2))
+            }
+          />
+
           {name.trim() && (
             <p className="-mt-2 text-[11px] text-slate-500">
-              {official ? (
+              {gstCode.trim() ? (
+                official && gstCode.trim() !== official ? (
+                  <span className="font-medium text-amber-600">
+                    The statutory code for this name is {official}. {gstCode}{" "}
+                    will be used instead, on every invoice billed here.
+                  </span>
+                ) : (
+                  <>
+                    A sale billed here is taxed against code <b>{gstCode}</b>.
+                  </>
+                )
+              ) : official ? (
                 <>
-                  GST code <b>{official}</b>. A sale billed here is taxed as{" "}
-                  {official === "09" ? "CGST + SGST" : "IGST"} from our Uttar
-                  Pradesh registration.
+                  Left blank, this state is taxed as <b>{official}</b> - the
+                  statutory code for that name.
                 </>
               ) : (
                 <span className="font-medium text-amber-600">
-                  No GST code is known for this name, so a sale billed here
-                  would be taxed as interstate. Check the spelling.
+                  No statutory code is known for this name, so leaving this
+                  blank means a sale billed here is taxed as interstate.
+                  Enter the two-digit code.
                 </span>
               )}
             </p>
@@ -326,7 +402,7 @@ export default function StatesPage() {
               Cancel
             </Button>
             <Button type="submit" loading={submitting}>
-              Save State
+              {editing ? "Save Changes" : "Save State"}
             </Button>
           </div>
         </form>
