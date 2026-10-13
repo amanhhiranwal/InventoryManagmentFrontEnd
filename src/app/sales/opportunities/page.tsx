@@ -3893,18 +3893,22 @@ function NewOpportunityPage({
                         handed Product 293px and squeezed Unit Price to 44 -
                         its input then overflowed and the panel grew a
                         scrollbar the design does not have. */}
-                    {/* The table already had its columns shared out here;
-                        HSN joins them and the rest give up a little room, so
-                        the eight still add up to the panel and it does not
-                        grow the scrollbar the design has no room for. */}
+                    {/* One col per column, and the percentages add up to
+                        100. Warranty and Selling Price were added to the
+                        header without being added here, and under
+                        table-fixed a column with no col takes its content's
+                        width instead of a share - which is what pushed the
+                        table past its panel and put a scrollbar under it. */}
                     <colgroup>
-                      <col className="w-[23%]" />
-                      <col className="w-[17%]" />
+                      <col className="w-[19%]" />
+                      <col className="w-[15%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[8%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[8%]" />
                       <col className="w-[11%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[11%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[14%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[10%]" />
                       <col className="w-[44px]" />
                     </colgroup>
 
