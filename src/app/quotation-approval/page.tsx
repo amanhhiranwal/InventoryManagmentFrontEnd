@@ -123,8 +123,8 @@ export default function QuotationApprovalPage() {
   return (
     <ListPage>
       <PageHeader
-        title="Proposal Approval"
-        description="How much discount each role can sign off. A discount travels up until it reaches someone whose ceiling covers it."
+        title="Sales Order Approval"
+        description="How much discount each role can sign off on a sales order. A discount travels up until it reaches someone whose ceiling covers it, and every order ends with the founder."
         action={
           <PrimaryAction onClick={save}>
             {saving ? (

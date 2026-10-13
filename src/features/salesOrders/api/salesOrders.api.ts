@@ -27,6 +27,22 @@ export const SALES_ORDER_STATUS = {
 export type SalesOrderStatus =
   (typeof SALES_ORDER_STATUS)[keyof typeof SALES_ORDER_STATUS];
 
+/** The statuses a proforma invoice may be raised against, mirroring the
+ *  server's own list. An order still waiting on its approval is not one
+ *  of them: nothing is invoiced before the business has committed to it,
+ *  and offering the button only to have the API refuse it is worse than
+ *  not offering it. */
+export const INVOICEABLE_ORDER_STATUSES: readonly string[] = [
+  SALES_ORDER_STATUS.CONFIRMED,
+  SALES_ORDER_STATUS.RELEASED,
+  SALES_ORDER_STATUS.ON_HOLD,
+  SALES_ORDER_STATUS.COMPLETED,
+];
+
+export function canRaiseInvoice(status?: string | null): boolean {
+  return INVOICEABLE_ORDER_STATUSES.includes(String(status || ""));
+}
+
 /** The fulfilment chain in order, for the progress strip. */
 export const SALES_ORDER_PIPELINE: SalesOrderStatus[] = [
   SALES_ORDER_STATUS.DRAFT,

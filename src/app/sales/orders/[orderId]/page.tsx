@@ -26,6 +26,7 @@ import {
 import {
   SALES_ORDER_PIPELINE,
   SALES_ORDER_STATUS,
+  canRaiseInvoice,
   type SalesOrderStatus,
   SalesOrderModel,
   SalesOrderActivity,
@@ -1167,15 +1168,21 @@ export default function SalesOrderDetailPage() {
                 subtitle={
                   invoice
                     ? proformaInvoiceStatusLabel(invoice.status)
-                    : order.status === SALES_ORDER_STATUS.DRAFT
-                      ? "Not Generated"
-                      : "Pending generation"
+                    : canRaiseInvoice(order.status)
+                      ? "Pending generation"
+                      : order.status === SALES_ORDER_STATUS.PENDING_APPROVAL
+                        ? "Waiting on approval"
+                        : "Not Generated"
                 }
+                /* Only once the order has been approved. An invoice asks a
+                   customer for money against a commitment the business has
+                   not made yet, so the link is not offered while the order
+                   is still climbing its chain - the server refuses it
+                   there too. */
                 href={
                   invoice
                     ? `/sales/proforma-invoices/${invoice.id}`
-                    : order.status !== SALES_ORDER_STATUS.DRAFT &&
-                        order.status !== SALES_ORDER_STATUS.CANCELLED
+                    : canRaiseInvoice(order.status)
                       ? `/sales/proforma-invoices/new?order=${order.id}`
                       : undefined
                 }
