@@ -36,7 +36,7 @@ export default function UnitsPage() {
   const fetchUnits = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get("/api/v1/inventory/units/");
+      const res = await api.get("/api/v1/inventory/units");
       if (res.data?.success) {
         setUnits(res.data.data || []);
       }
@@ -61,7 +61,7 @@ export default function UnitsPage() {
 
     try {
       setSubmitting(true);
-      const res = await api.post("/api/v1/inventory/units/", {
+      const res = await api.post("/api/v1/inventory/units", {
         name: name.trim(),
       });
       if (res.data?.success) {

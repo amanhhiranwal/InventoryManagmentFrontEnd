@@ -20,7 +20,6 @@ import {
   LuMapPin,
   LuPackage,
   LuPlus,
-  LuSend,
   LuX,
 } from "react-icons/lu";
 import { CgSpinner } from "react-icons/cg";
@@ -429,20 +428,10 @@ function GenerateProformaInvoice() {
               type="button"
               disabled={saving !== null}
               onClick={() => save(true)}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-white px-3.5 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:opacity-50 dark:bg-[#071929] dark:text-slate-200"
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-[#243454] px-3.5 text-[13px] font-medium text-white shadow-sm transition hover:bg-[#18243a] disabled:opacity-50"
             >
               {saving === "draft" ? <CgSpinner className="animate-spin" size={14} /> : <LuBookmark size={14} />}
               Save as Draft
-            </button>
-
-            <button
-              type="button"
-              disabled={saving !== null}
-              onClick={() => save(false)}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-[#243454] px-3.5 text-[13px] font-medium text-white shadow-sm transition hover:bg-[#18243a] disabled:opacity-50"
-            >
-              {saving === "generate" ? <CgSpinner className="animate-spin" size={14} /> : <LuSend size={14} />}
-              Send For Approval
             </button>
           </>
         }

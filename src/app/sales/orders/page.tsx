@@ -49,6 +49,10 @@ import {
   getPaymentTermOptionsApi,
   type PaymentTermOption,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
+import {
+  PRICE_TYPE,
+  requestApprovalApi,
+} from "@/features/approvals/api/approvals.api";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
 import {
   StoredAttachment,
@@ -1662,9 +1666,11 @@ export default function OrdersListPage() {
 
         order_date: newOrder.orderDate || new Date().toISOString(),
 
-        status: asDraft
-          ? SALES_ORDER_STATUS.DRAFT
-          : SALES_ORDER_STATUS.CONFIRMED,
+        /* Always a draft. Send For Approval raises the chain below;
+           what confirms the order is the chain clearing, not the button
+           that started it - this used to post CONFIRMED and the order
+           was approved before anybody had seen it. */
+        status: SALES_ORDER_STATUS.DRAFT,
 
         items: selectedProducts.map((item) => ({
           product_id: item.id,
@@ -1778,14 +1784,36 @@ export default function OrdersListPage() {
            the user to go and find it. */
         const reference = created.order_number || `SO-${created.id}`;
 
-        addToast(
-          editingOrderId
-            ? `Sales order ${reference} updated.`
-            : asDraft
-              ? `Sales order ${reference} saved as draft.`
+        if (asDraft || editingOrderId) {
+          addToast(
+            editingOrderId
+              ? `Sales order ${reference} updated.`
+              : `Sales order ${reference} saved as draft.`,
+            "success",
+          );
+        } else {
+          /* The discount the chain is built from is the deepest on the
+             order, not the blended share - the server works that out
+             from the lines, so what matters here is that it is asked. */
+          const approval = await requestApprovalApi({
+            document_type: "SALES_ORDER",
+            document_id: created.id,
+            document_number: created.order_number,
+            price_type: PRICE_TYPE.ECP,
+            discount_percent: Number(
+              (subtotal ? (discountAmount / subtotal) * 100 : 0).toFixed(2),
+            ),
+            discount_amount: discountAmount,
+            document_value: grandTotal,
+          });
+
+          addToast(
+            approval
+              ? `Sales order ${reference} sent to the ${approval.waiting_on} for approval.`
               : `Sales order ${reference} created.`,
-          "success",
-        );
+            "success",
+          );
+        }
 
         setShowCreateOrder(false);
         setEditingOrderId(null);

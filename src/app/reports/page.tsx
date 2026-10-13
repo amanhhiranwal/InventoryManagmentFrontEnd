@@ -68,7 +68,7 @@ export default function ReportsPage() {
 
       // Fetch Sales orders count
       try {
-        const res = await api.get("/api/v1/orders/");
+        const res = await api.get("/api/v1/orders");
         if (res.data?.success) {
           setOrdersCount(res.data.data?.length || 0);
         }

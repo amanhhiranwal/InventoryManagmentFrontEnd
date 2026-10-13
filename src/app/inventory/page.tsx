@@ -232,7 +232,7 @@ export default function InventoryPage() {
 
   const fetchUnits = useCallback(async () => {
     try {
-      const res = await api.get("/api/v1/inventory/units/");
+      const res = await api.get("/api/v1/inventory/units");
       if (res.data?.success) {
         const uList = res.data.data || [];
         setUnitsList(uList);
