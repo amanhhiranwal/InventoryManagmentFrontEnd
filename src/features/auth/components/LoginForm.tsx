@@ -73,7 +73,13 @@ export default function LoginForm() {
         }
       } catch {}
 
-      router.replace("/dashboard");
+      /* A password that arrived by email is not one to work under, so
+         the first stop is choosing their own. The server refuses
+         everything else until they have, which is what makes this a
+         rule rather than a suggestion. */
+      router.replace(
+        rawUser.must_change_password ? "/change-password" : "/dashboard",
+      );
     } catch (err: unknown) {
       console.error(err);
       const axiosError = err as AxiosError<{ message?: string }>;

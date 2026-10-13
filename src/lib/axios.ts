@@ -30,15 +30,36 @@ api.interceptors.response.use(
     const isLoginRequest = error.config?.url?.includes("/auth/login");
     const skipToast = error.config?.skipErrorToast === true;
 
+    /* Signed in on a password that was emailed to them: the server
+       refuses everything but choosing a new one, so there is one place
+       to be and this is how a stale tab gets there. */
+    const mustChangePassword =
+      error.response?.status === 403 &&
+      typeof error.response?.data?.detail === "string" &&
+      error.response.data.detail.includes("Choose your own password");
+
     if (error.response?.status === 401 && !isLoginRequest) {
       Cookies.remove("token");
       if (typeof window !== "undefined") {
         window.location.href = "/login";
       }
+    } else if (mustChangePassword) {
+      if (
+        typeof window !== "undefined" &&
+        !window.location.pathname.startsWith("/change-password")
+      ) {
+        window.location.href = "/change-password";
+      }
     } else if (!skipToast) {
       let errorMsg = "An unexpected error occurred. Please try again.";
 
-      if (error.response?.status === 403) {
+      /* A 403 used to be reported as a permissions problem whatever the
+         server actually said, so a refusal with a real explanation - an
+         approval still open, a deal in another region, a password that
+         has to be chosen first - arrived as the same unhelpful line. The
+         server's own words come first now; the canned one is the
+         fallback for a 403 that carries nothing. */
+      if (error.response?.status === 403 && !error.response?.data?.detail) {
         errorMsg = "Permission Denied: You do not have the required administrative permissions to perform this action.";
       } else if (error.response?.data) {
         const data = error.response.data;

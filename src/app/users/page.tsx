@@ -9,7 +9,18 @@ import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
 import api from "@/lib/axios";
 import { hasPermission } from "@/features/auth/utils/permissions";
-import { FiPlus, FiUser, FiMail, FiCheckCircle, FiSlash, FiTrash2, FiEdit2 } from "react-icons/fi";
+import {
+  FiPlus,
+  FiUser,
+  FiMail,
+  FiCheckCircle,
+  FiSlash,
+  FiTrash2,
+  FiEdit2,
+  FiEye,
+  FiEyeOff,
+  FiKey,
+} from "react-icons/fi";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
@@ -93,6 +104,10 @@ export default function UserListPage() {
 
   // Create User Modal States
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [revealPassword, setRevealPassword] = useState(false);
+  /* Who we are about to email a new temporary password to. */
+  const [toReset, setToReset] = useState<User | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formData, setFormData] = useState({
     first_name: "",
@@ -245,6 +260,31 @@ export default function UserListPage() {
       addToast(axiosError.response?.data?.detail || axiosError.response?.data?.message || "Failed to update user.", "error");
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const confirmReset = async () => {
+    if (!toReset) return;
+
+    setResetting(true);
+
+    try {
+      const { data } = await api.post(`/api/v1/users/${toReset.id}/reset-password`);
+
+      addToast(
+        data?.message || `A temporary password has been emailed to ${toReset.email}.`,
+        "success",
+      );
+
+      setToReset(null);
+    } catch (error) {
+      const detail =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "That password could not be reset.";
+
+      addToast(detail, "error");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -545,6 +585,17 @@ export default function UserListPage() {
                         <FiEdit2 className="text-sm" />
                       </button>
 
+                      {/* Emails them a temporary password. Nothing is
+                          shown here: an administrator who can read it off
+                          their own screen will write it down somewhere. */}
+                      <button
+                        onClick={() => setToReset(u)}
+                        title={`Reset ${u.first_name}'s password`}
+                        className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-primary dark:hover:bg-[#0d2336]"
+                      >
+                        <FiKey className="text-sm" />
+                      </button>
+
                       <button
                         onClick={() => handleOpenDeleteModal(u)}
                         title={`Delete ${u.first_name}`}
@@ -563,7 +614,7 @@ export default function UserListPage() {
 
       {/* User Creation Modal */}
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Add New User">
-        <form onSubmit={handleCreateUser} className="space-y-4">
+        <form onSubmit={handleCreateUser} className="space-y-4" autoComplete="off">
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="First Name"
@@ -580,23 +631,52 @@ export default function UserListPage() {
             />
           </div>
 
+          {/* autoComplete off on both: this is somebody else's account
+              being created, and the browser was helpfully filling in the
+              signed-in administrator's own address and password. */}
           <Input
             label="Email Address"
             required
             type="email"
+            autoComplete="off"
             placeholder="jane.doe@example.com"
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           />
 
-          <Input
-            label="Password"
-            required
-            type="password"
-            placeholder="••••••••"
-            value={formData.password}
-            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-          />
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Password
+            </label>
+
+            <div className="relative">
+              <input
+                type={revealPassword ? "text" : "password"}
+                autoComplete="new-password"
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-3 pr-10 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary/10 dark:border-[#0d2336] dark:bg-[#071929]/50 dark:text-white"
+                placeholder="Leave blank to send them one"
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
+              />
+
+              <button
+                type="button"
+                onClick={() => setRevealPassword((previous) => !previous)}
+                aria-label={revealPassword ? "Hide password" : "Show password"}
+                className="absolute inset-y-0 right-0 flex cursor-pointer items-center pr-3 text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                {revealPassword ? <FiEye size={14} /> : <FiEyeOff size={14} />}
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-400">
+              Left blank, a temporary password is generated and emailed to
+              them. Either way they choose their own the first time they
+              sign in.
+            </p>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -801,6 +881,44 @@ export default function UserListPage() {
                 onClick={() => toggleActive(toToggle)}
               >
                 {toToggle.is_active === false ? "Switch On" : "Switch Off"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Reset Password Confirmation */}
+      {toReset && (
+        <Modal
+          isOpen
+          onClose={() => setToReset(null)}
+          title="Reset Password"
+        >
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+              Email{" "}
+              <span className="font-bold text-slate-800 dark:text-white">
+                {toReset.first_name} {toReset.last_name}
+              </span>{" "}
+              a new temporary password at{" "}
+              <span className="font-medium text-slate-700 dark:text-slate-200">
+                {toReset.email}
+              </span>
+              ?
+            </p>
+
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              Their current password stops working straight away, and the
+              one sent only lasts until they choose their own. It is not
+              shown here - the inbox is where it is read.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-3 dark:border-[#0d2336]">
+              <Button variant="outline" onClick={() => setToReset(null)}>
+                Cancel
+              </Button>
+              <Button onClick={confirmReset} loading={resetting}>
+                Send Temporary Password
               </Button>
             </div>
           </div>
