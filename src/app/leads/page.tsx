@@ -2693,9 +2693,10 @@ function LeadFormPage({
                 onChange={(value) => onChange("organizationName", value)}
               />
 
+              {/* Not every organisation has one, and a lead is not worth
+                  losing over a field somebody has to invent a value for. */}
               <FormInput
                 label="Organization Website"
-                required
                 value={form.website}
                 placeholder="www.company.com"
                 onChange={(value) => onChange("website", value)}

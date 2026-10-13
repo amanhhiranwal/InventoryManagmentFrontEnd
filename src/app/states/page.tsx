@@ -68,6 +68,7 @@ const GST_STATE_CODES: Record<string, string> = {
   chhattisgarh: "22",
   "madhya pradesh": "23",
   gujarat: "24",
+  "dadra and nagar haveli and daman and diu": "26",
   maharashtra: "27",
   karnataka: "29",
   goa: "30",
