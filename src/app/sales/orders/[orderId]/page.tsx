@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 import { StatusPill } from "@/components/crm/Pill";
 import {
@@ -39,6 +40,7 @@ import {
   SALES_ORDER_STATUS_LABEL,
 } from "@/features/salesOrders/api/salesOrders.api";
 import {
+  createProformaInvoiceApi,
   getProformaInvoicesApi,
   proformaInvoiceStatusLabel,
   type ProformaInvoiceModel,
@@ -49,9 +51,12 @@ import {
   FiCheckCircle,
   FiChevronRight,
   FiClock,
+  FiDownload,
   FiEdit2,
+  FiEye,
   FiFileText,
   FiInfo,
+  FiPlayCircle,
   FiMinus,
   FiPackage,
   FiPlus,
@@ -225,6 +230,8 @@ export default function SalesOrderDetailPage() {
   /* The most recent live proforma invoice raised against this order, which
      drives the Proforma Invoice step and document below. */
   const [invoice, setInvoice] = useState<ProformaInvoiceModel | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
   /* Editable copies of the addresses, held apart from the saved order so a
      failed save leaves what the user typed on screen rather than reverting
@@ -364,6 +371,71 @@ export default function SalesOrderDetailPage() {
       { items: items.filter((_, position) => position !== index) },
       "Line removed.",
     );
+  };
+
+  /* Whether the chain has cleared. An invoice and the fulfilment desks
+     both wait on it, so one answer serves both buttons. */
+  const invoiceable = canRaiseInvoice(order?.status);
+
+  /* The invoice is made from the order: the server fills its lines,
+     addresses, terms and tax from the order it belongs to, so there is
+     nothing to ask for here. */
+  const generateInvoice = async () => {
+    if (!order) return;
+
+    setGenerating(true);
+
+    try {
+      const made = await createProformaInvoiceApi({
+        sales_order_id: order.id,
+        status: "GENERATED",
+      });
+
+      setInvoice(made);
+      addToast(`#${made.pi_number} generated.`, "success");
+    } catch (error) {
+      addToast(
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "The invoice could not be generated.",
+        "error",
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  /* Download, Preview and Send are the invoice's own screens; they do
+     the same thing from here as they always have. */
+  const openInvoice = (query?: string) => {
+    if (!invoice) return;
+
+    router.push(
+      `/sales/proforma-invoices/${invoice.id}${query ? `?${query}` : ""}`,
+    );
+  };
+
+  /* Hands the order to the desks: accounts see the advance and the
+     terms, procurement sees what has to be found. Until this is pressed
+     the order is approved but nobody downstream has been told. */
+  const processOrder = async () => {
+    if (!order) return;
+
+    setProcessing(true);
+
+    try {
+      const { data } = await api.post(`/api/v1/orders/${order.id}/process`);
+
+      addToast(data?.message || "The desks have been told.", "success");
+      await loadOrder();
+    } catch (error) {
+      addToast(
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "The order could not be sent on.",
+        "error",
+      );
+    } finally {
+      setProcessing(false);
+    }
   };
 
   /* Sends the order up the discount chain. Where there is no discount to
@@ -557,6 +629,73 @@ export default function SalesOrderDetailPage() {
                 <FiSend size={13} />
                 {sending ? "Sending..." : "Send For Approval"}
               </button>
+            )}
+
+            {/* The invoice lives on the order now. Before there is one
+                there is a single button to make it, and it only lights up
+                once the chain has cleared - an invoice asks a customer for
+                money against a commitment the business has not made yet. */}
+            {!invoice && !isDraft && (
+              <button
+                type="button"
+                onClick={generateInvoice}
+                disabled={!invoiceable || generating}
+                title={
+                  invoiceable
+                    ? undefined
+                    : "The order has to be approved before it can be invoiced."
+                }
+                className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <FiFileText size={13} />
+                {generating ? "Generating..." : "Generate PI"}
+              </button>
+            )}
+
+            {invoice && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => openInvoice()}
+                  className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                >
+                  <FiDownload size={13} />
+                  Download PI
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => openInvoice("view=preview")}
+                  className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                >
+                  <FiEye size={13} />
+                  Preview
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => openInvoice("send=1")}
+                  className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                >
+                  <FiSend size={13} />
+                  Send PI To Customer
+                </button>
+
+                <button
+                  type="button"
+                  onClick={processOrder}
+                  disabled={!invoiceable || processing}
+                  title={
+                    invoiceable
+                      ? "Tell accounts the order is ready to be processed"
+                      : "The order has to be approved first."
+                  }
+                  className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <FiPlayCircle size={13} />
+                  {processing ? "Sending..." : "Process Order"}
+                </button>
+              </>
             )}
           </div>
         </div>

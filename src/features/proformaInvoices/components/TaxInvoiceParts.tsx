@@ -235,9 +235,15 @@ export function GoodsTable({
         ) : (
           items.map((item, index) => {
             const quantity = Number(item.qty || 0);
-            const rate = Number(item.rate || item.price || 0);
+            const listed = Number(item.rate || item.price || 0);
             const discount = Number(item.discount || 0);
-            const amount = quantity * rate * (1 - discount / 100);
+
+            /* The rate the customer is actually charged, not the one we
+               started from. Printing the gross rate beside a discounted
+               amount tells them the discount just as plainly as a line
+               saying so - qty times rate would not equal the amount. */
+            const rate = listed * (1 - discount / 100);
+            const amount = quantity * rate;
 
             return (
               <tr
@@ -274,11 +280,6 @@ export function GoodsTable({
                         ` (+₹${Math.round(
                           Number(item.warranty_uplift),
                         ).toLocaleString("en-IN")})`}
-                    </p>
-                  )}
-                  {discount > 0 && (
-                    <p className="text-[9px] italic text-slate-500">
-                      less {discount}% on the line
                     </p>
                   )}
                 </td>
@@ -343,9 +344,19 @@ export function InvoiceTotals({
 }) {
   const taxable = summary ? summary.taxable_total : invoice.taxable_amount;
 
+  /* What the customer is charged, before the additions below. The
+     discount and the ORC are how we arrived at it - our margin and our
+     channel's commission - and neither is the customer's business, so
+     neither is stated. They are netted off here instead of listed, which
+     keeps the column adding up: a subtotal that did not reconcile with
+     the taxable value would raise exactly the question the lines were
+     removed to avoid. */
+  const net =
+    Number(invoice.total_amount || 0) -
+    Number(invoice.discount_amount || 0) -
+    Number(invoice.orc_amount || 0);
+
   const adjustments: [string, number, boolean][] = [
-    ["Less: Discount", invoice.discount_amount, true],
-    ["Less: ORC", invoice.orc_amount, true],
     ["Add: Freight & Forwarding", invoice.freight_charges, false],
     ["Add: Installation & Commissioning", invoice.installation_lumpsum, false],
   ];
@@ -353,7 +364,7 @@ export function InvoiceTotals({
   return (
     <div className="pi-keep mt-5 flex justify-end">
       <div className="w-full max-w-[430px] px-3">
-        <Row label="Subtotal" value={money(invoice.total_amount)} />
+        <Row label="Subtotal" value={money(net)} />
 
         {adjustments
           .filter(([, value]) => Number(value || 0) !== 0)

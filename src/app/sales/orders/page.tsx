@@ -154,7 +154,11 @@ interface Order {
 type StatusFilter =
   | "All Orders"
   | "Draft"
-  | "Confirmed"
+  /* Every order climbs its chain now, so this is where most of them sit
+     for a while - and there was no tab for it, which left the busiest
+     state reachable only by scrolling All Orders. */
+  | "Pending Approval"
+  | "Approved"
   | "On Hold"
   | "Released"
   | "Completed"
@@ -237,7 +241,8 @@ const PAGE_SIZE = 10;
 const STATUS_TABS: StatusFilter[] = [
   "All Orders",
   "Draft",
-  "Confirmed",
+  "Pending Approval",
+  "Approved",
   "On Hold",
   "Released",
   "Completed",
@@ -368,7 +373,8 @@ const ORDER_COLUMNS: ExportColumn<Order>[] = [
     "All Orders" is the tab, not a stage, so it is not one of them. */
 const ORDER_CHART_STAGES: Exclude<StatusFilter, "All Orders">[] = [
   "Draft",
-  "Confirmed",
+  "Pending Approval",
+  "Approved",
   "On Hold",
   "Released",
   "Completed",
@@ -655,7 +661,8 @@ export default function OrdersListPage() {
     const counts: Record<StatusFilter, number> = {
       "All Orders": orders.length,
       Draft: 0,
-      Confirmed: 0,
+      "Pending Approval": 0,
+      Approved: 0,
       "On Hold": 0,
       Released: 0,
       Completed: 0,
