@@ -2723,36 +2723,13 @@ export default function QuotationPage() {
                                         return;
                                       }
 
-                                      /* Pending Approval is not a status to
-                                         type. Raising the request is what
-                                         puts it there, and that needs the
-                                         price type and the discount - which
-                                         only the form knows - so this opens
-                                         it rather than setting the status and
-                                         leaving nobody asked. */
-                                      if (
-                                        status ===
-                                        QUOTATION_STATUS.PENDING_APPROVAL
-                                      ) {
-                                        setRowMenuId(null);
-                                        openForEdit(String(quotation.id));
-                                        addToast(
-                                          "Check the discount, then use Send For Approval at the bottom of the form.",
-                                          "info",
-                                        );
-                                        return;
-                                      }
-
                                       changeStatus(quotation, status);
                                     }}
                                     className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#071929]"
                                   >
                                     {status === QUOTATION_STATUS.SENT
                                       ? "Send to Client"
-                                      : status ===
-                                          QUOTATION_STATUS.PENDING_APPROVAL
-                                        ? "Send For Approval"
-                                        : `Mark as ${quotationStatusLabel(status)}`}
+                                      : `Mark as ${quotationStatusLabel(status)}`}
                                   </button>
                                 ),
                               )}

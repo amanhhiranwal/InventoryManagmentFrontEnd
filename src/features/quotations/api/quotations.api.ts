@@ -39,7 +39,10 @@ export const QUOTATION_STATUS_LABEL: Record<QuotationStatus, string> = {
 /** Mirrors QUOTATION_TRANSITIONS on the backend. */
 export const QUOTATION_TRANSITIONS: Record<QuotationStatus, QuotationStatus[]> =
   {
-    DRAFT: ["PENDING_APPROVAL", "SENT", "EXPIRED"],
+    /* No approval on a proposal - the signature is on the sales order.
+       Accepted is reachable straight from a draft because a customer can
+       agree to a price that was handed over outside the CRM. */
+    DRAFT: ["SENT", "ACCEPTED", "EXPIRED"],
     PENDING_APPROVAL: ["SENT", "DRAFT", "EXPIRED"],
     SENT: ["ACCEPTED", "REJECTED", "EXPIRED"],
     ACCEPTED: [],

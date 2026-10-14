@@ -19,7 +19,12 @@ import {
   requestApprovalApi,
 } from "@/features/approvals/api/approvals.api";
 import ApprovalPanel from "@/features/approvals/components/ApprovalPanel";
-import { asAttachments } from "@/features/attachments/attachments.api";
+import {
+  ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_BYTES,
+  asAttachments,
+  uploadAttachments,
+} from "@/features/attachments/attachments.api";
 import {
   AttachmentRow,
   useAttachmentPreview,
@@ -231,6 +236,7 @@ export default function SalesOrderDetailPage() {
      drives the Proforma Invoice step and document below. */
   const [invoice, setInvoice] = useState<ProformaInvoiceModel | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
   const [processing, setProcessing] = useState(false);
 
   /* Editable copies of the addresses, held apart from the saved order so a
@@ -371,6 +377,53 @@ export default function SalesOrderDetailPage() {
       { items: items.filter((_, position) => position !== index) },
       "Line removed.",
     );
+  };
+
+  /* Files added after the order was raised. Stored first, then written
+     onto the order with the ones already there - a PUT replaces the
+     whole list, so sending only the new ones would drop the rest. */
+  const attachDocuments = async (chosen: File[]) => {
+    if (!order || !chosen.length) return;
+
+    const tooBig = chosen.filter((file) => file.size > MAX_ATTACHMENT_BYTES);
+
+    tooBig.forEach((file) =>
+      addToast(`${file.name}: files must be 10MB or less.`, "warning"),
+    );
+
+    const usable = chosen.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+
+    if (!usable.length) return;
+
+    setUploadingDocs(true);
+
+    try {
+      const stored = await uploadAttachments(usable, (file, why) =>
+        addToast(`${file.name}: ${why}`, "warning"),
+      );
+
+      if (!stored.length) return;
+
+      const updated = await updateSalesOrderApi(order.id, {
+        attachments: [...asAttachments(order.attachments), ...stored],
+      });
+
+      setOrder(updated);
+      addToast(
+        stored.length === 1
+          ? `${stored[0].name} attached.`
+          : `${stored.length} documents attached.`,
+        "success",
+      );
+    } catch (error) {
+      addToast(
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "Those documents could not be attached.",
+        "error",
+      );
+    } finally {
+      setUploadingDocs(false);
+    }
   };
 
   /* Whether the chain has cleared. An invoice and the fulfilment desks
@@ -1262,13 +1315,26 @@ export default function SalesOrderDetailPage() {
           <Card
             icon={<FiFileText size={15} />}
             title="Attached Documents"
+            /* It said documents were attached while creating the order,
+               which left no way to add the one that turns up afterwards -
+               a signed PO, a revised spec. They upload here now and land
+               on the order straight away. */
             action={
-              <span
-                title="Documents are attached while creating or editing the order"
-                className="whitespace-nowrap text-[10px] font-medium text-slate-500"
-              >
-                + Upload Documents
-              </span>
+              <label className="cursor-pointer whitespace-nowrap text-[10px] font-medium text-[#233353] hover:underline dark:text-sky-400">
+                {uploadingDocs ? "Uploading..." : "+ Upload Documents"}
+                <input
+                  type="file"
+                  multiple
+                  accept={ATTACHMENT_ACCEPT}
+                  className="hidden"
+                  disabled={uploadingDocs}
+                  onChange={(event) => {
+                    const chosen = Array.from(event.target.files || []);
+                    event.target.value = "";
+                    void attachDocuments(chosen);
+                  }}
+                />
+              </label>
             }
           >
             <div className="space-y-2.5">
