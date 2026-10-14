@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CgSpinner } from "react-icons/cg";
-import { FiCheck, FiClock, FiShield, FiX } from "react-icons/fi";
+import { FiAlertTriangle, FiCheck, FiClock, FiX } from "react-icons/fi";
 
 import { useUIStore } from "@/lib/store/ui.store";
 import {
@@ -20,7 +20,7 @@ import {
   PRICE_TYPE_LABEL,
   SalesApproval,
   decideApprovalApi,
-  getApprovalForDocumentApi,
+  getApprovalHistoryApi,
   getPendingApprovalsApi,
   withdrawApprovalApi,
 } from "@/features/approvals/api/approvals.api";
@@ -54,6 +54,9 @@ export default function ApprovalPanel({
   const { addToast } = useUIStore();
 
   const [approval, setApproval] = useState<SalesApproval | null>(null);
+  /* Approvals raised on this document before the current one - the
+     rounds it has already been through. */
+  const [earlier, setEarlier] = useState<SalesApproval[]>([]);
   const [mine, setMine] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -63,12 +66,17 @@ export default function ApprovalPanel({
     try {
       setLoading(true);
 
-      const [record, pending] = await Promise.all([
-        getApprovalForDocumentApi(documentType, documentId),
+      const [past, pending] = await Promise.all([
+        getApprovalHistoryApi(documentType, documentId),
         getPendingApprovalsApi().catch(() => [] as SalesApproval[]),
       ]);
 
+      /* Newest first, so the open request is the head and everything
+         behind it is what happened before. */
+      const record = past[0] || null;
+
       setApproval(record);
+      setEarlier(past.slice(1));
       setMine(!!record && pending.some((item) => item.id === record.id));
     } catch (error) {
       console.error(error);
@@ -149,55 +157,154 @@ export default function ApprovalPanel({
         ? "border-rose-200 bg-rose-50/60 dark:border-rose-900/40 dark:bg-rose-950/20"
         : "border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-950/20";
 
+  /* Steps already turned down, with what was said. The design calls this
+     Previous Rejection History and it is the most useful thing on the
+     panel: somebody resubmitting needs to know what was wrong last time,
+     not just that it was refused. */
+  const refusals = [
+    ...approval.steps
+      .filter((step) => step.decision === "REJECTED")
+      .map((step) => ({ step, round: null as string | null })),
+
+    /* And every round before this one. A resubmitted order carries its
+       own approval, so what was said last time lives on a different
+       record - which is exactly the thing somebody fixing it needs. */
+    ...earlier.flatMap((round) =>
+      round.steps
+        .filter((step) => step.decision === "REJECTED")
+        .map((step) => ({
+          step,
+          round: round.document_number || `#${round.id}`,
+        })),
+    ),
+  ];
+
+  const heading = pending
+    ? "Approval Required"
+    : approval.status === "APPROVED"
+      ? "Approved"
+      : approval.status === "REJECTED"
+        ? "Not Approved"
+        : "Approval Withdrawn";
+
   return (
     <div className={`rounded-xl border p-4 ${tone}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-2.5">
-          <FiShield size={15} className="mt-0.5 shrink-0 text-slate-500" />
+      <div className="flex items-center gap-2">
+        <FiAlertTriangle size={14} className="shrink-0 text-amber-500" />
+        <p className="text-[13px] font-semibold text-slate-800 dark:text-white">
+          {heading}
+        </p>
+      </div>
 
-          <div>
-            <p className="text-[12px] font-semibold text-slate-800 dark:text-white">
-              {pending
-                ? `Waiting on the ${approval.waiting_on}`
-                : approval.status === "APPROVED"
-                  ? "Discount approved"
-                  : approval.status === "REJECTED"
-                    ? "Discount not approved"
-                    : "Approval withdrawn"}
-            </p>
+      <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[240px] flex-1">
+          <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <span>Requested by</span>
 
-            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-              {approval.reason}
-            </p>
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-[#0b2034] dark:text-slate-200">
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] dark:bg-[#17304a]">
+                {(approval.requested_by_name || "U").charAt(0).toUpperCase()}
+              </span>
+              {approval.requested_by_name || "—"}
+            </span>
 
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-slate-400">
-              <span>Raised by {approval.requested_by_name || "—"}</span>
-              <span>{when(approval.requested_at)}</span>
+            <span>on {when(approval.requested_at)}</span>
+          </p>
 
-              {approval.discount_amount ? (
-                <span>
-                  {approval.discount_percent}% ({money(approval.discount_amount)})
-                </span>
-              ) : null}
+          <p className="mt-1.5 max-w-[560px] text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+            {approval.reason}
+          </p>
 
-              {approval.price_type === PRICE_TYPE.DP && (
-                <span>{PRICE_TYPE_LABEL.DP}</span>
-              )}
-            </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-slate-400">
+            {approval.discount_amount ? (
+              <span>
+                {approval.discount_percent}% ({money(approval.discount_amount)})
+              </span>
+            ) : null}
+
+            {approval.price_type === PRICE_TYPE.DP && (
+              <span>{PRICE_TYPE_LABEL.DP}</span>
+            )}
+
+            {pending && <span>Waiting on the {approval.waiting_on}</span>}
           </div>
         </div>
 
-        {pending && !mine && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={withdraw}
-            className="h-8 shrink-0 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 transition hover:bg-white disabled:opacity-50 dark:border-[#17304a] dark:text-slate-300"
-          >
-            Withdraw
-          </button>
-        )}
+        {/* The decision sits beside the request, as in the design, rather
+            than at the bottom of everything the panel has to say. */}
+        <div className="flex shrink-0 items-center gap-2">
+          {mine && (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => decide(false)}
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-4 text-[12px] font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:bg-transparent"
+              >
+                <FiX size={13} />
+                Reject
+              </button>
+
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => decide(true)}
+                className="flex h-9 items-center gap-1.5 rounded-lg bg-[#273756] px-4 text-[12px] font-semibold text-white transition hover:bg-[#18243a] disabled:opacity-50"
+              >
+                {busy ? (
+                  <CgSpinner className="animate-spin" size={13} />
+                ) : (
+                  <FiCheck size={13} />
+                )}
+                {documentType === "SALES_ORDER" ? "Approve SO" : "Approve"}
+              </button>
+            </>
+          )}
+
+          {pending && !mine && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={withdraw}
+              className="h-9 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 transition hover:bg-white disabled:opacity-50 dark:border-[#17304a] dark:text-slate-300"
+            >
+              Withdraw
+            </button>
+          )}
+        </div>
       </div>
+
+      {refusals.length > 0 && (
+        <div className="mt-3 rounded-lg border border-white/60 bg-white/60 p-3 dark:border-white/10 dark:bg-[#0b2034]/60">
+          <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+            Previous Rejection History
+          </p>
+
+          {refusals.map(({ step, round }, index) => (
+            <div key={`${step.role}-${index}`} className="mt-2 flex gap-2">
+              <FiX size={11} className="mt-0.5 shrink-0 text-rose-500" />
+
+              <div>
+                <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                  Rejected by {step.approver_name || step.role}
+                  {step.decided_at ? ` - ${when(step.decided_at)}` : ""}
+                  {round && (
+                    <span className="ml-1 font-normal text-slate-400">
+                      (earlier round)
+                    </span>
+                  )}
+                </p>
+
+                {step.remarks && (
+                  <p className="mt-0.5 text-[11px] italic leading-relaxed text-slate-500 dark:text-slate-400">
+                    &ldquo;{step.remarks}&rdquo;
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* The chain, so everyone can see where it has got to. */}
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -236,36 +343,17 @@ export default function ApprovalPanel({
         })}
       </div>
 
-      {/* Only the person the step is waiting on can act. */}
+      {/* A reason, for whoever reads the decision afterwards. Optional on
+          an approval and worth insisting on in spirit for a rejection -
+          "no" with nothing beside it is what sends an order round the
+          loop a second time unchanged. */}
       {mine && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/60 pt-3 dark:border-white/10">
-          <input
-            value={remarks}
-            onChange={(event) => setRemarks(event.target.value)}
-            placeholder="Remark (optional, recorded on the approval)"
-            className="h-9 min-w-[220px] flex-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-          />
-
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => decide(true)}
-            className="flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-[11px] font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {busy ? <CgSpinner className="animate-spin" size={12} /> : <FiCheck size={12} />}
-            Approve
-          </button>
-
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => decide(false)}
-            className="flex h-9 items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-4 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50"
-          >
-            <FiX size={12} />
-            Reject
-          </button>
-        </div>
+        <input
+          value={remarks}
+          onChange={(event) => setRemarks(event.target.value)}
+          placeholder="Remark - say what needs changing if you are rejecting"
+          className="mt-3 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-[11px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+        />
       )}
     </div>
   );

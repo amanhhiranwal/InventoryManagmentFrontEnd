@@ -154,7 +154,11 @@ interface Order {
 type StatusFilter =
   | "All Orders"
   | "Draft"
-  | "Confirmed"
+  /* Every order climbs its chain now, so this is where most of them sit
+     for a while - and there was no tab for it, which left the busiest
+     state reachable only by scrolling All Orders. */
+  | "Pending Approval"
+  | "Approved"
   | "On Hold"
   | "Released"
   | "Completed"
@@ -237,7 +241,8 @@ const PAGE_SIZE = 10;
 const STATUS_TABS: StatusFilter[] = [
   "All Orders",
   "Draft",
-  "Confirmed",
+  "Pending Approval",
+  "Approved",
   "On Hold",
   "Released",
   "Completed",
@@ -338,6 +343,20 @@ const money = (value: number) =>
 /* Backend statuses are canonical; this maps one to its display label. */
 const normalizeStatus = (status?: string) => salesOrderStatusLabel(status);
 
+/** What the row menu may move an order to directly.
+ *
+ * Approving is not on the list. An order is confirmed by its approval
+ * chain clearing, not by somebody picking "Mark Approved" from a menu -
+ * the server refuses it there anyway, so the item only ever produced a
+ * refusal. Putting an order on hold or cancelling it are decisions a
+ * person makes, and those stay. */
+const quickStatuses = (status?: string) =>
+  nextSalesOrderStatuses(status).filter(
+    (next) =>
+      next !== SALES_ORDER_STATUS.CONFIRMED &&
+      next !== SALES_ORDER_STATUS.PENDING_APPROVAL,
+  );
+
 const getOrderDate = (order: Order) =>
   order.order_date || order.created_at || new Date().toISOString();
 
@@ -368,7 +387,8 @@ const ORDER_COLUMNS: ExportColumn<Order>[] = [
     "All Orders" is the tab, not a stage, so it is not one of them. */
 const ORDER_CHART_STAGES: Exclude<StatusFilter, "All Orders">[] = [
   "Draft",
-  "Confirmed",
+  "Pending Approval",
+  "Approved",
   "On Hold",
   "Released",
   "Completed",
@@ -422,7 +442,6 @@ export default function OrdersListPage() {
 
   const [page, setPage] = useState(1);
 
-  const [previewOrder, setPreviewOrder] = useState<Order | null>(null);
 
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
@@ -655,7 +674,8 @@ export default function OrdersListPage() {
     const counts: Record<StatusFilter, number> = {
       "All Orders": orders.length,
       Draft: 0,
-      Confirmed: 0,
+      "Pending Approval": 0,
+      Approved: 0,
       "On Hold": 0,
       Released: 0,
       Completed: 0,
@@ -4227,18 +4247,6 @@ export default function OrdersListPage() {
                             />
 
                             <div className="absolute right-4 top-9 z-30 w-40 rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPreviewOrder(order);
-
-                                  setOpenMenu(null);
-                                }}
-                                className="w-full px-3 py-2 text-left text-xs hover:bg-slate-50 dark:hover:bg-[#0b2034]"
-                              >
-                                View / Print
-                              </button>
-
                               <Link
                                 href={`/sales/orders/${order._id}`}
                                 className="block px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-[#0b2034]"
@@ -4247,28 +4255,11 @@ export default function OrdersListPage() {
                                 View Order
                               </Link>
 
-                              {/* A repeat order for the same customer: the
-                                  whole thing again, minus anything that
-                                  identified the original. */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenMenu(null);
-                                  router.push(
-                                    `/sales/orders?duplicate=${order._id}`,
-                                  );
-                                }}
-                                className="w-full px-3 py-2 text-left text-xs hover:bg-slate-50 dark:hover:bg-[#0b2034]"
-                              >
-                                Duplicate Order
-                              </button>
-
-                              {nextSalesOrderStatuses(order.status).length >
-                                0 && (
+                              {quickStatuses(order.status).length > 0 && (
                                 <div className="my-1 border-t border-slate-100 dark:border-[#17304a]" />
                               )}
 
-                              {nextSalesOrderStatuses(order.status).map(
+                              {quickStatuses(order.status).map(
                                 (next) => (
                                   <button
                                     key={next}
@@ -4310,26 +4301,11 @@ export default function OrdersListPage() {
       </div>
 
       {/* =================================================
-          PRINT PREVIEW
+          PRINT PREVIEW - withdrawn. It drew a purchase order the
+          business never issues: the customer's own PO is uploaded to the
+          order, and what we send them is the proforma invoice.
       ================================================= */}
 
-      {previewOrder && (
-        <DocumentPrintPreview
-          isOpen={!!previewOrder}
-          onClose={() => setPreviewOrder(null)}
-          documentType="PURCHASE ORDER (PO)"
-          documentNumber={previewOrder._id.slice(0, 8).toUpperCase()}
-          dateStr={new Date(getOrderDate(previewOrder)).toLocaleDateString(
-            "en-IN",
-          )}
-          vendorName={previewOrder.customer_name}
-          items={previewOrder.items.map((item) => ({
-            item: item.description || item.product_id,
-            qty: item.quantity_case || item.quantity_kg_ltr || 1,
-            price: item.rate || item.price || 0,
-          }))}
-        />
-      )}
     </div>
   );
 }

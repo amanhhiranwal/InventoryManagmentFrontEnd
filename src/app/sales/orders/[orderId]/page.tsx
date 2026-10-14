@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 import { StatusPill } from "@/components/crm/Pill";
 import {
@@ -18,7 +19,12 @@ import {
   requestApprovalApi,
 } from "@/features/approvals/api/approvals.api";
 import ApprovalPanel from "@/features/approvals/components/ApprovalPanel";
-import { asAttachments } from "@/features/attachments/attachments.api";
+import {
+  ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_BYTES,
+  asAttachments,
+  uploadAttachments,
+} from "@/features/attachments/attachments.api";
 import {
   AttachmentRow,
   useAttachmentPreview,
@@ -39,24 +45,37 @@ import {
   SALES_ORDER_STATUS_LABEL,
 } from "@/features/salesOrders/api/salesOrders.api";
 import {
+  createProformaInvoiceApi,
+  getCompanyProfileApi,
   getProformaInvoicesApi,
   proformaInvoiceStatusLabel,
+  type CompanyProfile,
   type ProformaInvoiceModel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
+import {
+  PrintableProformaInvoice,
+  ProformaInvoicePreviewCard,
+  usePrintProformaInvoice,
+} from "@/features/proformaInvoices/components/ProformaInvoiceDocument";
+import SendProformaInvoiceModal from "@/features/proformaInvoices/components/SendProformaInvoiceModal";
 import {
   FiChevronLeft,
   FiCalendar,
   FiCheckCircle,
   FiChevronRight,
   FiClock,
+  FiDownload,
   FiEdit2,
+  FiEye,
   FiFileText,
   FiInfo,
+  FiPlayCircle,
   FiMinus,
   FiPackage,
   FiPlus,
   FiTrash2,
   FiSend,
+  FiX,
   FiShield,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
@@ -225,6 +244,15 @@ export default function SalesOrderDetailPage() {
   /* The most recent live proforma invoice raised against this order, which
      drives the Proforma Invoice step and document below. */
   const [invoice, setInvoice] = useState<ProformaInvoiceModel | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState(false);
+  const [showInvoicePreview, setShowInvoicePreview] = useState(false);
+  const [showSendInvoice, setShowSendInvoice] = useState(false);
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(
+    null,
+  );
+  const printInvoice = usePrintProformaInvoice();
+  const [processing, setProcessing] = useState(false);
 
   /* Editable copies of the addresses, held apart from the saved order so a
      failed save leaves what the user typed on screen rather than reverting
@@ -278,6 +306,12 @@ export default function SalesOrderDetailPage() {
   useEffect(() => {
     loadOrder();
     loadActivities();
+
+    /* The invoice document prints the seller's own identity, so the
+       profile is needed here now that it is printed from this page. */
+    getCompanyProfileApi()
+      .then(setCompanyProfile)
+      .catch(() => setCompanyProfile(null));
   }, [loadOrder, loadActivities]);
 
   useEffect(() => {
@@ -364,6 +398,118 @@ export default function SalesOrderDetailPage() {
       { items: items.filter((_, position) => position !== index) },
       "Line removed.",
     );
+  };
+
+  /* Files added after the order was raised. Stored first, then written
+     onto the order with the ones already there - a PUT replaces the
+     whole list, so sending only the new ones would drop the rest. */
+  const attachDocuments = async (chosen: File[]) => {
+    if (!order || !chosen.length) return;
+
+    const tooBig = chosen.filter((file) => file.size > MAX_ATTACHMENT_BYTES);
+
+    tooBig.forEach((file) =>
+      addToast(`${file.name}: files must be 10MB or less.`, "warning"),
+    );
+
+    const usable = chosen.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+
+    if (!usable.length) return;
+
+    setUploadingDocs(true);
+
+    try {
+      const stored = await uploadAttachments(usable, (file, why) =>
+        addToast(`${file.name}: ${why}`, "warning"),
+      );
+
+      if (!stored.length) return;
+
+      const updated = await updateSalesOrderApi(order.id, {
+        attachments: [...asAttachments(order.attachments), ...stored],
+      });
+
+      setOrder(updated);
+      addToast(
+        stored.length === 1
+          ? `${stored[0].name} attached.`
+          : `${stored.length} documents attached.`,
+        "success",
+      );
+    } catch (error) {
+      addToast(
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "Those documents could not be attached.",
+        "error",
+      );
+    } finally {
+      setUploadingDocs(false);
+    }
+  };
+
+  /* Whether the chain has cleared. An invoice and the fulfilment desks
+     both wait on it, so one answer serves both buttons. */
+  const invoiceable = canRaiseInvoice(order?.status);
+
+  /* The invoice is made from the order: the server fills its lines,
+     addresses, terms and tax from the order it belongs to, so there is
+     nothing to ask for here. */
+  const generateInvoice = async () => {
+    if (!order) return;
+
+    setGenerating(true);
+
+    try {
+      const made = await createProformaInvoiceApi({
+        sales_order_id: order.id,
+        status: "GENERATED",
+      });
+
+      setInvoice(made);
+      addToast(`#${made.pi_number} generated.`, "success");
+    } catch (error) {
+      addToast(
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "The invoice could not be generated.",
+        "error",
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  /* Download, Preview and Send happen here rather than on another
+     screen. The invoice belongs to this order; sending somebody away to
+     a page about one document, to come back to the order they were
+     working on, is a round trip for nothing. */
+  const downloadInvoice = () => {
+    if (!invoice) return;
+
+    printInvoice(invoice.pi_number || `PI-${invoice.id}`);
+  };
+
+  /* Hands the order to the desks: accounts see the advance and the
+     terms, procurement sees what has to be found. Until this is pressed
+     the order is approved but nobody downstream has been told. */
+  const processOrder = async () => {
+    if (!order) return;
+
+    setProcessing(true);
+
+    try {
+      const { data } = await api.post(`/api/v1/orders/${order.id}/process`);
+
+      addToast(data?.message || "The desks have been told.", "success");
+      await loadOrder();
+    } catch (error) {
+      addToast(
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "The order could not be sent on.",
+        "error",
+      );
+    } finally {
+      setProcessing(false);
+    }
   };
 
   /* Sends the order up the discount chain. Where there is no discount to
@@ -557,6 +703,80 @@ export default function SalesOrderDetailPage() {
                 <FiSend size={13} />
                 {sending ? "Sending..." : "Send For Approval"}
               </button>
+            )}
+
+            {/* Edit, Generate PI and Process Order are on the page from
+                the start, whatever state the order is in. A button that
+                appears only once it is usable leaves nobody any way to
+                find out it exists, so these are shown dark and say why.
+                The PI's own three join them once there is one. */}
+            {!isDraft && (
+              <>
+                <button
+                  type="button"
+                  onClick={generateInvoice}
+                  disabled={!invoiceable || !!invoice || generating}
+                  title={
+                    invoice
+                      ? `Already generated as ${invoice.pi_number || `#${invoice.id}`}`
+                      : invoiceable
+                        ? undefined
+                        : "The order has to be approved before it can be invoiced."
+                  }
+                  className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                >
+                  <FiFileText size={13} />
+                  {generating ? "Generating..." : "Generate PI"}
+                </button>
+
+                {invoice && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={downloadInvoice}
+                      className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                    >
+                      <FiDownload size={13} />
+                      Download PI
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowInvoicePreview(true)}
+                      className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                    >
+                      <FiEye size={13} />
+                      Preview
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowSendInvoice(true)}
+                      className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                    >
+                      <FiSend size={13} />
+                      Send PI To Customer
+                    </button>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={processOrder}
+                  disabled={!invoiceable || !invoice || processing}
+                  title={
+                    !invoiceable
+                      ? "The order has to be approved first."
+                      : !invoice
+                        ? "Generate the proforma invoice first - it is what accounts collect against."
+                        : "Tell accounts the order is ready to be processed"
+                  }
+                  className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <FiPlayCircle size={13} />
+                  {processing ? "Sending..." : "Process Order"}
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -1123,13 +1343,26 @@ export default function SalesOrderDetailPage() {
           <Card
             icon={<FiFileText size={15} />}
             title="Attached Documents"
+            /* It said documents were attached while creating the order,
+               which left no way to add the one that turns up afterwards -
+               a signed PO, a revised spec. They upload here now and land
+               on the order straight away. */
             action={
-              <span
-                title="Documents are attached while creating or editing the order"
-                className="whitespace-nowrap text-[10px] font-medium text-slate-500"
-              >
-                + Upload Documents
-              </span>
+              <label className="cursor-pointer whitespace-nowrap text-[10px] font-medium text-[#233353] hover:underline dark:text-sky-400">
+                {uploadingDocs ? "Uploading..." : "+ Upload Documents"}
+                <input
+                  type="file"
+                  multiple
+                  accept={ATTACHMENT_ACCEPT}
+                  className="hidden"
+                  disabled={uploadingDocs}
+                  onChange={(event) => {
+                    const chosen = Array.from(event.target.files || []);
+                    event.target.value = "";
+                    void attachDocuments(chosen);
+                  }}
+                />
+              </label>
             }
           >
             <div className="space-y-2.5">
@@ -1198,6 +1431,68 @@ export default function SalesOrderDetailPage() {
             </div>
 
             {attachmentPreview.preview}
+
+      {/* Hidden on screen, and the only thing on the page when printed -
+          which is what makes Download PI work without leaving the order. */}
+      <PrintableProformaInvoice invoice={invoice} profile={companyProfile} />
+
+      {showInvoicePreview && invoice && (
+        <div
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowInvoicePreview(false);
+            }
+          }}
+          className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm"
+        >
+          <div className="mx-auto w-full max-w-[860px]">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[13px] font-semibold text-white">
+                {invoice.pi_number || `PI-${invoice.id}`}
+              </p>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={downloadInvoice}
+                  className="flex h-9 items-center gap-1.5 rounded-lg bg-white px-3 text-[12px] font-medium text-[#141414]"
+                >
+                  <FiDownload size={12} />
+                  Download
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowInvoicePreview(false)}
+                  aria-label="Close preview"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#141414]"
+                >
+                  <FiX size={14} />
+                </button>
+              </div>
+            </div>
+
+            <ProformaInvoicePreviewCard
+              invoice={invoice}
+              profile={companyProfile}
+            />
+          </div>
+        </div>
+      )}
+
+      {showSendInvoice && invoice && (
+        <SendProformaInvoiceModal
+          invoice={invoice}
+          onClose={() => setShowSendInvoice(false)}
+          onSent={(updated, message) => {
+            setInvoice(updated);
+            setShowSendInvoice(false);
+            addToast(message, "success");
+          }}
+          onNotice={(message) => addToast(message, "info")}
+          onError={(message) => addToast(message, "error")}
+        />
+      )}
           </Card>
 
           {/* ACTIVITY HISTORY */}
