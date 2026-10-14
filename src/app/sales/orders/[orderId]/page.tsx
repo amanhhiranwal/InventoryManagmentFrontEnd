@@ -46,10 +46,18 @@ import {
 } from "@/features/salesOrders/api/salesOrders.api";
 import {
   createProformaInvoiceApi,
+  getCompanyProfileApi,
   getProformaInvoicesApi,
   proformaInvoiceStatusLabel,
+  type CompanyProfile,
   type ProformaInvoiceModel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
+import {
+  PrintableProformaInvoice,
+  ProformaInvoicePreviewCard,
+  usePrintProformaInvoice,
+} from "@/features/proformaInvoices/components/ProformaInvoiceDocument";
+import SendProformaInvoiceModal from "@/features/proformaInvoices/components/SendProformaInvoiceModal";
 import {
   FiChevronLeft,
   FiCalendar,
@@ -67,6 +75,7 @@ import {
   FiPlus,
   FiTrash2,
   FiSend,
+  FiX,
   FiShield,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
@@ -237,6 +246,12 @@ export default function SalesOrderDetailPage() {
   const [invoice, setInvoice] = useState<ProformaInvoiceModel | null>(null);
   const [generating, setGenerating] = useState(false);
   const [uploadingDocs, setUploadingDocs] = useState(false);
+  const [showInvoicePreview, setShowInvoicePreview] = useState(false);
+  const [showSendInvoice, setShowSendInvoice] = useState(false);
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(
+    null,
+  );
+  const printInvoice = usePrintProformaInvoice();
   const [processing, setProcessing] = useState(false);
 
   /* Editable copies of the addresses, held apart from the saved order so a
@@ -291,6 +306,12 @@ export default function SalesOrderDetailPage() {
   useEffect(() => {
     loadOrder();
     loadActivities();
+
+    /* The invoice document prints the seller's own identity, so the
+       profile is needed here now that it is printed from this page. */
+    getCompanyProfileApi()
+      .then(setCompanyProfile)
+      .catch(() => setCompanyProfile(null));
   }, [loadOrder, loadActivities]);
 
   useEffect(() => {
@@ -457,14 +478,14 @@ export default function SalesOrderDetailPage() {
     }
   };
 
-  /* Download, Preview and Send are the invoice's own screens; they do
-     the same thing from here as they always have. */
-  const openInvoice = (query?: string) => {
+  /* Download, Preview and Send happen here rather than on another
+     screen. The invoice belongs to this order; sending somebody away to
+     a page about one document, to come back to the order they were
+     working on, is a round trip for nothing. */
+  const downloadInvoice = () => {
     if (!invoice) return;
 
-    router.push(
-      `/sales/proforma-invoices/${invoice.id}${query ? `?${query}` : ""}`,
-    );
+    printInvoice(invoice.pi_number || `PI-${invoice.id}`);
   };
 
   /* Hands the order to the desks: accounts see the advance and the
@@ -684,64 +705,71 @@ export default function SalesOrderDetailPage() {
               </button>
             )}
 
-            {/* The invoice lives on the order now. Before there is one
-                there is a single button to make it, and it only lights up
-                once the chain has cleared - an invoice asks a customer for
-                money against a commitment the business has not made yet. */}
-            {!invoice && !isDraft && (
-              <button
-                type="button"
-                onClick={generateInvoice}
-                disabled={!invoiceable || generating}
-                title={
-                  invoiceable
-                    ? undefined
-                    : "The order has to be approved before it can be invoiced."
-                }
-                className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <FiFileText size={13} />
-                {generating ? "Generating..." : "Generate PI"}
-              </button>
-            )}
-
-            {invoice && (
+            {/* Edit, Generate PI and Process Order are on the page from
+                the start, whatever state the order is in. A button that
+                appears only once it is usable leaves nobody any way to
+                find out it exists, so these are shown dark and say why.
+                The PI's own three join them once there is one. */}
+            {!isDraft && (
               <>
                 <button
                   type="button"
-                  onClick={() => openInvoice()}
-                  className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                  onClick={generateInvoice}
+                  disabled={!invoiceable || !!invoice || generating}
+                  title={
+                    invoice
+                      ? `Already generated as ${invoice.pi_number || `#${invoice.id}`}`
+                      : invoiceable
+                        ? undefined
+                        : "The order has to be approved before it can be invoiced."
+                  }
+                  className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
                 >
-                  <FiDownload size={13} />
-                  Download PI
+                  <FiFileText size={13} />
+                  {generating ? "Generating..." : "Generate PI"}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => openInvoice("view=preview")}
-                  className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
-                >
-                  <FiEye size={13} />
-                  Preview
-                </button>
+                {invoice && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={downloadInvoice}
+                      className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                    >
+                      <FiDownload size={13} />
+                      Download PI
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() => openInvoice("send=1")}
-                  className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
-                >
-                  <FiSend size={13} />
-                  Send PI To Customer
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowInvoicePreview(true)}
+                      className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                    >
+                      <FiEye size={13} />
+                      Preview
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowSendInvoice(true)}
+                      className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                    >
+                      <FiSend size={13} />
+                      Send PI To Customer
+                    </button>
+                  </>
+                )}
 
                 <button
                   type="button"
                   onClick={processOrder}
-                  disabled={!invoiceable || processing}
+                  disabled={!invoiceable || !invoice || processing}
                   title={
-                    invoiceable
-                      ? "Tell accounts the order is ready to be processed"
-                      : "The order has to be approved first."
+                    !invoiceable
+                      ? "The order has to be approved first."
+                      : !invoice
+                        ? "Generate the proforma invoice first - it is what accounts collect against."
+                        : "Tell accounts the order is ready to be processed"
                   }
                   className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -1403,6 +1431,68 @@ export default function SalesOrderDetailPage() {
             </div>
 
             {attachmentPreview.preview}
+
+      {/* Hidden on screen, and the only thing on the page when printed -
+          which is what makes Download PI work without leaving the order. */}
+      <PrintableProformaInvoice invoice={invoice} profile={companyProfile} />
+
+      {showInvoicePreview && invoice && (
+        <div
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowInvoicePreview(false);
+            }
+          }}
+          className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm"
+        >
+          <div className="mx-auto w-full max-w-[860px]">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[13px] font-semibold text-white">
+                {invoice.pi_number || `PI-${invoice.id}`}
+              </p>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={downloadInvoice}
+                  className="flex h-9 items-center gap-1.5 rounded-lg bg-white px-3 text-[12px] font-medium text-[#141414]"
+                >
+                  <FiDownload size={12} />
+                  Download
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowInvoicePreview(false)}
+                  aria-label="Close preview"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#141414]"
+                >
+                  <FiX size={14} />
+                </button>
+              </div>
+            </div>
+
+            <ProformaInvoicePreviewCard
+              invoice={invoice}
+              profile={companyProfile}
+            />
+          </div>
+        </div>
+      )}
+
+      {showSendInvoice && invoice && (
+        <SendProformaInvoiceModal
+          invoice={invoice}
+          onClose={() => setShowSendInvoice(false)}
+          onSent={(updated, message) => {
+            setInvoice(updated);
+            setShowSendInvoice(false);
+            addToast(message, "success");
+          }}
+          onNotice={(message) => addToast(message, "info")}
+          onError={(message) => addToast(message, "error")}
+        />
+      )}
           </Card>
 
           {/* ACTIVITY HISTORY */}
