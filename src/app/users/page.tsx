@@ -200,24 +200,18 @@ export default function UserListPage() {
   const canUpdateRole = hasPermission("user.update");
   const showAddUser = superAdmin;
 
+  /* The page of users on screen. Only this depends on the page number
+     and the search, so turning a page is one request. */
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
 
-      const hasCompanyView = hasPermission("company.view");
-      const hasRoleRead = hasPermission("role.read");
+      const usersResponse = await getUsersApi(currentPage, pageSize, {
+        search: appliedSearch,
+      });
 
-      const [usersResponse, rolesData, companiesData, everyone] = await Promise.all([
-        getUsersApi(currentPage, pageSize, { search: appliedSearch }),
-        hasRoleRead ? getRolesApi() : Promise.resolve([]),
-        hasCompanyView ? getCompaniesApi().then((res) => res.data) : Promise.resolve([]),
-        getUsersApi(1, 500, { skipErrorToast: true }).catch(() => ({ data: [] as User[], total: 0 })),
-      ]);
       setUsers(usersResponse.data);
-      setManagerOptions(everyone.data);
       setTotalItems(usersResponse.total);
-      setRoles(rolesData);
-      setCompanies(companiesData);
     } catch (err: unknown) {
       console.error(err);
       const axiosError = err as AxiosError<{ message?: string; detail?: string }>;
@@ -230,11 +224,42 @@ export default function UserListPage() {
     }
   }, [currentPage, appliedSearch, addToast]);
 
+  /* The masters behind the modals: the roles, the companies, and
+     everyone the Reports To picker can offer. None of them change as you
+     turn a page, so they are read once rather than alongside every page
+     and every keystroke of a search - four requests for a list of ten
+     people was most of the wait. */
+  const fetchSetup = useCallback(async () => {
+    const hasCompanyView = hasPermission("company.view");
+    const hasRoleRead = hasPermission("role.read");
+
+    const [rolesData, companiesData, everyone] = await Promise.all([
+      hasRoleRead ? getRolesApi().catch(() => [] as Role[]) : Promise.resolve([] as Role[]),
+      hasCompanyView
+        ? getCompaniesApi().then((res) => res.data).catch(() => [] as Company[])
+        : Promise.resolve([] as Company[]),
+      getUsersApi(1, 500, { skipErrorToast: true }).catch(() => ({
+        data: [] as User[],
+        total: 0,
+      })),
+    ]);
+
+    setRoles(rolesData);
+    setCompanies(companiesData);
+    setManagerOptions(everyone.data);
+  }, []);
+
   useEffect(() => {
     if (canReadUsers) {
       fetchData();
     }
   }, [canReadUsers, fetchData]);
+
+  useEffect(() => {
+    if (canReadUsers) {
+      fetchSetup();
+    }
+  }, [canReadUsers, fetchSetup]);
 
   const handleOpenEditModal = (u: User) => {
     setEditUser(u);
@@ -273,6 +298,7 @@ export default function UserListPage() {
       addToast("User updated successfully!", "success");
       setEditUser(null);
       fetchData();
+      fetchSetup();
     } catch (err: unknown) {
       console.error(err);
       const axiosError = err as AxiosError<{ message?: string; detail?: string }>;
@@ -321,6 +347,7 @@ export default function UserListPage() {
       setShowDeleteModal(false);
       setUserToDelete(null);
       fetchData();
+      fetchSetup();
     } catch (err: unknown) {
       console.error(err);
       const axiosError = err as AxiosError<{ message?: string; detail?: string }>;
@@ -369,7 +396,9 @@ export default function UserListPage() {
         reports_to_id: "",
       });
       setShowCreateModal(false);
-      fetchData(); // Refresh list
+      // The new person joins the list and the Reports To picker both.
+      fetchData();
+      fetchSetup();
     } catch (err: unknown) {
       console.error(err);
       const axiosError = err as AxiosError<{ message?: string; detail?: string }>;
