@@ -21,6 +21,8 @@ import { CgSpinner } from "react-icons/cg";
 import Link from "next/link";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
 import { eligibleManagers, userLabel } from "@/features/users/utils/hierarchy";
+import { passwordProblem } from "@/features/auth/utils/passwordRules";
+import PasswordRules from "@/features/auth/components/PasswordRules";
 
 export default function AddUserPage() {
   const router = useRouter();
@@ -88,9 +90,20 @@ export default function AddUserPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.first_name || !formData.last_name || !formData.email || !formData.password) {
+    if (!formData.first_name || !formData.last_name || !formData.email) {
       addToast("Please fill in all required fields.", "warning");
       return;
+    }
+
+    /* A password is optional here. Typed, it is emailed to them and signed
+       in with, so it has to be a password they could have chosen. */
+    if (formData.password) {
+      const problem = passwordProblem(formData.password);
+
+      if (problem) {
+        addToast(problem, "warning");
+        return;
+      }
     }
 
     try {
@@ -211,17 +224,24 @@ export default function AddUserPage() {
               />
             </div>
 
+            {/* Not required: left blank, the account is created with a
+                temporary password that is emailed to them. Typed, that is
+                the one emailed instead - either way they choose their own
+                the first time they sign in. */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Password <span className="text-rose-500">*</span>
+                Password{" "}
+                <span className="font-medium normal-case tracking-normal text-slate-400">
+                  (optional)
+                </span>
               </label>
               <div className="relative">
                 <input
                   type={revealPassword ? "text" : "password"}
                   name="password"
-                  required
+                  autoComplete="new-password"
                   className="w-full rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 py-2.5 pl-3.5 pr-11 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none transition-all focus:border-[#233353] dark:focus:border-sky-400"
-                  placeholder="••••••••"
+                  placeholder="Leave blank to send them one"
                   value={formData.password}
                   onChange={handleChange}
                 />
@@ -235,6 +255,15 @@ export default function AddUserPage() {
                   {revealPassword ? <FiEye /> : <FiEyeOff />}
                 </button>
               </div>
+
+              <p className="text-[11px] text-slate-400">
+                Left blank, a temporary password is generated and emailed to
+                them.
+              </p>
+
+              {formData.password && (
+                <PasswordRules password={formData.password} className="pt-1" />
+              )}
             </div>
           </div>
 

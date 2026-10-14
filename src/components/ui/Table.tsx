@@ -4,6 +4,7 @@ import {
   FiChevronLeft,
   FiChevronRight,
 } from "react-icons/fi";
+import { pageWindow } from "./pageWindow";
 
 interface TableProps {
   headers: string[];
@@ -142,35 +143,35 @@ export default function Table({
               <FiChevronLeft />
             </button>
 
-            {Array.from(
-              {
-                length: Math.min(
-                  totalPages,
-                  3
-                ),
-              },
-              (_, index) => index + 1
-            ).map((page) => (
-              <button
-                type="button"
-                key={page}
-                onClick={() =>
-                  goToPage(page)
-                }
-                className={`w-8 h-8 rounded-lg text-xs font-semibold ${
-                  currentPage === page
-                    ? "bg-[#233353] text-white"
-                    : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#071929]"
-                }`}
-              >
-                {page}
-              </button>
-            ))}
-
-            {totalPages > 3 && (
-              <span className="px-1 text-slate-400">
-                ...
-              </span>
+            {/* Always the first page, the last page and the ones around
+                where you are. Drawing 1 2 3 and an ellipsis meant a list
+                of four pages never showed the fourth, and the page you
+                had just moved to was not among the numbers. */}
+            {pageWindow(currentPage, totalPages).map((entry, index) =>
+              entry === "gap" ? (
+                <span
+                  key={`gap-${index}`}
+                  className="px-1 text-slate-400"
+                >
+                  ...
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  key={entry}
+                  onClick={() => goToPage(entry)}
+                  aria-current={
+                    entry === currentPage ? "page" : undefined
+                  }
+                  className={`w-8 h-8 rounded-lg text-xs font-semibold ${
+                    currentPage === entry
+                      ? "bg-[#233353] text-white"
+                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#071929]"
+                  }`}
+                >
+                  {entry}
+                </button>
+              )
             )}
 
             <button

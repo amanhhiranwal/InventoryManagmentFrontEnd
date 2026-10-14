@@ -8,8 +8,8 @@ import { CgSpinner } from "react-icons/cg";
 import { FiCheck, FiLock, FiMail } from "react-icons/fi";
 import { resetPasswordApi } from "../api/auth.api";
 import AuthField from "./AuthField";
-
-const MIN_PASSWORD_LENGTH = 8;
+import PasswordRules from "./PasswordRules";
+import { passwordProblem } from "../utils/passwordRules";
 
 export default function ResetPasswordForm() {
   const searchParams = useSearchParams();
@@ -47,10 +47,10 @@ export default function ResetPasswordForm() {
       return;
     }
 
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setErrorMsg(
-        `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
-      );
+    const problem = passwordProblem(password);
+
+    if (problem) {
+      setErrorMsg(problem);
       return;
     }
 
@@ -168,6 +168,9 @@ export default function ResetPasswordForm() {
           icon={<FiLock />}
           autoComplete="new-password"
         />
+
+        {/* What the password has to be, ticked off as it is typed. */}
+        <PasswordRules password={password} />
 
         <AuthField
           id="confirmPassword"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   LIST_TABLE,
   ListPage,
@@ -13,6 +13,8 @@ import {
 import StatCard from "@/components/crm/StatCard";
 import QueueTabs from "@/components/crm/QueueTabs";
 import ListActionsMenu, {
+  DropdownButton,
+  DropdownMenu,
   ExportColumn,
 } from "@/components/crm/ListActions";
 import Button from "@/components/ui/Button";
@@ -27,6 +29,8 @@ import {
 } from "@/features/pricing/warrantyTerms";
 import WarrantyRatesPanel from "@/features/pricing/WarrantyRatesPanel";
 import { useAuthStore } from "@/features/auth/store/auth.store";
+import { hasPermission } from "@/features/auth/utils/permissions";
+import BulkUploadModal from "@/features/inventory/components/BulkUploadModal";
 import {
   getInventoryItemsApi,
   createInventoryItemApi,
@@ -50,12 +54,19 @@ import {
   FiUploadCloud,
   FiImage,
   FiX,
+  FiBox,
+  FiFileText,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 
 /** The catalogue as a spreadsheet: what a stock take is done against. */
 const INVENTORY_COLUMNS: ExportColumn<InventoryItem>[] = [
+  { header: "Model Number", value: (item) => String(item.attributes?.model_number ?? "") },
   { header: "Item Name", value: (item) => item.name },
+  {
+    header: "Specification",
+    value: (item) => String(item.attributes?.specification ?? ""),
+  },
   { header: "Serial Number", value: (item) => item.serial_number },
   { header: "Product Type", value: (item) => item.product_type_code },
   { header: "Category Group", value: (item) => item.category },
@@ -143,6 +154,28 @@ export default function InventoryPage() {
   // Create Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
+
+  /* Loading a supplier's sheet. Its own permission, so the menu only
+     offers it to somebody who could use it. */
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const canBulkUpload = hasPermission("inventory.bulk_upload");
+
+  /* Add Single Product / Add From Excel, off the one Add button. */
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!showAddMenu) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!addMenuRef.current?.contains(event.target as Node)) {
+        setShowAddMenu(false);
+      }
+    };
+
+    document.addEventListener("click", closeOnOutsideClick);
+    return () => document.removeEventListener("click", closeOnOutsideClick);
+  }, [showAddMenu]);
 
   // New Item Core Fields
   const [name, setName] = useState("");
@@ -733,18 +766,55 @@ export default function InventoryPage() {
         onSearchChange={setSearchQuery}
         placeholder="Search products by name or serial number"
         trailing={
-          <PrimaryAction
-            onClick={() => {
-              if (productTypes.length === 0) {
-                addToast("Please create a Product Type master first.", "warning");
-                return;
-              }
-              setShowCreateModal(true);
-            }}
-            icon={<FiPlus size={14} />}
+          /* One button, two ways in - the same shape as Add New Lead:
+             a product typed in, or a sheet of them. */
+          <div
+            ref={addMenuRef}
+            className="relative"
+            onClick={(event) => event.stopPropagation()}
           >
-            Add Inventory Product
-          </PrimaryAction>
+            <PrimaryAction
+              onClick={() => {
+                if (productTypes.length === 0) {
+                  addToast("Please create a Product Type master first.", "warning");
+                  return;
+                }
+                setShowAddMenu((previous) => !previous);
+              }}
+              icon={<FiPlus size={14} />}
+            >
+              Add Inventory Product
+            </PrimaryAction>
+
+            {showAddMenu && (
+              <DropdownMenu>
+                <DropdownButton
+                  icon={<FiBox className="text-primary" />}
+                  onClick={() => {
+                    setShowAddMenu(false);
+                    setShowCreateModal(true);
+                  }}
+                >
+                  Add Single Product
+                </DropdownButton>
+
+                {/* Putting forty products in at once is its own
+                    privilege, ticked in Roles & Access - one row of a
+                    sheet can become several records. */}
+                {canBulkUpload && (
+                  <DropdownButton
+                    icon={<FiFileText className="text-emerald-500" />}
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      setShowBulkUpload(true);
+                    }}
+                  >
+                    Add From Excel
+                  </DropdownButton>
+                )}
+              </DropdownMenu>
+            )}
+          </div>
         }
       >
         {/* Which company's shelf. Only worth showing when there is more
@@ -807,6 +877,8 @@ export default function InventoryPage() {
               const stockVal = item.attributes?.instock ?? item.attributes?.stock ?? 0;
               const caseSizeVal = item.attributes?.case_size ?? 1;
               const hsnVal = item.attributes?.hsn_code ?? "";
+              const modelVal = String(item.attributes?.model_number ?? "").trim();
+              const specVal = String(item.attributes?.specification ?? "").trim();
 
               /* The one number the warehouse acts on, so it is the one
                  thing on the row that carries a colour. */
@@ -835,13 +907,33 @@ export default function InventoryPage() {
                       </div>
                     )}
                   </td>
-                  <td className="px-5 py-3">
+                  {/* The model says which one, the specification says what
+                      it is - both are what somebody scanning the list is
+                      actually looking for, and both were only visible by
+                      opening the product. */}
+                  <td className="max-w-[320px] px-5 py-3">
                     <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
                       {item.name}
                     </p>
-                    <p className="text-[11px] text-[#777777] dark:text-slate-400">
+
+                    <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-[#777777] dark:text-slate-400">
+                      {modelVal && (
+                        <span className="font-mono font-semibold text-slate-600 dark:text-slate-300">
+                          {modelVal}
+                        </span>
+                      )}
+                      {modelVal && <span className="text-slate-300">·</span>}
                       {typeName}
                     </p>
+
+                    {specVal && (
+                      <p
+                        title={specVal}
+                        className="mt-0.5 truncate text-[11px] text-slate-400"
+                      >
+                        {specVal}
+                      </p>
+                    )}
                   </td>
                   <td className="px-5 py-3">
                     <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-slate-700 dark:bg-[#0d2336] dark:text-white">
@@ -1107,6 +1199,13 @@ export default function InventoryPage() {
           </div>
         </Modal>
       )}
+
+      {/* A sheet of products, read and shown before anything is saved. */}
+      <BulkUploadModal
+        open={showBulkUpload}
+        onClose={() => setShowBulkUpload(false)}
+        onLoaded={fetchItems}
+      />
 
       {/* Create Product Modal */}
       <Modal
