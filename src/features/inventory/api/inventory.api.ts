@@ -79,6 +79,78 @@ export const deleteInventoryItemApi = async (itemId: string): Promise<void> => {
   await api.delete(`/api/v1/inventory/items/${itemId}`);
 };
 
+/* ----------------------------------------------------------------------
+   Loading a sheet of products
+
+   The same call answers both questions the screen asks: "what would this
+   file do" and "do it". Only the commit flag differs, so what was shown
+   and what is saved are read from the file the same way.
+---------------------------------------------------------------------- */
+
+/** One product a sheet would create, as the preview lists it. */
+export interface BulkUploadItem {
+  /** The row of the sheet it came from - several products can share one. */
+  row: number;
+  name: string;
+  serial_number: string;
+  product_type_code: string;
+  category: string;
+  company_name?: string | null;
+  model_number?: string;
+  unit?: string;
+  rate?: number;
+  dtp_rate?: number;
+  instock?: number;
+  case_size?: number;
+  hsn_code?: string;
+}
+
+export interface BulkUploadResult {
+  /** Rows read from the sheet. */
+  rows: number;
+  /** Products those rows describe - more than rows, with serials split. */
+  products: number;
+  created: number;
+  committed: boolean;
+  /** Everything wrong with the sheet. Any at all and nothing was saved. */
+  errors: string[];
+  items: BulkUploadItem[];
+  message: string;
+}
+
+export const bulkUploadInventoryApi = async (
+  file: File,
+  commit: boolean,
+): Promise<BulkUploadResult> => {
+  const form = new FormData();
+  form.append("file", file);
+
+  const { data } = await api.post(
+    `/api/v1/inventory/items/bulk?commit=${commit ? "true" : "false"}`,
+    form,
+  );
+
+  return { ...(data.data || {}), message: data.message || "" };
+};
+
+/** The blank sheet, built from today's masters, straight to Downloads. */
+export const downloadBulkTemplateApi = async (): Promise<void> => {
+  const { data } = await api.get("/api/v1/inventory/items/bulk/template", {
+    responseType: "blob",
+  });
+
+  const url = window.URL.createObjectURL(new Blob([data]));
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = "Inventory_Upload_Template.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.URL.revokeObjectURL(url);
+};
+
 export interface ProductTypeModel {
   id: string;
   name: string;

@@ -13,6 +13,8 @@ import { useState } from "react";
 import { FiLock } from "react-icons/fi";
 
 import AuthField from "@/features/auth/components/AuthField";
+import PasswordRules from "@/features/auth/components/PasswordRules";
+import { passwordProblem } from "@/features/auth/utils/passwordRules";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 
@@ -30,8 +32,10 @@ export default function ChangePasswordForm() {
     event.preventDefault();
     setError("");
 
-    if (next.length < 8) {
-      setError("A password needs at least 8 characters.");
+    const problem = passwordProblem(next);
+
+    if (problem) {
+      setError(problem);
       return;
     }
 
@@ -97,6 +101,11 @@ export default function ChangePasswordForm() {
         onChange={setNext}
         placeholder="At least 8 characters"
       />
+
+      {/* The rules, ticked off as they are met. Shown from the first
+          keystroke here, because this screen is a gate: there is nothing
+          else to do until a password gets past it. */}
+      <PasswordRules password={next} className="-mt-2" />
 
       <AuthField
         id="confirm_password"

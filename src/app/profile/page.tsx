@@ -17,6 +17,8 @@ import { CgSpinner } from "react-icons/cg";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import PasswordRules from "@/features/auth/components/PasswordRules";
+import { passwordProblem } from "@/features/auth/utils/passwordRules";
 
 export default function ProfilePage() {
   const user = useAuthStore((state) => state.user);
@@ -29,10 +31,10 @@ export default function ProfilePage() {
   const [employeeId, setEmployeeId] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   
-  // Security Mock States
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -136,20 +138,55 @@ export default function ProfilePage() {
     }
   };
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  /* This form used to clear itself and say "updated successfully" without
+     asking the server anything, so a password changed here went on being
+     the old one. It posts to the same endpoint the first-login screen
+     uses. */
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!oldPassword || !newPassword || !confirmPassword) {
       addToast("Please fill all password fields.", "warning");
       return;
     }
+
+    const problem = passwordProblem(newPassword);
+
+    if (problem) {
+      addToast(problem, "warning");
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
       addToast("New password and confirmation do not match.", "warning");
       return;
     }
-    addToast("Security credentials updated successfully!", "success");
-    setOldPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
+
+    try {
+      setChangingPassword(true);
+
+      const { data } = await api.post("/api/v1/auth/change-password", {
+        current_password: oldPassword,
+        new_password: newPassword,
+      });
+
+      addToast(
+        data?.message || "Password changed. That is the one to use from now on.",
+        "success",
+      );
+
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      const detail =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "That password could not be changed.";
+
+      addToast(detail, "error");
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   // User initials for cover avatar
@@ -342,8 +379,10 @@ export default function ProfilePage() {
                 />
               </div>
 
+              {newPassword && <PasswordRules password={newPassword} />}
+
               <div className="flex justify-end pt-2">
-                <Button type="submit">
+                <Button type="submit" loading={changingPassword}>
                   Change Password
                 </Button>
               </div>

@@ -36,8 +36,21 @@ export interface CreateUserPayload {
   location?: string;
 }
 
-export const getUsersApi = async (page: number = 1, size: number = 20, options?: { skipErrorToast?: boolean }): Promise<{ data: User[]; total: number }> => {
-  const { data } = await api.get("/api/v1/users/", { params: { page, size }, skipErrorToast: options?.skipErrorToast });
+export const getUsersApi = async (
+  page: number = 1,
+  size: number = 20,
+  options?: {
+    skipErrorToast?: boolean;
+    /** Narrows every user this person can see, not the page on screen. */
+    search?: string;
+  },
+): Promise<{ data: User[]; total: number }> => {
+  const search = options?.search?.trim();
+
+  const { data } = await api.get("/api/v1/users/", {
+    params: { page, size, ...(search ? { search } : {}) },
+    skipErrorToast: options?.skipErrorToast,
+  });
   return {
     data: data.data || [],
     total: data.total || 0,

@@ -36,6 +36,8 @@ import ListActionsMenu, {
 import Table from "@/components/ui/Table";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
 import { eligibleManagers, userLabel } from "@/features/users/utils/hierarchy";
+import { passwordProblem } from "@/features/auth/utils/passwordRules";
+import PasswordRules from "@/features/auth/components/PasswordRules";
 
 /** The manager a user reports to. With the role hierarchy on the Workflows
     page it decides whose records each manager sees: a Zonal Head sees only
@@ -101,6 +103,23 @@ export default function UserListPage() {
   const pageSize = 10;
 
   const [searchQuery, setSearchQuery] = useState("");
+
+  /* What was actually asked of the server. The search runs over every
+     user this person can see rather than the ten rows on screen, so it
+     is a request rather than a filter - held back briefly so typing a
+     name is one request and not eight. */
+  const [appliedSearch, setAppliedSearch] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAppliedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  /* A narrower list has fewer pages, and page 3 of a search that matches
+     one person is empty. */
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [appliedSearch]);
 
   // Create User Modal States
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -189,7 +208,7 @@ export default function UserListPage() {
       const hasRoleRead = hasPermission("role.read");
 
       const [usersResponse, rolesData, companiesData, everyone] = await Promise.all([
-        getUsersApi(currentPage, pageSize),
+        getUsersApi(currentPage, pageSize, { search: appliedSearch }),
         hasRoleRead ? getRolesApi() : Promise.resolve([]),
         hasCompanyView ? getCompaniesApi().then((res) => res.data) : Promise.resolve([]),
         getUsersApi(1, 500, { skipErrorToast: true }).catch(() => ({ data: [] as User[], total: 0 })),
@@ -209,7 +228,7 @@ export default function UserListPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, addToast]);
+  }, [currentPage, appliedSearch, addToast]);
 
   useEffect(() => {
     if (canReadUsers) {
@@ -313,9 +332,21 @@ export default function UserListPage() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.first_name || !formData.email || !formData.password) {
-      addToast("First name, email, and password are required.", "warning");
+    if (!formData.first_name || !formData.email) {
+      addToast("First name and email are required.", "warning");
       return;
+    }
+
+    /* A password is optional: left blank, one is generated and emailed.
+       Typed, it is the one that gets emailed, so it has to be a password
+       they could have chosen themselves. */
+    if (formData.password) {
+      const problem = passwordProblem(formData.password);
+
+      if (problem) {
+        addToast(problem, "warning");
+        return;
+      }
     }
 
     try {
@@ -388,13 +419,6 @@ export default function UserListPage() {
     );
   }
 
-  const filteredUsers = users.filter((u) => {
-    const fullName = `${u.first_name || ""} ${u.last_name || ""}`.toLowerCase();
-    const email = (u.email || "").toLowerCase();
-    const query = searchQuery.toLowerCase();
-    return fullName.includes(query) || email.includes(query);
-  });
-
   return (
     <ListPage>
       <PageHeader
@@ -403,7 +427,7 @@ export default function UserListPage() {
         action={
           <ListActionsMenu
             name="Users"
-            rows={filteredUsers}
+            rows={users}
             columns={userColumns}
           />
         }
@@ -442,7 +466,7 @@ export default function UserListPage() {
           pageSize={pageSize}
           onPageChange={setCurrentPage}
         >
-        {filteredUsers.map((u) => {
+        {users.map((u) => {
           /* The roles master is only loaded for someone allowed
              to read it. Without it, fall back to the names the
              user record carries, so the column reads "Area
@@ -646,7 +670,7 @@ export default function UserListPage() {
 
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Password
+              Password <span className="font-medium normal-case tracking-normal text-slate-400">(optional)</span>
             </label>
 
             <div className="relative">
@@ -676,6 +700,12 @@ export default function UserListPage() {
               them. Either way they choose their own the first time they
               sign in.
             </p>
+
+            {/* Only once there is something to check - an empty field is
+                not a password that fails six rules. */}
+            {formData.password && (
+              <PasswordRules password={formData.password} className="pt-1" />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
