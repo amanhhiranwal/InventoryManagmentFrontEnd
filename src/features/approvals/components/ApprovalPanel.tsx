@@ -20,7 +20,7 @@ import {
   PRICE_TYPE_LABEL,
   SalesApproval,
   decideApprovalApi,
-  getApprovalForDocumentApi,
+  getApprovalHistoryApi,
   getPendingApprovalsApi,
   withdrawApprovalApi,
 } from "@/features/approvals/api/approvals.api";
@@ -54,6 +54,9 @@ export default function ApprovalPanel({
   const { addToast } = useUIStore();
 
   const [approval, setApproval] = useState<SalesApproval | null>(null);
+  /* Approvals raised on this document before the current one - the
+     rounds it has already been through. */
+  const [earlier, setEarlier] = useState<SalesApproval[]>([]);
   const [mine, setMine] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -63,12 +66,17 @@ export default function ApprovalPanel({
     try {
       setLoading(true);
 
-      const [record, pending] = await Promise.all([
-        getApprovalForDocumentApi(documentType, documentId),
+      const [past, pending] = await Promise.all([
+        getApprovalHistoryApi(documentType, documentId),
         getPendingApprovalsApi().catch(() => [] as SalesApproval[]),
       ]);
 
+      /* Newest first, so the open request is the head and everything
+         behind it is what happened before. */
+      const record = past[0] || null;
+
       setApproval(record);
+      setEarlier(past.slice(1));
       setMine(!!record && pending.some((item) => item.id === record.id));
     } catch (error) {
       console.error(error);
@@ -153,9 +161,23 @@ export default function ApprovalPanel({
      Previous Rejection History and it is the most useful thing on the
      panel: somebody resubmitting needs to know what was wrong last time,
      not just that it was refused. */
-  const refusals = approval.steps.filter(
-    (step) => step.decision === "REJECTED",
-  );
+  const refusals = [
+    ...approval.steps
+      .filter((step) => step.decision === "REJECTED")
+      .map((step) => ({ step, round: null as string | null })),
+
+    /* And every round before this one. A resubmitted order carries its
+       own approval, so what was said last time lives on a different
+       record - which is exactly the thing somebody fixing it needs. */
+    ...earlier.flatMap((round) =>
+      round.steps
+        .filter((step) => step.decision === "REJECTED")
+        .map((step) => ({
+          step,
+          round: round.document_number || `#${round.id}`,
+        })),
+    ),
+  ];
 
   const heading = pending
     ? "Approval Required"
@@ -258,7 +280,7 @@ export default function ApprovalPanel({
             Previous Rejection History
           </p>
 
-          {refusals.map((step, index) => (
+          {refusals.map(({ step, round }, index) => (
             <div key={`${step.role}-${index}`} className="mt-2 flex gap-2">
               <FiX size={11} className="mt-0.5 shrink-0 text-rose-500" />
 
@@ -266,6 +288,11 @@ export default function ApprovalPanel({
                 <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
                   Rejected by {step.approver_name || step.role}
                   {step.decided_at ? ` - ${when(step.decided_at)}` : ""}
+                  {round && (
+                    <span className="ml-1 font-normal text-slate-400">
+                      (earlier round)
+                    </span>
+                  )}
                 </p>
 
                 {step.remarks && (
