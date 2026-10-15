@@ -20,6 +20,8 @@ export interface User {
   location?: string;
   /** Off means the password stops working and any live session ends. */
   is_active?: boolean;
+  /** When the account was opened, ISO-8601. */
+  created_at?: string | null;
 }
 
 export interface CreateUserPayload {

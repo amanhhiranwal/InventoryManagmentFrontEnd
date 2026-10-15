@@ -429,6 +429,11 @@ export default function UserListPage() {
             .join(" / "),
       },
       { header: "Reports To", value: (u) => u.reports_to_name || "" },
+      {
+        header: "Created",
+        value: (u) =>
+          u.created_at ? new Date(u.created_at).toLocaleDateString("en-IN") : "",
+      },
       { header: "Super Admin", value: (u) => (u.is_super_admin ? "Yes" : "No") },
     ],
     [companies],
@@ -486,6 +491,7 @@ export default function UserListPage() {
             "Reports To",
             "Emp ID",
             "Companies",
+            "Created",
             "Status",
             "Actions",
           ]}
@@ -584,6 +590,21 @@ export default function UserListPage() {
                   </div>
                 ) : (
                   <span className="text-[11px] text-slate-400">All</span>
+                )}
+              </td>
+
+              {/* When the account was opened. */}
+              <td className="whitespace-nowrap px-4 py-3 text-[12px] text-slate-600 dark:text-slate-300">
+                {u.created_at ? (
+                  <span title={new Date(u.created_at).toLocaleString("en-IN")}>
+                    {new Date(u.created_at).toLocaleDateString("en-IN", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </span>
+                ) : (
+                  "\u2014"
                 )}
               </td>
 
