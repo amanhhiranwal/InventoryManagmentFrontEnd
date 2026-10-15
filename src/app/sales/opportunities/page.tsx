@@ -33,7 +33,7 @@ import {
 } from "@/features/catalog/productCatalog";
 import { Lead, getLeadsApi } from "@/features/workflows/api/workflows.api";
 import StatCard from "@/components/crm/StatCard";
-import { monthOverMonth } from "@/components/crm/kpiChange";
+import { percentChange } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { PriorityPill, StatusPill } from "@/components/crm/Pill";
 import {
@@ -64,6 +64,7 @@ import {
   canTransitionOpportunity,
   createOpportunityApi,
   getOpportunitiesApi,
+  getOpportunitiesPageApi,
   getOpportunityActivitiesApi,
   getOpportunityApi,
   logOpportunityActivityApi,
@@ -609,6 +610,16 @@ function OpportunitiesPageInner() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
 
+  /* How many opportunities match, and the figures across the top - both
+     counted by the server over the whole list rather than this page. */
+  const [totalOpps, setTotalOpps] = useState(0);
+  const [oppSummary, setOppSummary] = useState<
+    Record<string, { count?: number; value?: number; this_month: number; last_month: number }>
+  >({});
+
+  /* What was actually asked of the server, a moment after typing stops. */
+  const [appliedSearch, setAppliedSearch] = useState("");
+
   const [showFilters, setShowFilters] = useState(false);
 
   const [filters, setFilters] = useState<OpportunityFilters>(DEFAULT_FILTERS);
@@ -660,9 +671,15 @@ function OpportunitiesPageInner() {
           setLoading(true);
         }
 
-        const list = await getOpportunitiesApi();
+        const answer = await getOpportunitiesPageApi({
+          page,
+          size: PAGE_SIZE,
+          search: appliedSearch,
+        });
 
-        setOpps(list.map(mapLeadToOpportunity));
+        setOpps(answer.opportunities.map(mapLeadToOpportunity));
+        setTotalOpps(answer.total);
+        setOppSummary(answer.summary);
       } catch (error) {
         console.error("Failed to fetch opportunities:", error);
 
@@ -672,7 +689,7 @@ function OpportunitiesPageInner() {
         setRefreshing(false);
       }
     },
-    [addToast],
+    [addToast, page, appliedSearch],
   );
 
   const fetchSalesUsers = async () => {
@@ -803,18 +820,11 @@ function OpportunitiesPageInner() {
     })();
   }, [searchParams, addToast]);
 
+  /* The search is the server's job now - it looks through every
+     opportunity this person can see. What is left here are the extra
+     filters in the panel, which narrow the page that came back. */
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
     return opps.filter((opp) => {
-      const matchesSearch =
-        !query ||
-        opp.customerName.toLowerCase().includes(query) ||
-        opp.company.toLowerCase().includes(query) ||
-        opp.email.toLowerCase().includes(query) ||
-        opp.leadId.toLowerCase().includes(query) ||
-        opp.owner.toLowerCase().includes(query);
-
       const matchesCustomerType =
         !appliedFilters.customerType ||
         opp.customerType === appliedFilters.customerType;
@@ -857,7 +867,6 @@ function OpportunitiesPageInner() {
       }
 
       return (
-        matchesSearch &&
         matchesCustomerType &&
         matchesAssignedTo &&
         matchesStatus &&
@@ -865,15 +874,13 @@ function OpportunitiesPageInner() {
         matchesDate
       );
     });
-  }, [opps, search, appliedFilters]);
+  }, [opps, appliedFilters]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  /* The server sent one page, so there is nothing left to slice, and the
+     page count is of everything that matches. */
+  const totalPages = Math.max(1, Math.ceil(totalOpps / PAGE_SIZE));
 
-  const paginated = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-
-    return filtered.slice(start, start + PAGE_SIZE);
-  }, [filtered, page]);
+  const paginated = filtered;
 
   useEffect(() => {
     if (page > totalPages) {
@@ -886,48 +893,45 @@ function OpportunitiesPageInner() {
    * Closing This Month. All four are derived from the loaded
    * opportunities rather than being fixed numbers.
    */
-  const totalOpportunities = opps.length;
+  /* The four cards are counted by the server over every opportunity this
+     person can see, so they describe the whole pipeline rather than the
+     ten rows on screen. The definitions are unchanged: pipeline value
+     leaves out decided deals, and the win rate is measured against
+     decided deals only. */
+  const oppCard = (name: string) =>
+    oppSummary[name] || { count: 0, value: 0, this_month: 0, last_month: 0 };
 
-  /* Pipeline value is what is still in play, so closed deals - won or
-     dead - are excluded rather than inflating the figure. */
-  const pipelineValueOf = (items: Opportunity[]) =>
-    items
-      .filter((opp) => opp.stage !== "Closed Won" && opp.stage !== "Dead")
-      .reduce((sum, opp) => sum + (opp.dealValue || 0), 0);
+  const oppFigure = (name: string) =>
+    Number(oppCard(name).count ?? oppCard(name).value ?? 0);
 
-  /* Win rate is measured against decided deals only; counting the open
-     pipeline in the denominator would drag it towards zero. */
-  const winRateOf = (items: Opportunity[]) => {
-    const won = items.filter((opp) => opp.stage === "Closed Won").length;
-    const lost = items.filter((opp) => opp.stage === "Dead").length;
+  const oppChange = (name: string) =>
+    percentChange(oppCard(name).this_month, oppCard(name).last_month);
 
-    return won + lost ? (won / (won + lost)) * 100 : 0;
-  };
+  const totalOpportunities = oppFigure("total");
+  const pipelineValue = oppFigure("pipeline_value");
 
-  const pipelineValue = pipelineValueOf(opps);
-  const winRate = winRateOf(opps);
+  const rateOf = (won: number, decided: number) => (decided ? (won / decided) * 100 : 0);
 
-  /* The % pills compare opportunities created this month with those
-     created last month. */
-  const oppCreatedAt = (opp: Opportunity) => opp.createdAt;
-  const totalOpportunitiesChange = monthOverMonth(opps, oppCreatedAt, (items) => items.length);
-  const pipelineValueChange = monthOverMonth(opps, oppCreatedAt, pipelineValueOf);
-  const winRateChange = monthOverMonth(opps, oppCreatedAt, winRateOf);
+  const winRate = rateOf(oppFigure("won"), oppFigure("decided"));
 
-  const closingThisMonth = opps.filter((opp) => {
-    if (!opp.expectedClosingDate) return false;
+  const totalOpportunitiesChange = oppChange("total");
+  const pipelineValueChange = oppChange("pipeline_value");
 
-    const date = new Date(opp.expectedClosingDate);
+  const winRateChange = percentChange(
+    rateOf(oppCard("won").this_month, oppCard("decided").this_month),
+    rateOf(oppCard("won").last_month, oppCard("decided").last_month),
+  );
 
-    if (Number.isNaN(date.getTime())) return false;
+  const closingThisMonth = oppFigure("closing_this_month");
 
-    const now = new Date();
+  useEffect(() => {
+    const timer = setTimeout(() => setAppliedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
-    return (
-      date.getFullYear() === now.getFullYear() &&
-      date.getMonth() === now.getMonth()
-    );
-  }).length;
+  useEffect(() => {
+    setPage(1);
+  }, [appliedSearch]);
 
   const applyFilters = () => {
     setAppliedFilters({
@@ -1539,7 +1543,7 @@ function OpportunitiesPageInner() {
         ) : (
           <ListView
             opportunities={paginated}
-            filteredCount={filtered.length}
+            filteredCount={totalOpps}
             page={page}
             pageSize={PAGE_SIZE}
             totalPages={totalPages}

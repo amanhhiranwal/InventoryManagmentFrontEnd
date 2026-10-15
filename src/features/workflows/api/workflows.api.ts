@@ -132,6 +132,51 @@ export const getLeadsApi = async (): Promise<Lead[]> => {
   return data.data || data;
 };
 
+/** One card on a list screen: the figure, and the same figure over this
+    month and last, which is what the percentage pill is made of. */
+export interface ListFigure {
+  count?: number;
+  value?: number;
+  this_month: number;
+  last_month: number;
+}
+
+export interface LeadsPage {
+  leads: Lead[];
+  /** Leads matching the search, before the page is cut. */
+  total: number;
+  summary: Record<string, ListFigure>;
+}
+
+/** One page of leads, searched across every lead the caller can see.
+ *
+ * The search is a request rather than a filter over the rows already in
+ * the browser, so a lead on page 3 is found by typing its name.
+ */
+export const getLeadsPageApi = async (params: {
+  page: number;
+  size: number;
+  search?: string;
+}): Promise<LeadsPage> => {
+  const search = params.search?.trim();
+
+  const { data } = await api.get("/api/v1/leads/", {
+    params: {
+      page: params.page,
+      size: params.size,
+      ...(search ? { search } : {}),
+    },
+  });
+
+  const leads = data?.data || [];
+
+  return {
+    leads,
+    total: Number(data?.total ?? leads.length),
+    summary: data?.summary || {},
+  };
+};
+
 export const createLeadApi = async (payload: {
 
   title: string;

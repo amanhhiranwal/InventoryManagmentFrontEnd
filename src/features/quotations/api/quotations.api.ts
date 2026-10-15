@@ -276,6 +276,38 @@ export const getQuotationsApi = async (): Promise<QuotationModel[]> => {
   return data.data || [];
 };
 
+/** One page of proposals, searched and filtered by the server across
+    every proposal the caller can see. */
+export const getQuotationsPageApi = async (params: {
+  page: number;
+  size: number;
+  search?: string;
+  status?: string;
+}): Promise<{
+  quotations: QuotationModel[];
+  total: number;
+  summary: Record<string, { count?: number; value?: number; this_month: number; last_month: number }>;
+}> => {
+  const search = params.search?.trim();
+
+  const { data } = await api.get("/api/v1/quotations/", {
+    params: {
+      page: params.page,
+      size: params.size,
+      ...(search ? { search } : {}),
+      ...(params.status && params.status !== "All" ? { status: params.status } : {}),
+    },
+  });
+
+  const quotations = data?.data || [];
+
+  return {
+    quotations,
+    total: Number(data?.total ?? quotations.length),
+    summary: data?.summary || {},
+  };
+};
+
 export const getQuotationApi = async (
   quotationId: number | string,
 ): Promise<QuotationModel> => {

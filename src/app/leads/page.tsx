@@ -43,6 +43,8 @@ import {
   getLeadActivitiesApi,
   importLeadsApi,
   getLeadsApi,
+  getLeadsPageApi,
+  ListFigure,
   logLeadActivityApi,
   progressLeadApi,
   updateLeadApi,
@@ -58,7 +60,7 @@ import { LIST_TABLE, ListPageHeader } from "@/components/crm/ListPageShell";
 import ListActionsMenu, {
   ExportColumn,
 } from "@/components/crm/ListActions";
-import { monthOverMonth } from "@/components/crm/kpiChange";
+import { percentChange } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
 import { FormCard, FormSectionBlock } from "@/components/crm/FormCard";
@@ -670,6 +672,15 @@ export default function LeadsPage() {
    */
   const [currentPage, setCurrentPage] = useState(1);
 
+  /* How many leads match, and the figures across the top - both counted
+     by the server over the whole list rather than over this page. */
+  const [totalLeadRecords, setTotalLeadRecords] = useState(0);
+  const [leadSummary, setLeadSummary] = useState<Record<string, ListFigure>>({});
+
+  /* What was actually asked of the server. Held back briefly so typing a
+     name is one request and not eight. */
+  const [appliedSearch, setAppliedSearch] = useState("");
+
   /*
    * CSV / Excel import.
    */
@@ -684,19 +695,30 @@ export default function LeadsPage() {
      FETCH
   -------------------------------------------------------------------------- */
 
+  /* One page of leads, searched by the server across every lead this
+     person can see - not a filter over the ten rows the browser happens
+     to be holding, which found nothing for a customer on page 3 and said
+     there were none. */
   const fetchLeads = useCallback(async () => {
     try {
       setLoading(true);
 
-      const data = await getLeadsApi();
-      setLeads(data || []);
+      const page = await getLeadsPageApi({
+        page: currentPage,
+        size: PAGE_SIZE,
+        search: appliedSearch,
+      });
+
+      setLeads(page.leads);
+      setTotalLeadRecords(page.total);
+      setLeadSummary(page.summary);
     } catch (err) {
       console.error(err);
       addToast("Failed to load leads from system.", "error");
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [currentPage, appliedSearch, addToast]);
 
   const loadActivities = useCallback(
     async (leadId: number | string) => {
@@ -825,56 +847,38 @@ export default function LeadsPage() {
      KPI
   -------------------------------------------------------------------------- */
 
-  const totalLeads = leads.length;
+  /* The four cards are counted by the server over every lead this person
+     can see, so they still describe the whole list once it is shown a
+     page at a time - a total made of the ten rows on screen is not a
+     total. Each card also carries this month's and last month's figure,
+     which is what the percentage pill is made of. */
+  const card = (name: string) => leadSummary[name] || { count: 0, this_month: 0, last_month: 0 };
 
-  const newLeads = leads.filter(isLeadNew).length;
+  const figureOf = (name: string) => Number(card(name).count ?? card(name).value ?? 0);
 
-  const qualifiedLeads = leads.filter(isLeadQualified).length;
+  const changeOf = (name: string) =>
+    percentChange(card(name).this_month, card(name).last_month);
 
-  const deadLeads = leads.filter(isLeadDead).length;
+  const totalLeads = figureOf("total");
+  const newLeads = figureOf("new");
+  const qualifiedLeads = figureOf("qualified");
+  const deadLeads = figureOf("dead");
 
-  /* Each card compares leads created this month with those created last
-     month, counted the same way as its figure. */
-  const leadChange = (matches: (lead: Lead) => boolean = () => true) =>
-    monthOverMonth(leads, (lead) => lead.created_at, (items) => items.filter(matches).length);
-
-  const totalLeadsChange = leadChange();
-  const newLeadsChange = leadChange(isLeadNew);
-  const qualifiedLeadsChange = leadChange(isLeadQualified);
-  const deadLeadsChange = leadChange(isLeadDead);
+  const totalLeadsChange = changeOf("total");
+  const newLeadsChange = changeOf("new");
+  const qualifiedLeadsChange = changeOf("qualified");
+  const deadLeadsChange = changeOf("dead");
 
   /* --------------------------------------------------------------------------
      FILTERING
   -------------------------------------------------------------------------- */
 
+  /* The search is the server's job now - it looks through every lead
+     this person can see. What is left here are the extra filters in the
+     panel, which narrow the page that came back. */
   const filteredLeads = useMemo(() => {
-    const query = search.toLowerCase().trim();
-
     return leads.filter((lead) => {
       const details = parseLeadDescription(lead.description);
-
-      const searchableText = [
-        lead.title,
-        getLeadDisplayName(lead),
-        details.organizationName,
-        details.email,
-        details.mobileNumber,
-        details.website,
-        details.address,
-        details.city,
-        details.state,
-        details.customerType,
-        details.leadSource,
-        lead.assigned_to_name,
-        lead.creator_name,
-        lead.status,
-        lead.stage,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      const matchesSearch = !query || searchableText.includes(query);
 
       const matchesCustomerType =
         !filters.customerType || details.customerType === filters.customerType;
@@ -899,7 +903,6 @@ export default function LeadsPage() {
         !filters.dateTo || created <= new Date(`${filters.dateTo}T23:59:59`);
 
       return (
-        matchesSearch &&
         matchesCustomerType &&
         matchesAssigned &&
         matchesState &&
@@ -908,28 +911,31 @@ export default function LeadsPage() {
         matchesDateTo
       );
     });
-  }, [leads, search, filters]);
+  }, [leads, filters]);
 
   /*
    * Always go back to page 1 when search/filter changes.
    */
   useEffect(() => {
+    const timer = setTimeout(() => setAppliedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     setCurrentPage(1);
-  }, [search, filters]);
+  }, [appliedSearch, filters]);
 
   /* --------------------------------------------------------------------------
      PAGINATION
   -------------------------------------------------------------------------- */
 
-  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
+  /* The server sent one page, so there is nothing left to slice. The
+     page count is of everything that matches, not of what came back. */
+  const totalPages = Math.max(1, Math.ceil(totalLeadRecords / PAGE_SIZE));
 
   const safeCurrentPage = Math.min(currentPage, totalPages);
 
-  const paginatedLeads = useMemo(() => {
-    const start = (safeCurrentPage - 1) * PAGE_SIZE;
-
-    return filteredLeads.slice(start, start + PAGE_SIZE);
-  }, [filteredLeads, safeCurrentPage]);
+  const paginatedLeads = filteredLeads;
 
   /* --------------------------------------------------------------------------
      FORM
@@ -2361,7 +2367,7 @@ export default function LeadsPage() {
             <Pagination
               page={safeCurrentPage}
               pageSize={PAGE_SIZE}
-              totalItems={filteredLeads.length}
+              totalItems={totalLeadRecords}
               totalPages={totalPages}
               onPageChange={setCurrentPage}
               noun="leads"

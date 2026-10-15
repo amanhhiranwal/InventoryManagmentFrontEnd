@@ -34,6 +34,7 @@ import {
   createSalesOrderApi,
   getSalesOrderApi,
   getSalesOrdersApi,
+  getSalesOrdersPageApi,
   updateSalesOrderApi,
   nextSalesOrderStatuses,
   salesOrderStatusLabel,
@@ -61,7 +62,7 @@ import {
 import { useAttachmentPreview } from "@/features/attachments/AttachmentList";
 import StatCard from "@/components/crm/StatCard";
 import { FORM_FIELDS } from "@/components/crm/FormCard";
-import { monthOverMonth } from "@/components/crm/kpiChange";
+import { percentChange } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
 import FormPageHeader, {
@@ -343,6 +344,20 @@ const money = (value: number) =>
 /* Backend statuses are canonical; this maps one to its display label. */
 const normalizeStatus = (status?: string) => salesOrderStatusLabel(status);
 
+/** The stored status behind a tab, for asking the server for that tab.
+ *
+ * "All Orders" is no filter at all. Two stored statuses share the
+ * "Released" label, so that tab stays a filter over what came back
+ * rather than a request - there is no single status to ask for. */
+const statusForTab = (tab: StatusFilter): string | undefined => {
+  if (tab === "All Orders") return undefined;
+
+  const matches = (Object.keys(SALES_ORDER_STATUS_LABEL) as CanonicalSalesOrderStatus[])
+    .filter((status) => SALES_ORDER_STATUS_LABEL[status] === tab);
+
+  return matches.length === 1 ? matches[0] : undefined;
+};
+
 /** What the row menu may move an order to directly.
  *
  * Approving is not on the list. An order is confirmed by its approval
@@ -424,6 +439,13 @@ export default function OrdersListPage() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [activeTab, setActiveTab] = useState<StatusFilter>("All Orders");
+
+  /* How many orders match, and the figures across the top - both counted
+     by the server over the whole list rather than over this page. */
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [orderSummary, setOrderSummary] = useState<Record<string, any>>({});
+
+  const [appliedSearch, setAppliedSearch] = useState("");
 
   const [search, setSearch] = useState("");
 
@@ -600,9 +622,16 @@ export default function OrdersListPage() {
           setLoading(true);
         }
 
-        const list = await getSalesOrdersApi();
+        const answer = await getSalesOrdersPageApi({
+          page,
+          size: PAGE_SIZE,
+          search: appliedSearch,
+          status: statusForTab(activeTab),
+        });
 
-        setOrders(list as unknown as Order[]);
+        setOrders(answer.orders as unknown as Order[]);
+        setTotalOrders(answer.total);
+        setOrderSummary(answer.summary);
       } catch (error) {
         console.error(error);
 
@@ -612,7 +641,7 @@ export default function OrdersListPage() {
         setRefreshing(false);
       }
     },
-    [addToast],
+    [addToast, page, appliedSearch, activeTab],
   );
 
   /* Persist a sales order status change. The previous implementation had
@@ -682,24 +711,32 @@ export default function OrdersListPage() {
       Cancelled: 0,
     };
 
-    orders.forEach((order) => {
-      const status = normalizeStatus(order.status);
+    /* Counted by the server over every order this person can see. Two
+       stored statuses can share a tab label, so they are added up here
+       under the label they are shown as. */
+    const byStatus: Record<string, number> = orderSummary.counts || {};
 
-      if (status in counts) {
-        counts[status as StatusFilter]++;
+    for (const [status, n] of Object.entries(byStatus)) {
+      const label = normalizeStatus(status);
+
+      if (label in counts) {
+        counts[label as StatusFilter] += Number(n) || 0;
       }
-    });
+    }
+
+    counts["All Orders"] = Number(orderSummary.total?.value ?? 0);
 
     return counts;
-  }, [orders]);
+  }, [orderSummary]);
 
   /* =======================================================
      FILTER ORDERS
   ======================================================= */
 
+  /* The search is the server's job now, and so is the status tab where
+     it maps to one stored status. What is left here are the extra
+     filters in the panel, over the page that came back. */
   const filteredOrders = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
     return orders.filter((order) => {
       const status = normalizeStatus(order.status);
 
@@ -707,19 +744,6 @@ export default function OrdersListPage() {
         return false;
       }
 
-      if (query) {
-        const searchable = `
-          ${order._id}
-          ${order.customer_name}
-          ${order.company_name || ""}
-          ${getAssignedTo(order)}
-          ${getState(order)}
-        `.toLowerCase();
-
-        if (!searchable.includes(query)) {
-          return false;
-        }
-      }
 
       if (
         appliedFilters.customerType &&
@@ -779,54 +803,49 @@ export default function OrdersListPage() {
      PAGINATION
   ======================================================= */
 
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+  /* The server sent one page, so there is nothing left to slice, and the
+     page count is of everything that matches. */
+  const totalPages = Math.max(1, Math.ceil(totalOrders / PAGE_SIZE));
 
-  const paginatedOrders = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
+  const paginatedOrders = filteredOrders;
 
-    return filteredOrders.slice(start, start + PAGE_SIZE);
-  }, [filteredOrders, page]);
+  useEffect(() => {
+    const timer = setTimeout(() => setAppliedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, activeTab, appliedFilters]);
+  }, [appliedSearch, activeTab, appliedFilters]);
 
   /* =======================================================
      KPI
   ======================================================= */
 
+  /* The four cards, counted by the server over every order this person
+     can see - the same definitions as before: how many, what they are
+     worth, how many are waiting and how many are finished. */
   const kpis = useMemo(() => {
-    const totalOrders = orders.length;
+    const card = (name: string) =>
+      orderSummary[name] || { value: 0, this_month: 0, last_month: 0 };
 
-    const orderValue = orders.reduce(
-      (sum, order) => sum + Number(order.grand_total || 0),
-      0,
-    );
-
-    const pendingOrders = orders.filter((order) => {
-      const status = normalizeStatus(order.status);
-
-      return status === "Draft" || status === "On Hold";
-    }).length;
-
-    const completedOrders = orders.filter(
-      (order) => normalizeStatus(order.status) === "Completed",
-    ).length;
-
-    const value = (items: Order[]) =>
-      items.reduce((sum, order) => sum + Number(order.grand_total || 0), 0);
-
-    const createdAt = (order: Order) => order.created_at || order.order_date;
+    const figure = (name: string) => Number(card(name).value ?? 0);
 
     return {
-      totalOrders,
-      totalOrdersChange: monthOverMonth(orders, createdAt, (items) => items.length),
-      orderValue,
-      orderValueChange: monthOverMonth(orders, createdAt, value),
-      pendingOrders,
-      completedOrders,
+      totalOrders: figure("total"),
+      totalOrdersChange: percentChange(
+        card("total").this_month,
+        card("total").last_month,
+      ),
+      orderValue: figure("order_value"),
+      orderValueChange: percentChange(
+        card("order_value").this_month,
+        card("order_value").last_month,
+      ),
+      pendingOrders: figure("pending"),
+      completedOrders: figure("completed"),
     };
-  }, [orders]);
+  }, [orderSummary]);
 
   /* =======================================================
      FILTER ACTIONS
@@ -4292,7 +4311,7 @@ export default function OrdersListPage() {
         <Pagination
           page={page}
           pageSize={PAGE_SIZE}
-          totalItems={filteredOrders.length}
+          totalItems={totalOrders}
           totalPages={totalPages}
           onPageChange={setPage}
           noun="orders"
