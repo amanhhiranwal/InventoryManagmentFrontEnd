@@ -57,9 +57,59 @@ export const saveTemplateApi = async (productTypeCode: string, fields: Inventory
   return data.data || data;
 };
 
-export const getInventoryItemsApi = async (params?: { product_type_code?: string; search?: string; company_id?: string }): Promise<InventoryItem[]> => {
+/** The figures across the top, worked out by the server over the whole
+    catalogue rather than over the page on screen. */
+export interface InventorySummary {
+  products: number;
+  units: number;
+  value: number;
+  thin: number;
+  out: number;
+  categories: number;
+}
+
+export interface InventoryPage {
+  items: InventoryItem[];
+  /** Products matching the search and company, before the category tab. */
+  total: number;
+  summary: InventorySummary;
+  /** product_type_code -> how many, for the category tabs. */
+  counts: Record<string, number>;
+}
+
+export const getInventoryItemsApi = async (params?: {
+  product_type_code?: string;
+  search?: string;
+  company_id?: string;
+  page?: number;
+  size?: number;
+}): Promise<InventoryPage> => {
   const { data } = await api.get("/api/v1/inventory/items", { params });
-  return Array.isArray(data) ? data : data.data || [];
+
+  const items = Array.isArray(data) ? data : data.data || [];
+
+  return {
+    items,
+    total: Number(data?.total ?? items.length),
+    summary: data?.summary || {
+      products: items.length,
+      units: 0,
+      value: 0,
+      thin: 0,
+      out: 0,
+      categories: 0,
+    },
+    counts: data?.counts || {},
+  };
+};
+
+/** One product's picture. Kept off the list, which carries a thousand
+    rows and would otherwise carry a thousand data: URIs with them. */
+export const getInventoryImageApi = async (
+  itemId: string,
+): Promise<string | null> => {
+  const { data } = await api.get(`/api/v1/inventory/items/${itemId}/image`);
+  return data?.data || null;
 };
 
 export const createInventoryItemApi = async (payload: {
@@ -234,7 +284,8 @@ export const updateInventoryItemApi = async (itemId: string, payload: {
   product_type_code: string;
   category: string;
   attributes: Record<string, any>;
-  image_base64?: string;
+  /** Left out keeps the picture the product has; null clears it. */
+  image_base64?: string | null;
   company_id?: string | null;
 }): Promise<InventoryItem> => {
   const { data } = await api.put(`/api/v1/inventory/items/${itemId}`, payload);

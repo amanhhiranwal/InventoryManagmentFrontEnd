@@ -11,6 +11,7 @@ import {
   TableCard,
 } from "@/components/crm/ListPageShell";
 import StatCard from "@/components/crm/StatCard";
+import Pagination from "@/components/crm/Pagination";
 import QueueTabs from "@/components/crm/QueueTabs";
 import ListActionsMenu, {
   DropdownButton,
@@ -39,7 +40,9 @@ import {
   getTemplateApi,
   getProductTypesApi,
   getInventoryCompaniesApi,
+  getInventoryImageApi,
   InventoryItem,
+  InventorySummary,
   InventoryTemplate,
   ProductTypeModel,
   ScopeCompany,
@@ -138,6 +141,33 @@ export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilterCategory, setSelectedFilterCategory] = useState<string>("");
 
+  /* A page at a time. A catalogue is forty products until somebody
+     uploads a supplier's price list, and then it is a thousand. */
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
+  const [totalItems, setTotalItems] = useState(0);
+
+  /* The figures across the top and the count on each category tab, as the
+     server worked them out over the whole catalogue. */
+  const [summary, setSummary] = useState<InventorySummary>({
+    products: 0,
+    units: 0,
+    value: 0,
+    thin: 0,
+    out: 0,
+    categories: 0,
+  });
+
+  const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
+
+  /* Typing a search is one request, not one per keystroke. */
+  const [appliedSearch, setAppliedSearch] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAppliedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   /* Products belong to the company that stocks them, so two companies can
      carry the same product without seeing each other's. These are the
      companies this user may file a product under: the ones on their
@@ -145,6 +175,12 @@ export default function InventoryPage() {
   const [scopeCompanies, setScopeCompanies] = useState<ScopeCompany[]>([]);
   const [anyCompany, setAnyCompany] = useState(false);
   const [selectedFilterCompany, setSelectedFilterCompany] = useState<string>("");
+
+  /* A narrower catalogue has fewer pages, and page 7 of a search that
+     matches one product is empty. */
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [appliedSearch, selectedFilterCompany, selectedFilterCategory, pageSize]);
   const [companyId, setCompanyId] = useState("");
   const [editCompanyId, setEditCompanyId] = useState("");
 
@@ -215,6 +251,48 @@ export default function InventoryPage() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [itemView, setItemView] = useState<InventoryItem | null>(null);
 
+  /* The product's label, as this server draws it - the same markup that
+     prints. Fetched rather than linked because the endpoint needs the
+     auth header the axios client already holds. */
+  const [labelSvg, setLabelSvg] = useState("");
+
+  /* The product's photo, fetched for whichever one is open. */
+  const [viewImage, setViewImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!showViewModal || !itemView) {
+      setLabelSvg("");
+      setViewImage(null);
+      return;
+    }
+
+    let current = true;
+
+    (async () => {
+      try {
+        const { data } = await api.get(
+          `/api/v1/inventory/items/${itemView._id}/label`,
+          { responseType: "text" },
+        );
+
+        if (current) setLabelSvg(typeof data === "string" ? data : "");
+      } catch {
+        if (current) setLabelSvg("");
+      }
+
+      try {
+        const picture = itemView.image_base64 || (await getInventoryImageApi(itemView._id));
+        if (current) setViewImage(picture || null);
+      } catch {
+        if (current) setViewImage(null);
+      }
+    })();
+
+    return () => {
+      current = false;
+    };
+  }, [showViewModal, itemView]);
+
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<InventoryItem | null>(null);
@@ -224,6 +302,13 @@ export default function InventoryPage() {
   const [editSerialNumber, setEditSerialNumber] = useState("");
   const [editSelectedTypeCode, setEditSelectedTypeCode] = useState("");
   const [editImageBase64, setEditImageBase64] = useState<string | null>(null);
+
+  /* Whether the picture was changed or cleared in this edit. The list no
+     longer carries images - a data: URI per row is megabytes - so the
+     form loads the one it is editing, and sends it back only when
+     somebody actually touched it. Otherwise saving a change of name
+     would quietly erase the photo. */
+  const [editImageTouched, setEditImageTouched] = useState(false);
 
   // Mandatory standard attributes (Edit)
   const [editRate, setEditRate] = useState("");
@@ -243,25 +328,45 @@ export default function InventoryPage() {
   const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  /* The whole catalogue for this company and search, not the chosen
-     category: the category tabs carry a count each, and a count can only
-     be worked out from the rows that are not being filtered out. Picking a
-     category is then instant rather than a round trip. */
+  /* One page of the catalogue, with the figures across the top and the
+     count behind each category tab worked out by the server over the
+     whole of it.
+
+     It used to read every product into the browser and add them up here.
+     That is fine for forty and it is a 470 KB response and a table of a
+     thousand rows for a catalogue somebody has just uploaded a price list
+     into. The totals still describe the whole catalogue, because they are
+     no longer made of the rows on screen. */
   const fetchItems = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getInventoryItemsApi({
-        search: searchQuery || undefined,
+
+      const page = await getInventoryItemsApi({
+        search: appliedSearch || undefined,
         company_id: selectedFilterCompany || undefined,
+        product_type_code: selectedFilterCategory || undefined,
+        page: currentPage,
+        size: pageSize,
       });
-      setItems(data);
+
+      setItems(page.items);
+      setTotalItems(page.total);
+      setSummary(page.summary);
+      setTypeCounts(page.counts);
     } catch (err) {
       console.error(err);
       addToast("Failed to fetch inventory item records.", "error");
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, selectedFilterCompany, addToast]);
+  }, [
+    appliedSearch,
+    selectedFilterCompany,
+    selectedFilterCategory,
+    currentPage,
+    pageSize,
+    addToast,
+  ]);
 
   const fetchUnits = useCallback(async () => {
     try {
@@ -318,61 +423,72 @@ export default function InventoryPage() {
     fetchItems();
   }, [fetchItems]);
 
+  /* Where the QR on the sticker lands: /inventory?product=<serial> opens
+     that product's details. Scanning the box and pressing the eye on the
+     row are then the same gesture - which is the only thing that makes
+     printing the code worth doing.
+
+     Read off the address rather than through useSearchParams, so this
+     page carries on being prerendered. */
+  const [deepLinked, setDeepLinked] = useState(false);
+
+  useEffect(() => {
+    if (deepLinked || items.length === 0) return;
+
+    const wanted = new URLSearchParams(window.location.search).get("product");
+
+    if (!wanted) return;
+
+    const found = items.find(
+      (item) =>
+        item.serial_number?.toUpperCase() === wanted.trim().toUpperCase() ||
+        item._id === wanted,
+    );
+
+    setDeepLinked(true);
+
+    if (found) {
+      setItemView(found);
+      setShowViewModal(true);
+    } else {
+      addToast(`No product here has the serial number ${wanted}.`, "warning");
+    }
+  }, [items, deepLinked, addToast]);
+
   /* --------------------------------------------------------------------
      What the shelf holds
 
-     The numbers across the top and the category tabs are both read off
-     the full catalogue, so choosing a category narrows the table without
-     moving the totals - the point of the header is what the warehouse
-     holds altogether.
+     The numbers across the top and the count on each category tab are
+     worked out by the database over the whole catalogue, so choosing a
+     category or turning a page narrows the table without moving the
+     totals - the point of the header is what the warehouse holds
+     altogether, which a sum of the hundred rows on screen is not.
   -------------------------------------------------------------------- */
   const stockOf = (item: InventoryItem): number =>
     Number(item.attributes?.instock ?? item.attributes?.stock ?? 0);
 
-  const summary = useMemo(() => {
-    const units = items.reduce((total, item) => total + stockOf(item), 0);
-    const value = items.reduce(
-      (total, item) => total + stockOf(item) * Number(item.attributes?.rate ?? 0),
-      0,
-    );
-
-    return {
-      products: items.length,
-      units,
-      value,
-      // A line nobody has reordered yet, and one that cannot be sold at
-      // all - the two the warehouse acts on.
-      thin: items.filter((item) => stockOf(item) > 0 && stockOf(item) <= 3).length,
-      out: items.filter((item) => stockOf(item) === 0).length,
-      categories: new Set(items.map((item) => item.product_type_code)).size,
-    };
-  }, [items]);
-
-  /* A tab per product type, plus "All Products". Only types that are
-     actually stocked get a tab: a catalogue of seven types and one empty
-     one is a row of tabs that never does anything. */
+  /* A tab per product type, plus "All Products", counted by the server
+     over the whole catalogue. Only types that are actually stocked get a
+     tab: a catalogue of seven types and one empty one is a row of tabs
+     that never does anything. */
   const categoryTabs = useMemo(() => {
     const counted = productTypes
       .map((type) => ({
         value: type.code,
         label: type.name,
-        count: items.filter((item) => item.product_type_code === type.code).length,
+        count: typeCounts[type.code] || 0,
       }))
       .filter((tab) => tab.count > 0);
 
     return [
-      { value: "", label: "All Products", count: items.length },
+      { value: "", label: "All Products", count: summary.products },
       ...counted,
     ];
-  }, [productTypes, items]);
+  }, [productTypes, typeCounts, summary.products]);
 
-  const visibleItems = useMemo(
-    () =>
-      selectedFilterCategory
-        ? items.filter((item) => item.product_type_code === selectedFilterCategory)
-        : items,
-    [items, selectedFilterCategory],
-  );
+  /* The server already sent this category's page, so there is nothing
+     left to filter here. */
+  const visibleItems = items;
 
   const money = (value: number) =>
     `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
@@ -481,6 +597,13 @@ export default function InventoryPage() {
     setEditSerialNumber(item.serial_number);
     setEditSelectedTypeCode(item.product_type_code);
     setEditImageBase64(item.image_base64 || null);
+    setEditImageTouched(false);
+
+    if (!item.image_base64) {
+      getInventoryImageApi(item._id)
+        .then((picture) => picture && setEditImageBase64(picture))
+        .catch(() => undefined);
+    }
     setEditCompanyId(item.company_id || "");
 
     // Extract standard attributes
@@ -510,6 +633,7 @@ export default function InventoryPage() {
       const reader = new FileReader();
       reader.onloadend = () => {
         if (isEdit) {
+          setEditImageTouched(true);
           setEditImageBase64(reader.result as string);
         } else {
           setImageBase64(reader.result as string);
@@ -523,6 +647,14 @@ export default function InventoryPage() {
     e.preventDefault();
     if (!name.trim() || !serialNumber.trim()) {
       addToast("Name and Serial Number are required.", "warning");
+      return;
+    }
+
+    /* Both go on the sticker on the box and on the proposal line a
+       customer reads, so a product without them is one nobody downstream
+       can identify. */
+    if (!modelNumber.trim() || !specification.trim()) {
+      addToast("Model Number and Specification are required.", "warning");
       return;
     }
 
@@ -612,6 +744,11 @@ export default function InventoryPage() {
       return;
     }
 
+    if (!editModelNumber.trim() || !editSpecification.trim()) {
+      addToast("Model Number and Specification are required.", "warning");
+      return;
+    }
+
     const rateVal = parseFloat(editRate) ?? -1;
     const instockVal = parseFloat(editInstock) ?? -1;
     const caseSizeVal = parseFloat(editCaseSize) ?? -1;
@@ -664,7 +801,9 @@ export default function InventoryPage() {
         product_type_code: editSelectedTypeCode,
         category: typeDetails.category,
         attributes: mergedEditAttributes,
-        image_base64: editImageBase64 || undefined,
+        // Left out entirely unless it changed, which is what tells the
+        // server to keep the picture it already has.
+        ...(editImageTouched ? { image_base64: editImageBase64 } : {}),
         company_id: editCompanyId || null,
       });
 
@@ -853,11 +992,18 @@ export default function InventoryPage() {
           </div>
         ) : visibleItems.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className={`w-full min-w-[980px] text-left ${LIST_TABLE}`}>
+            {/* The same fields as the form, in the same order: the model
+                says which one it is, the name says what it is, the
+                specification says what is in it. Reading them off the row
+                is the point - they were only visible by opening the
+                product. */}
+            <table className={`w-full min-w-[1240px] text-left ${LIST_TABLE}`}>
               <thead>
                 <tr>
                   <th className="px-5 py-3">Product</th>
+                  <th className="px-5 py-3">Model Number</th>
                   <th className="px-5 py-3">Item Name</th>
+                  <th className="px-5 py-3">Specification</th>
                   <th className="px-5 py-3">Serial Number</th>
                   <th className="px-5 py-3">Category Group</th>
                   <th className="px-5 py-3">Company</th>
@@ -907,32 +1053,38 @@ export default function InventoryPage() {
                       </div>
                     )}
                   </td>
-                  {/* The model says which one, the specification says what
-                      it is - both are what somebody scanning the list is
-                      actually looking for, and both were only visible by
-                      opening the product. */}
-                  <td className="max-w-[320px] px-5 py-3">
+                  <td className="px-5 py-3">
+                    {modelVal ? (
+                      <span className="font-mono text-[12px] font-semibold text-slate-700 dark:text-slate-200">
+                        {modelVal}
+                      </span>
+                    ) : (
+                      <span className="text-[12px] text-slate-400">—</span>
+                    )}
+                  </td>
+
+                  <td className="max-w-[240px] px-5 py-3">
                     <p className="text-[13px] font-semibold text-slate-900 dark:text-white">
                       {item.name}
                     </p>
-
-                    <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-[#777777] dark:text-slate-400">
-                      {modelVal && (
-                        <span className="font-mono font-semibold text-slate-600 dark:text-slate-300">
-                          {modelVal}
-                        </span>
-                      )}
-                      {modelVal && <span className="text-slate-300">·</span>}
+                    <p className="text-[11px] text-[#777777] dark:text-slate-400">
                       {typeName}
                     </p>
+                  </td>
 
-                    {specVal && (
+                  {/* Long by nature, so it is clamped to two lines with the
+                      whole of it on hover rather than pushing every other
+                      column off the screen. */}
+                  <td className="max-w-[280px] px-5 py-3">
+                    {specVal ? (
                       <p
                         title={specVal}
-                        className="mt-0.5 truncate text-[11px] text-slate-400"
+                        className="line-clamp-2 text-[12px] leading-snug text-slate-600 dark:text-slate-300"
                       >
                         {specVal}
                       </p>
+                    ) : (
+                      <span className="text-[12px] text-slate-400">—</span>
                     )}
                   </td>
                   <td className="px-5 py-3">
@@ -1044,9 +1196,33 @@ export default function InventoryPage() {
           </div>
         )}
 
-        <div className="border-t border-slate-100 px-5 py-3 text-[12px] text-[#777777] dark:border-[#17304a] dark:text-slate-400">
-          Showing {visibleItems.length} of {items.length} product
-          {items.length === 1 ? "" : "s"}
+        {/* A page at a time, with how many to a page. A thousand rows in
+            one table is a browser the warehouse cannot scroll. */}
+        <div className="flex flex-col gap-2 border-t border-slate-100 px-5 py-2 sm:flex-row sm:items-center dark:border-[#17304a]">
+          <label className="flex items-center gap-2 text-[12px] text-[#777777] dark:text-slate-400">
+            Show
+            <select
+              value={pageSize}
+              onChange={(event) => setPageSize(Number(event.target.value))}
+              aria-label="Products per page"
+              className="h-[30px] rounded-md border border-[#cccccc] bg-white px-2 text-[12px] text-[#141414] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+            >
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+            </select>
+            per page
+          </label>
+
+          <div className="flex-1">
+            <Pagination
+              page={currentPage}
+              pageSize={pageSize}
+              totalItems={totalItems}
+              totalPages={Math.max(1, Math.ceil(totalItems / pageSize))}
+              onPageChange={setCurrentPage}
+              noun="products"
+            />
+          </div>
         </div>
       </TableCard>
 
@@ -1066,9 +1242,9 @@ export default function InventoryPage() {
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 pb-4 border-b border-slate-100 dark:border-[#0d2336]">
               {/* Product Image preview */}
               <div className="md:col-span-4 flex items-center justify-center bg-slate-50 dark:bg-[#071929]/30 rounded-xl border border-slate-100 dark:border-[#0d2336] p-2 min-h-[140px]">
-                {itemView.image_base64 ? (
+                {viewImage ? (
                   <img
-                    src={itemView.image_base64}
+                    src={viewImage}
                     alt={itemView.name}
                     className="max-h-[130px] rounded-lg object-contain w-full"
                   />
@@ -1163,25 +1339,39 @@ export default function InventoryPage() {
                   Identity QR Label
                 </span>
                 
-                {/* Dynamically generated QR Code using public stateless API */}
-                <div className="p-2.5 bg-white border border-slate-200/50 rounded-xl shadow-sm">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(
-                      JSON.stringify({
-                        id: itemView._id,
-                        serial: itemView.serial_number,
-                        name: itemView.name,
-                        type: itemView.product_type_code,
-                      })
-                    )}`}
-                    alt="Product Identity QR Code"
-                    className="w-[100px] h-[100px]"
-                  />
+                {/* The very label that prints, drawn by this server from
+                    the product's own serial number.
+
+                    It used to be an <img> from api.qrserver.com, which
+                    sent this product's id, serial, name and type to a
+                    third party every time somebody opened the panel, drew
+                    a different code from the printed one, and reloaded on
+                    every render. */}
+                <div className="w-full rounded-xl border border-slate-200/50 bg-white p-2.5 shadow-sm [&_svg]:h-auto [&_svg]:w-full">
+                  {labelSvg ? (
+                    <div dangerouslySetInnerHTML={{ __html: labelSvg }} />
+                  ) : (
+                    <div className="flex h-[90px] items-center justify-center text-slate-300">
+                      <CgSpinner className="animate-spin text-xl" />
+                    </div>
+                  )}
                 </div>
-                
-                <span className="text-[9px] text-slate-400 leading-tight">
-                  Scan QR code tag to read structural spec properties instantly.
+
+                <span className="text-[9px] leading-tight text-slate-400">
+                  The same sticker that prints. Scan the QR to open this
+                  product; the barcode carries the serial number for a desk
+                  scanner.
                 </span>
+
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() => printLabel(itemView)}
+                >
+                  <span className="flex items-center gap-1.5 text-[12px]">
+                    <FiPrinter size={12} /> Print Label
+                  </span>
+                </Button>
               </div>
             </div>
             
@@ -1232,7 +1422,8 @@ export default function InventoryPage() {
                   against. Kept apart from the name: "Interactive Flat
                   Panel" is what it is, "SPX-75 V100" is which one. */}
               <Input
-                label="Model Number"
+                label="Model Number *"
+                required
                 placeholder="e.g. SPX-75 (Lango V100)"
                 value={modelNumber}
                 onChange={(e) => setModelNumber(e.target.value)}
@@ -1252,10 +1443,11 @@ export default function InventoryPage() {
                   worth filtering or pricing on. */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Specification
+                  Specification *
                 </label>
                 <textarea
                   rows={3}
+                  required
                   placeholder="e.g. 75&quot; 4K UHD, 20-point touch, Android 13, 8GB / 128GB"
                   value={specification}
                   onChange={(e) => setSpecification(e.target.value)}
@@ -1560,7 +1752,8 @@ export default function InventoryPage() {
                 </h4>
 
                 <Input
-                  label="Model Number"
+                  label="Model Number *"
+                  required
                   placeholder="e.g. SPX-75 (Lango V100)"
                   value={editModelNumber}
                   onChange={(e) => setEditModelNumber(e.target.value)}
@@ -1576,10 +1769,11 @@ export default function InventoryPage() {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Specification
+                    Specification *
                   </label>
                   <textarea
                     rows={3}
+                    required
                     placeholder="e.g. 75&quot; 4K UHD, 20-point touch, Android 13, 8GB / 128GB"
                     value={editSpecification}
                     onChange={(e) => setEditSpecification(e.target.value)}
@@ -1623,7 +1817,10 @@ export default function InventoryPage() {
                           />
                           <button
                             type="button"
-                            onClick={() => setEditImageBase64(null)}
+                            onClick={() => {
+                              setEditImageTouched(true);
+                              setEditImageBase64(null);
+                            }}
                             className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-1 border-none hover:bg-rose-600 cursor-pointer shadow animate-fadeIn"
                           >
                             <FiX className="text-[10px]" />
