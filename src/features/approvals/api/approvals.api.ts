@@ -174,16 +174,6 @@ export const getApprovalForDocumentApi = async (
  *  A document rejected and resubmitted has more than one. The first row
  *  is the open request; the rest are what happened before it, which is
  *  where a rejection and its reason live once it has been resubmitted. */
-export const getApprovalHistoryApi = async (
-  documentType: ApprovalDocumentType,
-  documentId: number | string,
-): Promise<SalesApproval[]> => {
-  const { data } = await api.get(
-    `/api/v1/approvals/document/${documentType}/${documentId}/history`,
-  );
-  return data.data || [];
-};
-
 export const decideApprovalApi = async (
   approvalId: number,
   approve: boolean,

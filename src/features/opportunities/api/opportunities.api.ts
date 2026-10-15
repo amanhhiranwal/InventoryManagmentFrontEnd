@@ -223,6 +223,36 @@ export const getOpportunitiesApi = async (): Promise<OpportunityModel[]> => {
   return Array.isArray(data?.data) ? data.data : [];
 };
 
+/** One page of opportunities, searched across every one the caller can
+    see rather than over the rows already in the browser. */
+export const getOpportunitiesPageApi = async (params: {
+  page: number;
+  size: number;
+  search?: string;
+}): Promise<{
+  opportunities: OpportunityModel[];
+  total: number;
+  summary: Record<string, { count?: number; value?: number; this_month: number; last_month: number }>;
+}> => {
+  const search = params.search?.trim();
+
+  const { data } = await api.get("/api/v1/opportunities/", {
+    params: {
+      page: params.page,
+      size: params.size,
+      ...(search ? { search } : {}),
+    },
+  });
+
+  const opportunities = Array.isArray(data?.data) ? data.data : [];
+
+  return {
+    opportunities,
+    total: Number(data?.total ?? opportunities.length),
+    summary: data?.summary || {},
+  };
+};
+
 export const getOpportunityApi = async (
   id: number | string,
 ): Promise<OpportunityModel> => {

@@ -28,7 +28,7 @@ import ListActionsMenu, {
   ExportColumn,
 } from "@/components/crm/ListActions";
 import StatCard from "@/components/crm/StatCard";
-import { monthOverMonth } from "@/components/crm/kpiChange";
+import { percentChange } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
 import { FormCard, FormSectionBlock, BillingShippingHeader } from "@/components/crm/FormCard";
@@ -86,6 +86,7 @@ import {
   getQuotationApi,
   getQuotationSenderApi,
   getQuotationsApi,
+  getQuotationsPageApi,
   sendQuotationApi,
   downloadQuotationPdfApi,
   updateQuotationApi,
@@ -463,6 +464,15 @@ export default function QuotationPage() {
   const [statusTab, setStatusTab] = useState<"All" | QuotationStatus>("All");
   const [currentPage, setCurrentPage] = useState(1);
 
+  /* How many proposals match, and the figures across the top - counted
+     by the server over the whole list rather than over this page. */
+  const [totalQuotations, setTotalQuotations] = useState(0);
+  const [quotationSummary, setQuotationSummary] = useState<
+    Record<string, { count?: number; value?: number; this_month: number; last_month: number }>
+  >({});
+
+  const [appliedSearch, setAppliedSearch] = useState("");
+
   const [showFilter, setShowFilter] = useState(false);
   const [filters, setFilters] = useState<QuotationFilters>(EMPTY_FILTERS);
   const [draftFilters, setDraftFilters] = useState<QuotationFilters>(EMPTY_FILTERS);
@@ -574,17 +584,37 @@ export default function QuotationPage() {
      FETCH
   -------------------------------------------------------------------------- */
 
+  /* One page of proposals, searched and filtered by the server across
+     every proposal this person can see - rather than over the rows the
+     browser happens to be holding. */
   const fetchQuotations = useCallback(async () => {
     try {
-      const data = await getQuotationsApi();
-      setQuotations(data || []);
+      const answer = await getQuotationsPageApi({
+        page: currentPage,
+        size: ROWS_PER_PAGE,
+        search: appliedSearch,
+        status: statusTab,
+      });
+
+      setQuotations(answer.quotations || []);
+      setTotalQuotations(answer.total);
+      setQuotationSummary(answer.summary);
     } catch (error) {
       console.error(error);
       addToast("Unable to load proposals.", "error");
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, currentPage, appliedSearch, statusTab]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAppliedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [appliedSearch, statusTab]);
 
   const fetchSupporting = useCallback(async () => {
     /* Each of these only enriches the form; a failure must not stop the
@@ -668,67 +698,67 @@ export default function QuotationPage() {
      DERIVED
   -------------------------------------------------------------------------- */
 
+  /* One figure from the server's summary. Declared before the two memos
+     that read it: a const is not in scope above its own line, and stats
+     running first met it in the temporal dead zone. */
+  const figureOf = (name: string) => {
+    const card = quotationSummary[name];
+    return Number(card?.count ?? card?.value ?? 0);
+  };
+
+  /* The figures across the top, counted by the server over every
+     proposal this person can see, so they still describe the whole list
+     once it is shown a page at a time. */
   const stats = useMemo(() => {
-    const count = (status: QuotationStatus) =>
-      quotations.filter((q) => q.status === status).length;
-
-    const valueOf = (status: QuotationStatus) =>
-      quotations
-        .filter((q) => q.status === status)
-        .reduce((sum, q) => sum + (q.total_payable || 0), 0);
-
-    const grossValueOf = (items: typeof quotations) =>
-      items.reduce((sum, q) => sum + (q.total_payable || 0), 0);
-
-    const createdAt = (q: (typeof quotations)[number]) =>
-      q.created_at || q.quotation_date;
+    const change = (name: string) => {
+      const card = quotationSummary[name];
+      return percentChange(card?.this_month || 0, card?.last_month || 0);
+    };
 
     return {
-      total: quotations.length,
-      totalChange: monthOverMonth(quotations, createdAt, (items) => items.length),
-      grossValue: grossValueOf(quotations),
-      grossValueChange: monthOverMonth(quotations, createdAt, grossValueOf),
-      drafts: count(QUOTATION_STATUS.DRAFT),
-      draftValue: valueOf(QUOTATION_STATUS.DRAFT),
-      sent: count(QUOTATION_STATUS.SENT),
-      sentValue: valueOf(QUOTATION_STATUS.SENT),
-      accepted: count(QUOTATION_STATUS.ACCEPTED),
-      expired: count(QUOTATION_STATUS.EXPIRED),
-      rejected: count(QUOTATION_STATUS.REJECTED),
+      total: figureOf("total"),
+      totalChange: change("total"),
+      grossValue: figureOf("gross_value"),
+      grossValueChange: change("gross_value"),
+      drafts: figureOf("drafts"),
+      draftValue: figureOf("draft_value"),
+      sent: figureOf("sent"),
+      sentValue: figureOf("sent_value"),
+      accepted: figureOf("accepted"),
+      expired: figureOf("expired"),
+      rejected: figureOf("rejected"),
     };
-  }, [quotations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotationSummary]);
 
+  /* The count on each tab, as the server counted it over every proposal
+     this person can see. Counting the page would have said "Draft 3"
+     about a list of thirty drafts. */
   const tabCounts = useMemo(() => {
-    const counts: Record<string, number> = { All: quotations.length };
+    const byStatus: Record<string, string> = {
+      [QUOTATION_STATUS.DRAFT]: "drafts",
+      [QUOTATION_STATUS.SENT]: "sent",
+      [QUOTATION_STATUS.ACCEPTED]: "accepted",
+      [QUOTATION_STATUS.REJECTED]: "rejected",
+      [QUOTATION_STATUS.EXPIRED]: "expired",
+    };
+
+    const counts: Record<string, number> = { All: figureOf("total") };
 
     for (const tab of STATUS_TABS) {
       if (tab.value === "All") continue;
-      counts[tab.value] = quotations.filter((q) => q.status === tab.value).length;
+      counts[tab.value] = figureOf(byStatus[tab.value] || "");
     }
 
     return counts;
-  }, [quotations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotationSummary]);
 
+  /* The search and the status tab are requests now. What is left here
+     are the extra filters in the panel, over the page that came back. */
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
 
     return quotations.filter((quotation) => {
-      if (statusTab !== "All" && quotation.status !== statusTab) return false;
-
-      if (term) {
-        const haystack = [
-          quotation.quote_number,
-          quotation.contact_name,
-          quotation.organization_name,
-          quotation.opportunity_name,
-          quotation.email,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        if (!haystack.includes(term)) return false;
-      }
 
       const rowDate = toInputDate(quotation.quotation_date || quotation.created_at);
 
@@ -751,12 +781,11 @@ export default function QuotationPage() {
 
       return true;
     });
-  }, [quotations, search, statusTab, filters]);
+  }, [quotations, filters]);
 
   const paginated = useMemo(() => {
-    const start = (currentPage - 1) * ROWS_PER_PAGE;
-    return filtered.slice(start, start + ROWS_PER_PAGE);
-  }, [filtered, currentPage]);
+    return filtered;
+  }, [filtered]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -2747,8 +2776,8 @@ export default function QuotationPage() {
         <Pagination
           page={currentPage}
           pageSize={ROWS_PER_PAGE}
-          totalItems={filtered.length}
-          totalPages={Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE))}
+          totalItems={totalQuotations}
+          totalPages={Math.max(1, Math.ceil(totalQuotations / ROWS_PER_PAGE))}
           onPageChange={setCurrentPage}
           noun="proposals"
         />

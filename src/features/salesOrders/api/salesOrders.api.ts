@@ -293,6 +293,38 @@ export const getSalesOrdersApi = async (): Promise<SalesOrderModel[]> => {
   return Array.isArray(data?.data) ? data.data : [];
 };
 
+/** One page of orders, searched and filtered by the server across every
+    order the caller can see. */
+export const getSalesOrdersPageApi = async (params: {
+  page: number;
+  size: number;
+  search?: string;
+  status?: string;
+}): Promise<{
+  orders: SalesOrderModel[];
+  total: number;
+  summary: Record<string, any>;
+}> => {
+  const search = params.search?.trim();
+
+  const { data } = await api.get("/api/v1/orders", {
+    params: {
+      page: params.page,
+      size: params.size,
+      ...(search ? { search } : {}),
+      ...(params.status ? { status: params.status } : {}),
+    },
+  });
+
+  const orders = Array.isArray(data?.data) ? data.data : [];
+
+  return {
+    orders,
+    total: Number(data?.total ?? orders.length),
+    summary: data?.summary || {},
+  };
+};
+
 export const getSalesOrderApi = async (
   id: number | string,
 ): Promise<SalesOrderModel> => {
