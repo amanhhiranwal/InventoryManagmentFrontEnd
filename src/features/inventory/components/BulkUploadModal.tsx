@@ -148,9 +148,9 @@ export default function BulkUploadModal({
               Start from the template
             </p>
             <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-              One product per row, the same fields as the form. A row can
-              carry several serial numbers separated by <strong>/</strong> —
-              each one is loaded as its own product.
+              One product per row, the same fields as the form. Serial number is
+              optional. A row can carry several serial numbers separated by{" "}
+              <strong>/</strong> or comma — each one is loaded as its own product.
             </p>
           </div>
 
@@ -272,7 +272,7 @@ export default function BulkUploadModal({
                 <tbody>
                   {items.map((item, index) => (
                     <tr
-                      key={`${item.serial_number}-${index}`}
+                      key={`${item.serial_number || "none"}-${index}`}
                       className="border-t border-slate-100 dark:border-[#0d2336]"
                     >
                       <td className="px-2 py-1.5 text-slate-400">{item.row}</td>
@@ -280,7 +280,7 @@ export default function BulkUploadModal({
                         {item.name}
                       </td>
                       <td className="px-2 py-1.5 font-mono text-[10px] text-slate-600 dark:text-slate-300">
-                        {item.serial_number}
+                        {item.serial_number || "—"}
                       </td>
                       <td className="px-2 py-1.5 text-slate-500">
                         {item.product_type_code}
