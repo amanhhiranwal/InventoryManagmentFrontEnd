@@ -17,10 +17,14 @@ export interface InventoryItem {
   _id: string;
   name: string;
   serial_number: string;
+  serial_numbers?: string[];
+  serials_count?: number;
+  item_ids?: string[];
   product_type_code: string;
   category: string;
   attributes: Record<string, any>;
   image_base64?: string;
+  has_image?: boolean;
   /** The company that stocks this product. Null means every company. */
   company_id?: string | null;
   company_name?: string | null;
@@ -125,8 +129,8 @@ export const createInventoryItemApi = async (payload: {
   return data.data || data;
 };
 
-export const deleteInventoryItemApi = async (itemId: string): Promise<void> => {
-  await api.delete(`/api/v1/inventory/items/${itemId}`);
+export const deleteInventoryItemApi = async (itemId: string, allUnits: boolean = true): Promise<void> => {
+  await api.delete(`/api/v1/inventory/items/${itemId}?all_units=${allUnits ? "true" : "false"}`);
 };
 
 /* ----------------------------------------------------------------------
