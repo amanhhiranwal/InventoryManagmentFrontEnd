@@ -59,6 +59,7 @@ import {
   FiX,
   FiBox,
   FiFileText,
+  FiCopy,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 
@@ -70,7 +71,13 @@ const INVENTORY_COLUMNS: ExportColumn<InventoryItem>[] = [
     header: "Specification",
     value: (item) => String(item.attributes?.specification ?? ""),
   },
-  { header: "Serial Number", value: (item) => item.serial_number },
+  {
+    header: "Serial Number",
+    value: (item) =>
+      item.serial_numbers && item.serial_numbers.length > 1
+        ? item.serial_numbers.join(", ")
+        : item.serial_number,
+  },
   { header: "Product Type", value: (item) => item.product_type_code },
   { header: "Category Group", value: (item) => item.category },
   { header: "Company", value: (item) => item.company_name || "All companies" },
@@ -250,6 +257,8 @@ export default function InventoryPage() {
   // View modal state
   const [showViewModal, setShowViewModal] = useState(false);
   const [itemView, setItemView] = useState<InventoryItem | null>(null);
+  const [selectedSerial, setSelectedSerial] = useState<string>("");
+  const [serialSearch, setSerialSearch] = useState<string>("");
 
   /* The product's label, as this server draws it - the same markup that
      prints. Fetched rather than linked because the endpoint needs the
@@ -263,15 +272,23 @@ export default function InventoryPage() {
     if (!showViewModal || !itemView) {
       setLabelSvg("");
       setViewImage(null);
+      setSelectedSerial("");
+      setSerialSearch("");
       return;
+    }
+
+    const activeSerial = selectedSerial || itemView.serial_number || (itemView.serial_numbers?.[0] || "");
+    if (!selectedSerial && activeSerial) {
+      setSelectedSerial(activeSerial);
     }
 
     let current = true;
 
     (async () => {
       try {
+        const query = activeSerial ? `?serial=${encodeURIComponent(activeSerial)}` : "";
         const { data } = await api.get(
-          `/api/v1/inventory/items/${itemView._id}/label`,
+          `/api/v1/inventory/items/${itemView._id}/label${query}`,
           { responseType: "text" },
         );
 
@@ -291,7 +308,7 @@ export default function InventoryPage() {
     return () => {
       current = false;
     };
-  }, [showViewModal, itemView]);
+  }, [showViewModal, itemView, selectedSerial]);
 
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -436,18 +453,21 @@ export default function InventoryPage() {
     if (deepLinked || items.length === 0) return;
 
     const wanted = new URLSearchParams(window.location.search).get("product");
-
     if (!wanted) return;
+
+    const wantedUpper = wanted.trim().toUpperCase();
 
     const found = items.find(
       (item) =>
-        item.serial_number?.toUpperCase() === wanted.trim().toUpperCase() ||
-        item._id === wanted,
+        item._id === wanted ||
+        item.serial_number?.toUpperCase() === wantedUpper ||
+        item.serial_numbers?.some((s) => s.toUpperCase() === wantedUpper),
     );
 
     setDeepLinked(true);
 
     if (found) {
+      setSelectedSerial(wantedUpper);
       setItemView(found);
       setShowViewModal(true);
     } else {
@@ -561,10 +581,12 @@ export default function InventoryPage() {
      the same one the PDF would carry. Fetched rather than linked, because
      the endpoint needs the auth header the axios client already holds -
      a plain window.open would arrive signed out. */
-  const printLabel = async (item: InventoryItem) => {
+  const printLabel = async (item: InventoryItem, targetSerial?: string) => {
     try {
+      const serialToPrint = targetSerial || selectedSerial || item.serial_number || "";
+      const query = serialToPrint ? `?serial=${encodeURIComponent(serialToPrint)}` : "";
       const { data } = await api.get(
-        `/api/v1/inventory/items/${item._id}/label`,
+        `/api/v1/inventory/items/${item._id}/label${query}`,
         { responseType: "text" },
       );
 
@@ -576,7 +598,7 @@ export default function InventoryPage() {
       }
 
       sheet.document.write(
-        `<!doctype html><title>${item.serial_number || "Label"}</title>` +
+        `<!doctype html><title>${serialToPrint || "Label"}</title>` +
           `<style>body{margin:0;display:flex;align-items:center;` +
           `justify-content:center;height:100vh}svg{width:75mm}` +
           `@media print{body{height:auto}}</style>${data}` +
@@ -1088,9 +1110,25 @@ export default function InventoryPage() {
                     )}
                   </td>
                   <td className="px-5 py-3">
-                    <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-slate-700 dark:bg-[#0d2336] dark:text-white">
-                      {item.serial_number}
-                    </span>
+                    {item.serial_numbers && item.serial_numbers.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedSerial(item.serial_number || item.serial_numbers![0]);
+                          setItemView(item);
+                          setShowViewModal(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-blue-700 hover:bg-blue-100 transition dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/50"
+                        title="Click to view all serial numbers"
+                      >
+                        <FiDatabase size={11} className="text-blue-500" />
+                        <span>{item.serial_numbers.length} Serials</span>
+                      </button>
+                    ) : (
+                      <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px] font-semibold uppercase tracking-wider text-slate-700 dark:bg-[#0d2336] dark:text-white">
+                        {item.serial_number || "—"}
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-3 text-[13px] text-slate-600 dark:text-slate-300">
                     {item.category}
@@ -1266,9 +1304,13 @@ export default function InventoryPage() {
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Serial Number</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    {itemView.serial_numbers && itemView.serial_numbers.length > 1
+                      ? `Active Serial (${itemView.serial_numbers.length} total)`
+                      : "Serial Number"}
+                  </span>
                   <span className="text-xs font-mono font-bold text-slate-800 dark:text-white uppercase tracking-wider bg-slate-100 dark:bg-[#0d2336] px-2 py-0.5 rounded inline-block mt-0.5">
-                    {itemView.serial_number}
+                    {selectedSerial || itemView.serial_number}
                   </span>
                 </div>
                 <div className="mt-2">
@@ -1285,6 +1327,82 @@ export default function InventoryPage() {
                 </div>
               </div>
             </div>
+
+            {/* Multiple Serial Numbers Registry */}
+            {itemView.serial_numbers && itemView.serial_numbers.length > 1 && (
+              <div className="space-y-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 dark:border-[#0d2336] dark:bg-[#071929]/50">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-white flex items-center gap-1.5">
+                      <FiDatabase className="text-primary" />
+                      Serial Numbers Registry
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                        {itemView.serial_numbers.length} units
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Click any serial number to preview its QR/barcode label or print it.
+                    </p>
+                  </div>
+                  {itemView.serial_numbers.length > 4 && (
+                    <div className="w-full sm:w-48">
+                      <Input
+                        placeholder="Search serial..."
+                        value={serialSearch}
+                        onChange={(e) => setSerialSearch(e.target.value)}
+                        className="!h-8 !text-xs"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto pr-1">
+                  {itemView.serial_numbers
+                    .filter((s) => !serialSearch.trim() || s.toLowerCase().includes(serialSearch.trim().toLowerCase()))
+                    .map((serial) => {
+                      const isSelected = (selectedSerial || itemView.serial_number) === serial;
+                      return (
+                        <div
+                          key={serial}
+                          onClick={() => setSelectedSerial(serial)}
+                          className={`group flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 transition ${
+                            isSelected
+                              ? "border-primary bg-primary/10 text-primary dark:border-primary/60 dark:bg-primary/20"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-[#0d2336] dark:bg-[#0b2034] dark:text-slate-300"
+                          }`}
+                        >
+                          <span className="font-mono text-xs font-semibold uppercase tracking-wider">
+                            {serial}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(serial);
+                              addToast(`Copied ${serial}`, "info");
+                            }}
+                            className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                            title="Copy Serial Number"
+                          >
+                            <FiCopy size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              printLabel(itemView, serial);
+                            }}
+                            className="text-slate-400 hover:text-primary"
+                            title="Print label for this unit"
+                          >
+                            <FiPrinter size={11} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
 
             {/* Bottom Row: Specs & QR Code */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
@@ -1366,7 +1484,7 @@ export default function InventoryPage() {
                 <Button
                   variant="outline"
                   type="button"
-                  onClick={() => printLabel(itemView)}
+                  onClick={() => printLabel(itemView, selectedSerial || itemView.serial_number)}
                 >
                   <span className="flex items-center gap-1.5 text-[12px]">
                     <FiPrinter size={12} /> Print Label
@@ -1455,13 +1573,18 @@ export default function InventoryPage() {
                 />
               </div>
 
-              <Input
-                label="Hardware Serial Number (Unique) *"
-                required
-                placeholder="e.g. FT-NPK-12903"
-                value={serialNumber}
-                onChange={(e) => setSerialNumber(e.target.value)}
-              />
+              <div className="space-y-1">
+                <Input
+                  label="Hardware Serial Number(s) *"
+                  required
+                  placeholder="e.g. SN-001 or several separated by / or comma"
+                  value={serialNumber}
+                  onChange={(e) => setSerialNumber(e.target.value)}
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Multiple serial numbers for this product can be separated by / or commas.
+                </p>
+              </div>
 
               {/* IMAGE UPLOAD FIELD */}
               <div className="space-y-2">
@@ -2053,7 +2176,12 @@ export default function InventoryPage() {
         >
           <div className="space-y-4">
             <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-              Are you sure you want to delete product item <span className="font-bold text-slate-800 dark:text-white">{itemToDelete.name}</span> (Serial: {itemToDelete.serial_number})? This is permanent.
+              Are you sure you want to delete product item <span className="font-bold text-slate-800 dark:text-white">{itemToDelete.name}</span>
+              {itemToDelete.serial_numbers && itemToDelete.serial_numbers.length > 1 ? (
+                <> (all {itemToDelete.serial_numbers.length} serial units)</>
+              ) : (
+                <> (Serial: {itemToDelete.serial_number})</>
+              )}? This is permanent.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-[#0d2336]">
