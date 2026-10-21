@@ -257,7 +257,7 @@ export default function Sidebar() {
                       {isChildActive && !isOpen && (
                         <span
                           aria-hidden
-                          className="pointer-events-none absolute inset-y-1 right-0 w-[3px] rounded-l-full bg-[#16294a] dark:bg-sky-400"
+                          className="pointer-events-none absolute inset-y-0 right-0 w-[3px] bg-[#16294a] dark:bg-sky-400"
                         />
                       )}
 
@@ -323,7 +323,7 @@ export default function Sidebar() {
                               {isActive && (
                                 <span
                                   aria-hidden
-                                  className="pointer-events-none absolute inset-y-0.5 right-0 w-[3px] rounded-l-full bg-[#16294a] dark:bg-sky-400"
+                                  className="pointer-events-none absolute inset-y-0 right-0 w-[3px] bg-[#16294a] dark:bg-sky-400"
                                 />
                               )}
 
@@ -357,7 +357,7 @@ export default function Sidebar() {
                   {isActive && (
                     <span
                       aria-hidden
-                      className="pointer-events-none absolute inset-y-1 right-0 w-[3px] rounded-l-full bg-[#16294a] dark:bg-sky-400"
+                      className="pointer-events-none absolute inset-y-0 right-0 w-[3px] bg-[#16294a] dark:bg-sky-400"
                     />
                   )}
                   <Link
