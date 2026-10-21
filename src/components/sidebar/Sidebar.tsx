@@ -24,26 +24,36 @@ import { useAuthStore } from "@/features/auth/store/auth.store";
  * (66) - the same glyph turned through 180 degrees.
  */
 const ICON_OVERRIDES: Record<string, (props: any) => any> = {
-  /* The dashboard's four blocks are solid in the design. lucide's
-     LayoutGrid is an outline, so on every page but the dashboard the icon
-     read as four empty boxes - hollow where the design has them filled.
-     Drawn here as filled squares in currentColor, so the colour still
-     comes from whatever class the row passes: slate when it is just
-     another menu entry, navy when it is the page you are on. */
-  LuLayoutGrid: ({ className, style, size }: any) => (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-      className={className}
-      style={{ width: size ?? "1em", height: size ?? "1em", ...style }}
-    >
-      <rect x="3" y="3" width="7.5" height="7.5" rx="1.6" />
-      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" />
-      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" />
-      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" />
-    </svg>
-  ),
+  /* The dashboard's four blocks fill in on the page they belong to and
+     stay outlines everywhere else.
+
+     Solid all the time, the blocks are four dark squares next to seven
+     thin outlines, and that weight alone reads as the selected row even
+     from another page - which is what the design reserves for the page
+     you are on. So the row passes data-active, and only then are the
+     squares filled; the colour still comes from the row's own class. */
+  LuLayoutGrid: ({ className, style, size, ...rest }: any) => {
+    const active = rest["data-active"] === "true" || rest["data-active"] === true;
+
+    return (
+      <svg
+        {...rest}
+        viewBox="0 0 24 24"
+        fill={active ? "currentColor" : "none"}
+        stroke={active ? "none" : "currentColor"}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className={className}
+        style={{ width: size ?? "1em", height: size ?? "1em", ...style }}
+      >
+        <rect x="3" y="3" width="7.5" height="7.5" rx="1.6" />
+        <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" />
+        <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" />
+        <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" />
+      </svg>
+    );
+  },
 
   /* Sales is a megaphone in the menu table and a person over a rising
      chart in the design. The menu row keeps its stored name - the shape
@@ -330,6 +340,7 @@ export default function Sidebar() {
                     `}
                   >
                     <Icon
+                      data-active={isActive ? "true" : undefined}
                       className={`text-[17px] shrink-0 ${
                         isActive ? "text-[#16294a] dark:text-sky-300" : "text-slate-800 dark:text-slate-200"
                       }`}
