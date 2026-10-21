@@ -99,6 +99,7 @@ import {
   FiChevronDown,
   FiAlertCircle,
 } from "react-icons/fi";
+import { ProductItemsIcon } from "@/components/icons/SectionIcons";
 
 interface ProductItem {
   name: string;
@@ -3860,8 +3861,8 @@ function NewOpportunityPage({
               <section className="mt-8">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-slate-400">
-                      <FiMapPin size={16} />
+                    <span className="text-[#474747] dark:text-slate-400">
+                      <ProductItemsIcon size={17} />
                     </span>
 
                     <h3 className="text-[15px] font-semibold text-slate-800 dark:text-white">
