@@ -2471,41 +2471,24 @@ function FilterPopover({
       {/* DATE RANGE */}
 
       <div className="mb-5">
-        <div className="mb-2 flex items-center justify-between">
-          <label className="text-xs font-semibold text-slate-500">
-            Date Range
-          </label>
-
-          <button
-            type="button"
-            onClick={() => {
-              onChange("dateFrom", "");
-
-              onChange("dateTo", "");
-            }}
-            className="
-              flex
-              items-center
-              gap-1
-              text-[10px]
-              font-bold
-              text-rose-400
-              hover:text-rose-500
-            "
-          >
-            <FiX />
-            Clear Filter
-          </button>
-        </div>
+        {/* Clear All Filter at the foot of the panel already does this,
+            and did it for every field rather than only the dates - two
+            buttons a few lines apart that read the same and behaved
+            differently. */}
+        <label className="mb-2 block text-xs font-semibold text-slate-500">
+          Date Range
+        </label>
 
         <div className="grid grid-cols-2 gap-3">
           <DateFilterInput
             value={filters.dateFrom}
+            max={filters.dateTo}
             onChange={(value) => onChange("dateFrom", value)}
           />
 
           <DateFilterInput
             value={filters.dateTo}
+            min={filters.dateFrom}
             onChange={(value) => onChange("dateTo", value)}
           />
         </div>
@@ -3995,9 +3978,15 @@ function FilterField({
 
 function DateFilterInput({
   value,
+  min,
+  max,
   onChange,
 }: {
   value: string;
+  /** Earliest date the picker offers - the From date, on the To field. */
+  min?: string;
+  /** Latest date the picker offers - the To date, on the From field. */
+  max?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -4007,6 +3996,8 @@ function DateFilterInput({
       <input
         type="date"
         value={value}
+        min={min || undefined}
+        max={max || undefined}
         onChange={(event) => onChange(event.target.value)}
         className="
           h-11

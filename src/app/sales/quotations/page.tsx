@@ -3131,25 +3131,17 @@ function FilterPopover({
   return (
     <div className="absolute right-0 top-full z-40 mt-2 w-[530px] rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-[#17304a] dark:bg-[#051422]">
       <div className="p-6">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[12px] font-semibold text-slate-600 dark:text-slate-300">
-            Date Range
-          </span>
-
-          <button
-            type="button"
-            onClick={onClear}
-            className="flex items-center gap-1 text-[11px] font-semibold text-rose-500 transition hover:text-rose-600"
-          >
-            <FiX size={11} />
-            Clear Filter
-          </button>
-        </div>
+        {/* Clear All Filter at the foot of the panel already does this -
+            two buttons a few lines apart reading the same. */}
+        <span className="mb-2 block text-[12px] font-semibold text-slate-600 dark:text-slate-300">
+          Date Range
+        </span>
 
         <div className="grid grid-cols-2 gap-4">
           <input
             type="date"
             value={value.dateFrom}
+            max={value.dateTo || undefined}
             onChange={(event) => set({ dateFrom: event.target.value })}
             className={INPUT}
           />
@@ -3157,6 +3149,8 @@ function FilterPopover({
           <input
             type="date"
             value={value.dateTo}
+            /* To cannot be earlier than From. */
+            min={value.dateFrom || undefined}
             onChange={(event) => set({ dateTo: event.target.value })}
             className={INPUT}
           />

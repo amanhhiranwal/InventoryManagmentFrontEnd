@@ -100,6 +100,7 @@ import {
   FiAlertCircle,
 } from "react-icons/fi";
 import { ProductItemsIcon } from "@/components/icons/SectionIcons";
+import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
 
 interface ProductItem {
   name: string;
@@ -622,6 +623,12 @@ function OpportunitiesPageInner() {
   const [appliedSearch, setAppliedSearch] = useState("");
 
   const [showFilters, setShowFilters] = useState(false);
+
+  /* Wraps the toolbar and the popover together, so the filter button
+     itself does not count as an outside click. */
+  const filterRef = useCloseOnOutsideClick(showFilters, () =>
+    setShowFilters(false),
+  );
 
   const [filters, setFilters] = useState<OpportunityFilters>(DEFAULT_FILTERS);
 
@@ -1464,7 +1471,7 @@ function OpportunitiesPageInner() {
         {/* =========================================================
             SEARCH + VIEW + FILTER + ADD
         ========================================================= */}
-        <div className="relative">
+        <div className="relative" ref={filterRef}>
         <ListToolbar
           search={search}
           onSearchChange={(value) => {
@@ -1638,17 +1645,11 @@ function OpportunityFilterPopover({
 }) {
   return (
     <div className="absolute right-0 top-14 z-[90] w-[455px] rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-[#17304a] dark:bg-[#071929]">
-      <div className="mb-5 flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-500">Date Range</span>
-
-        <button
-          type="button"
-          onClick={onClear}
-          className="text-[10px] font-medium text-rose-400 hover:text-rose-500"
-        >
-          × Clear Filter
-        </button>
-      </div>
+      {/* Clear All Filter at the foot of the panel already does this -
+          two buttons a few lines apart reading the same. */}
+      <span className="mb-5 block text-xs font-semibold text-slate-500">
+        Date Range
+      </span>
 
       {/* Date Range */}
       <div className="mb-5 flex items-center gap-2">
@@ -1661,6 +1662,7 @@ function OpportunityFilterPopover({
           <input
             type="date"
             value={filters.dateFrom}
+            max={filters.dateTo || undefined}
             onChange={(event) =>
               setFilters((current) => ({
                 ...current,
@@ -1682,6 +1684,8 @@ function OpportunityFilterPopover({
           <input
             type="date"
             value={filters.dateTo}
+            /* To cannot be earlier than From. */
+            min={filters.dateFrom || undefined}
             onChange={(event) =>
               setFilters((current) => ({
                 ...current,

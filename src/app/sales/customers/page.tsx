@@ -7,6 +7,7 @@ import { AxiosError } from "axios";
 import { getSalesOrdersApi } from "@/features/salesOrders/api/salesOrders.api";
 import CustomerContactDrawer from "@/components/ui/CustomerContactDrawer";
 import Pagination from "@/components/crm/Pagination";
+import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
 import {
   LIST_TABLE,
   ListPage,
@@ -168,6 +169,12 @@ export default function CustomersPage() {
   const [search, setSearch] = useState("");
 
   const [filterOpen, setFilterOpen] = useState(false);
+
+  /* Wraps the toolbar and the popover together, so the filter button
+     itself does not count as an outside click. */
+  const filterRef = useCloseOnOutsideClick(filterOpen, () =>
+    setFilterOpen(false),
+  );
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [customerType, setCustomerType] = useState("");
@@ -595,7 +602,11 @@ export default function CustomersPage() {
             SEARCH + FILTER + NEW CUSTOMER
         ============================================================ */}
 
-        <div className="relative" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="relative"
+          ref={filterRef}
+          onClick={(e) => e.stopPropagation()}
+        >
           <ListToolbar
             search={search}
             onSearchChange={setSearch}
@@ -642,19 +653,11 @@ export default function CustomersPage() {
           {/* Filter popover */}
           {filterOpen && (
             <div className="absolute right-0 top-[48px] z-50 w-full max-w-[520px] rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.12)] sm:right-[150px] dark:border-[#17304a] dark:bg-[#071929]">
-              <div className="mb-4 flex items-center justify-between">
-                <label className="text-xs font-medium text-slate-500">
-                  Date Range
-                </label>
-
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="text-[11px] font-medium text-rose-500 hover:text-rose-600"
-                >
-                  × Clear Filter
-                </button>
-              </div>
+              {/* Clear All Filter at the foot of the panel already does
+                  this - two buttons a few lines apart reading the same. */}
+              <label className="mb-4 block text-xs font-medium text-slate-500">
+                Date Range
+              </label>
 
               <div className="mb-5 flex items-center gap-2">
                 <div className="relative flex-1">
@@ -663,6 +666,7 @@ export default function CustomersPage() {
                   <input
                     type="date"
                     value={dateFrom}
+                    max={dateTo || undefined}
                     onChange={(e) => setDateFrom(e.target.value)}
                     className="h-[39px] w-full rounded-lg border border-[#d1d1d1] bg-white pl-10 pr-3 text-[13px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#051422] dark:text-white"
                   />
