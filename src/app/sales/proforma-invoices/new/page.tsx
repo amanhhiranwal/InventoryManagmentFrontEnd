@@ -12,13 +12,13 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  LuFileText,
+  LuPackage,
   LuBookmark,
   LuCalendar,
-  LuClipboardList,
   LuFolderOpen,
   LuInfo,
   LuMapPin,
-  LuPackage,
   LuPlus,
   LuX,
 } from "react-icons/lu";
@@ -659,7 +659,7 @@ function GenerateProformaInvoice() {
 
           <div className="space-y-4">
             <OrderSummaryCard
-              icon={<LuClipboardList size={17} />}
+              icon={<LuFileText size={17} />}
               total={totals.total}
               advancePercent={advancePercent}
             />

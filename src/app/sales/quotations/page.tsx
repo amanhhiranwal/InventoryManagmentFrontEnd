@@ -118,6 +118,7 @@ import {
   FiInfo,
   FiMapPin,
   FiFileText,
+  FiPackage,
   FiShield,
   FiTrash2,
   FiDownload,
@@ -1855,7 +1856,7 @@ export default function QuotationPage() {
             {/* PRODUCTS */}
 
             <FormSectionBlock
-              icon={<FiGrid size={16} />}
+              icon={<FiPackage size={16} />}
               title="Products & Order Items"
               /* Inline with the heading, as the design has it - on its own
                  row it cost a full line and read as detached from the
@@ -2268,7 +2269,7 @@ export default function QuotationPage() {
             <FormCard>
               <FormSectionBlock
                 first
-                icon={<FiBookmark size={16} />}
+                icon={<FiFileText size={16} />}
                 title="Order Summary"
               >
                 <div className="rounded-xl bg-emerald-50 px-4 py-4 dark:bg-emerald-950/20">
@@ -3720,7 +3721,12 @@ function SendQuotationModal({
       return;
     }
 
-    const invalid = recipients.find((address) => !EMAIL_PATTERN.test(address));
+    // Every address on the message, not just the To line. CC and BCC were
+    // going out unchecked, so "fff" in CC reached the mail server and the
+    // send failed there instead of here.
+    const invalid = [...recipients, ...cc, ...bcc].find(
+      (address) => !EMAIL_PATTERN.test(address),
+    );
 
     if (!testOnly && invalid) {
       onError(`"${invalid}" is not a valid email address.`);
@@ -4101,14 +4107,28 @@ function ChipInput({
 }) {
   const [draft, setDraft] = useState("");
 
+  /* What was typed that is not an address. Kept so the field can say why
+     it refused rather than silently dropping it - and so the text stays
+     in the box to be corrected. */
+  const [refused, setRefused] = useState<string[]>([]);
+
   const commit = () => {
-    const entries = splitAddresses(draft).filter(
-      (address) => !values.includes(address),
+    const entries = splitAddresses(draft);
+
+    const addresses = entries.filter(
+      (address) => EMAIL_PATTERN.test(address) && !values.includes(address),
     );
 
-    if (entries.length) onChange([...values, ...entries]);
+    const rejected = entries.filter((address) => !EMAIL_PATTERN.test(address));
 
-    setDraft("");
+    if (addresses.length) onChange([...values, ...addresses]);
+
+    setRefused(rejected);
+
+    // Anything refused stays in the box, so it can be corrected rather
+    // than retyped. This is a mail field: "fff" is not a recipient, and
+    // letting it become one only moves the failure to the mail server.
+    setDraft(rejected.join(", "));
   };
 
   return (
@@ -4139,8 +4159,13 @@ function ChipInput({
 
       <input
         ref={inputRef}
+        type="email"
+        multiple
         value={draft}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          if (refused.length) setRefused([]);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === ",") {
             event.preventDefault();
@@ -4156,6 +4181,14 @@ function ChipInput({
         placeholder={values.length ? "" : placeholder}
         className="min-w-[140px] flex-1 bg-transparent py-1 text-[11px] text-slate-700 outline-none dark:text-slate-200"
       />
+
+      {refused.length > 0 && (
+        <p className="w-full text-[10px] font-medium text-rose-600">
+          {refused.length === 1
+            ? `"${refused[0]}" is not an email address.`
+            : `${refused.length} of those are not email addresses.`}
+        </p>
+      )}
     </div>
   );
 }

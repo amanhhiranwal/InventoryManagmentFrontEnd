@@ -12,10 +12,10 @@
 import { ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
+  LuPackage,
   LuCalendar,
   LuChevronLeft,
   LuCircleCheck,
-  LuClipboardList,
   LuDownload,
   LuEye,
   LuFileSpreadsheet,
@@ -26,7 +26,6 @@ import {
   LuIndianRupee,
   LuInfo,
   LuMapPin,
-  LuPackage,
   LuPencil,
   LuPlay,
   LuSend,
@@ -611,7 +610,7 @@ function ProformaInvoiceDetail() {
         {/* RIGHT */}
         <div className="space-y-4">
           <OrderSummaryCard
-            icon={<LuClipboardList size={17} />}
+            icon={<LuFileText size={17} />}
             total={invoice.grand_total}
             advancePercent={invoice.advance_percent}
           />

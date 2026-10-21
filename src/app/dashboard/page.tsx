@@ -1931,44 +1931,50 @@ export default function Dashboard() {
               />
             )}
 
-            {chartData.map((point, index) => {
-              const coords = chartPoints[index];
-
-              if (!coords) {
-                return null;
-              }
-
-              const selected = index === activeChartIndex;
-
-              return (
-                <g
-                  key={`${point.label}-${point.year}`}
-                  onMouseEnter={() => setHoveredChartIndex(index)}
-                  onMouseLeave={() => setHoveredChartIndex(null)}
-                  onClick={() => setActiveChartIndex(index)}
-                  className="cursor-pointer"
-                >
-                  {selected && (
-                    <circle
-                      cx={coords.x}
-                      cy={coords.y}
-                      r="8"
-                      fill="white"
-                      stroke="#38588f"
-                      strokeWidth="2"
-                    />
-                  )}
-
-                  <circle
-                    cx={coords.x}
-                    cy={coords.y}
-                    r={selected ? 4.5 : 3.5}
-                    fill="#38588f"
-                  />
-                </g>
-              );
-            })}
           </svg>
+
+          {/* The dots live outside the SVG, positioned as percentages over
+              it. Inside, preserveAspectRatio="none" stretches the 1000x300
+              viewBox to whatever width the card has, and that stretch
+              applies to everything drawn in it - which turned every marker
+              into an ellipse, wider the wider the screen. The line and the
+              area are meant to stretch; a circle is not. */}
+          {chartData.map((point, index) => {
+            const coords = chartPoints[index];
+
+            if (!coords) {
+              return null;
+            }
+
+            const selected = index === activeChartIndex;
+
+            return (
+              <button
+                type="button"
+                key={`${point.label}-${point.year}`}
+                onMouseEnter={() => setHoveredChartIndex(index)}
+                onMouseLeave={() => setHoveredChartIndex(null)}
+                onClick={() => setActiveChartIndex(index)}
+                aria-label={`${point.label} ${point.year}`}
+                className="absolute z-10 -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+                style={{
+                  left: `${(coords.x / 1000) * 100}%`,
+                  top: `${((coords.y / 300) * 215) / 250 * 100}%`,
+                }}
+              >
+                {selected && (
+                  <span className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#38588f] bg-white" />
+                )}
+
+                <span
+                  className={`relative block rounded-full bg-[#38588f] ${
+                    selected ? "h-[9px] w-[9px]" : "h-[7px] w-[7px]"
+                  }`}
+                />
+              </button>
+            );
+          })}
+
 
           {hoveredChartIndex !== null && chartPoints[hoveredChartIndex] && (
             <div

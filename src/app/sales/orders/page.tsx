@@ -94,6 +94,7 @@ import {
   FiTrash2,
   FiMinus,
   FiBox,
+  FiPackage,
   FiMapPin,
   FiUpload,
   FiShield,
@@ -2621,7 +2622,7 @@ export default function OrdersListPage() {
               <div className="mt-8">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <FiBox size={18} className="text-[#474747] dark:text-slate-300" />
+                    <FiPackage size={18} className="text-[#474747] dark:text-slate-300" />
 
                     <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                       Products & Order Items
@@ -3230,7 +3231,7 @@ export default function OrdersListPage() {
 
               <div className={`rounded-xl bg-white px-5 py-5 dark:border dark:border-[#17304a] dark:bg-[#071929] ${FORM_FIELDS}`}>
                 <div className="mb-5 flex items-center gap-2.5 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
-                  <FiClipboard size={18} className="text-[#474747] dark:text-slate-300" />
+                  <FiFileText size={18} className="text-[#474747] dark:text-slate-300" />
 
                   <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                     Order Summary
