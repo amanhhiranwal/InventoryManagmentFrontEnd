@@ -26,8 +26,12 @@ export function RowMenu({
 }: {
   open: boolean;
   onClose: () => void;
-  /** The control the menu hangs from. */
-  anchor: HTMLElement | null;
+  /** The control the menu hangs from.
+   *
+   *  A function, where the caller keeps a map of buttons in a ref: reading
+   *  `ref.current` while rendering is exactly what React asks you not to
+   *  do, and the menu only needs the element once it opens. */
+  anchor: HTMLElement | null | (() => HTMLElement | null);
   children: ReactNode;
   width?: number;
   /** Which edge of the menu lines up with the button. */
@@ -39,15 +43,17 @@ export function RowMenu({
   /* Measured after paint, so the panel's real height decides whether it
      opens downwards or upwards rather than a guess at it. */
   useLayoutEffect(() => {
-    if (!open || !anchor) {
+    const element = typeof anchor === "function" ? anchor() : anchor;
+
+    if (!open || !element) {
       setBox(null);
       return;
     }
 
     function place() {
-      if (!anchor) return;
+      if (!element) return;
 
-      const rect = anchor.getBoundingClientRect();
+      const rect = element.getBoundingClientRect();
       const height = panelRef.current?.offsetHeight ?? 220;
       const margin = 8;
 
@@ -83,9 +89,10 @@ export function RowMenu({
 
     function handleDown(event: MouseEvent) {
       const target = event.target as Node;
+      const element = typeof anchor === "function" ? anchor() : anchor;
 
       if (panelRef.current?.contains(target)) return;
-      if (anchor?.contains(target)) return;
+      if (element?.contains(target)) return;
 
       onClose();
     }

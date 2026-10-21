@@ -34,6 +34,7 @@ import ListActionsMenu, {
   ExportColumn,
 } from "@/components/crm/ListActions";
 import Table from "@/components/ui/Table";
+import { useTableSort } from "@/components/crm/sort";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
 import { eligibleManagers, userLabel } from "@/features/users/utils/hierarchy";
 import { passwordProblem } from "@/features/auth/utils/passwordRules";
@@ -93,6 +94,18 @@ function ReportsToSelect({
 export default function UserListPage() {
   const { addToast } = useUIStore();
   const [users, setUsers] = useState<User[]>([]);
+
+  const { sort, toggleSort, sortRows } = useTableSort<string, User>({
+    user: (u) => `${u.first_name || ""} ${u.last_name || ""}`.trim().toLowerCase(),
+    location: (u) => (u.location || "").toLowerCase(),
+    reports: (u) => (u.reports_to_name || "").toLowerCase(),
+    employee: (u) => u.employee_id || "",
+    created: (u) => new Date(u.created_at || 0).getTime() || 0,
+    status: (u) => (u.is_active ? 0 : 1),
+  });
+
+  /* The server sends one page; this orders that page. */
+  const sortedUsers = sortRows(users);
   const [roles, setRoles] = useState<Role[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -495,13 +508,28 @@ export default function UserListPage() {
             "Status",
             "Actions",
           ]}
+          /* Roles and Companies are lists per row rather than one value,
+             so there is nothing to order them by; Actions is a button. */
+          sortKeys={[
+            "user",
+            null,
+            "location",
+            "reports",
+            "employee",
+            null,
+            "created",
+            "status",
+            null,
+          ]}
+          sort={sort}
+          onSort={toggleSort}
           loading={loading}
           currentPage={currentPage}
           totalItems={totalItems}
           pageSize={pageSize}
           onPageChange={setCurrentPage}
         >
-        {users.map((u) => {
+        {sortedUsers.map((u) => {
           /* The roles master is only loaded for someone allowed
              to read it. Without it, fall back to the names the
              user record carries, so the column reads "Area

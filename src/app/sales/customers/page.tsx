@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AxiosError } from "axios";
 
@@ -8,6 +8,17 @@ import { getSalesOrdersApi } from "@/features/salesOrders/api/salesOrders.api";
 import CustomerContactDrawer from "@/components/ui/CustomerContactDrawer";
 import Pagination from "@/components/crm/Pagination";
 import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
+import { SortTh, useTableSort } from "@/components/crm/sort";
+import { RowMenu } from "@/components/crm/RowMenu";
+
+/** The columns the customer list can be ordered by. */
+type CustomerSortKey =
+  | "code"
+  | "name"
+  | "company"
+  | "assigned"
+  | "status"
+  | "activity";
 import {
   LIST_TABLE,
   ListPage,
@@ -169,6 +180,10 @@ export default function CustomersPage() {
   const [search, setSearch] = useState("");
 
   const [filterOpen, setFilterOpen] = useState(false);
+
+  /* The buttons the row menus hang from; the panel is drawn into the
+     body and needs their place on screen. */
+  const rowMenuAnchors = useRef<Record<string, HTMLButtonElement | null>>({});
 
   /* Wraps the toolbar and the popover together, so the filter button
      itself does not count as an outside click. */
@@ -396,7 +411,16 @@ export default function CustomersPage() {
     setCurrentPage(1);
   }, [search, dateFrom, dateTo, customerType, assignedTo, status, stateFilter]);
 
-  const paginatedCustomers = filteredCustomers.slice(
+  const { sort, toggleSort, sortRows } = useTableSort<CustomerSortKey, Customer>({
+    code: (row) => row.code || "",
+    name: (row) => (row.contactName || row.name || "").toLowerCase(),
+    company: (row) => (row.name || "").toLowerCase(),
+    assigned: (row) => (row.assignedTo || "").toLowerCase(),
+    status: (row) => (row.status || "").toLowerCase(),
+    activity: (row) => new Date(row.lastActivity || 0).getTime() || 0,
+  });
+
+  const paginatedCustomers = sortRows(filteredCustomers).slice(
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   );
@@ -768,37 +792,20 @@ export default function CustomersPage() {
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              {/* The rows scroll under the heading rather than past it. */}
+              <div className="max-h-[calc(100vh-360px)] min-h-[260px] overflow-auto">
                 <table
                   className={`w-full min-w-[900px] border-collapse text-left ${LIST_TABLE}`}
                 >
-                  <thead>
-                    <tr>
-                      <th className="w-12 px-4 py-3">
-                        <input
-                          type="checkbox"
-                          aria-label="Select all customers"
-                          className="h-4 w-4 rounded border-slate-300"
-                        />
-                      </th>
-                      <th className="px-4 py-3">
-                        <SortLabel label="Cust. ID" />
-                      </th>
-                      <th className="px-4 py-3">
-                        <SortLabel label="Customer Name" />
-                      </th>
-                      <th className="px-4 py-3">
-                        <SortLabel label="Company" />
-                      </th>
-                      <th className="px-4 py-3">
-                        <SortLabel label="Assigned To" />
-                      </th>
-                      <th className="px-4 py-3">
-                        <SortLabel label="Status" />
-                      </th>
-                      <th className="px-4 py-3">
-                        <SortLabel label="Last Activity" />
-                      </th>
+                  <thead className="sticky top-0 z-20">
+                    <tr className="[&>th]:sticky [&>th]:top-0 [&>th]:bg-white dark:[&>th]:bg-[#071929]">
+                      {/* The select-all box had no bulk action behind it. */}
+                      <SortTh label="Cust. ID" sortKey="code" sort={sort} onSort={toggleSort} className="px-4 py-3 text-[11px] font-semibold text-slate-500" />
+                      <SortTh label="Customer Name" sortKey="name" sort={sort} onSort={toggleSort} className="px-4 py-3 text-[11px] font-semibold text-slate-500" />
+                      <SortTh label="Company" sortKey="company" sort={sort} onSort={toggleSort} className="px-4 py-3 text-[11px] font-semibold text-slate-500" />
+                      <SortTh label="Assigned To" sortKey="assigned" sort={sort} onSort={toggleSort} className="px-4 py-3 text-[11px] font-semibold text-slate-500" />
+                      <SortTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} className="px-4 py-3 text-[11px] font-semibold text-slate-500" />
+                      <SortTh label="Last Activity" sortKey="activity" sort={sort} onSort={toggleSort} className="px-4 py-3 text-[11px] font-semibold text-slate-500" />
                       <th className="px-4 py-3 text-center">Actions</th>
                     </tr>
                   </thead>
@@ -810,14 +817,6 @@ export default function CustomersPage() {
                         onClick={() => openContactDetails(customer)}
                         className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-[#0b2034]/50"
                       >
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            aria-label={`Select ${customer.name}`}
-                            className="h-4 w-4 rounded border-slate-300"
-                          />
-                        </td>
-
                         <td className="px-4 py-3">
                           <span className="whitespace-nowrap text-[11px] font-medium text-slate-800 dark:text-slate-300">
                             {customer.code}
@@ -900,11 +899,14 @@ export default function CustomersPage() {
                               <FiPhone size={13} />
                             </a>
 
-                            <div className="relative">
+                            <div className="relative" data-row-menu>
                               <button
                                 type="button"
                                 title="More Actions"
                                 aria-label="More Actions"
+                                ref={(node) => {
+                                  rowMenuAnchors.current[String(customer.id)] = node;
+                                }}
                                 onClick={() =>
                                   setOpenRowMenu(openRowMenu === customer.id ? null : customer.id)
                                 }
@@ -913,8 +915,15 @@ export default function CustomersPage() {
                                 <FiMoreVertical size={14} />
                               </button>
 
-                              {openRowMenu === customer.id && (
-                                <div className="absolute right-0 top-full z-40 mt-1 w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
+                              {/* Drawn over the page, so the last rows'
+                                  menus are not cut off by the scroll box. */}
+                              <RowMenu
+                                open={openRowMenu === customer.id}
+                                onClose={() => setOpenRowMenu(null)}
+                                anchor={() => rowMenuAnchors.current[String(customer.id)] ?? null}
+                                width={176}
+                              >
+                                <>
                                   <MenuItem
                                     icon={<FiEdit2 />}
                                     onClick={() => editCustomer(customer.raw)}
@@ -990,8 +999,8 @@ export default function CustomersPage() {
                                       Mark as Dead
                                     </MenuItem>
                                   )}
-                                </div>
-                              )}
+                                </>
+                              </RowMenu>
                             </div>
                           </div>
                         </td>

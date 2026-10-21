@@ -133,6 +133,18 @@ import {
 
 import { CgSpinner } from "react-icons/cg";
 import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
+import { SortTh, useTableSort } from "@/components/crm/sort";
+import { RowMenu } from "@/components/crm/RowMenu";
+
+/** The columns the proposal list can be ordered by. */
+type QuotationSortKey =
+  | "id"
+  | "organization"
+  | "opportunity"
+  | "value"
+  | "assigned"
+  | "date"
+  | "status";
 
 /* ============================================================================
    TYPES
@@ -481,6 +493,10 @@ export default function QuotationPage() {
 
   const [rowMenuId, setRowMenuId] = useState<number | null>(null);
 
+  /* The buttons the row menus hang from; the panel is drawn into the
+     body and needs their place on screen. */
+  const rowMenuAnchors = useRef<Record<string, HTMLButtonElement | null>>({});
+
   /* ---- create form ---- */
   const [opportunityId, setOpportunityId] = useState<number | null>(null);
 
@@ -785,9 +801,23 @@ export default function QuotationPage() {
     });
   }, [quotations, filters]);
 
+  const { sort, toggleSort, sortRows } = useTableSort<
+    QuotationSortKey,
+    QuotationModel
+  >({
+    id: (row) => row.quote_number || "",
+    organization: (row) => (row.organization_name || "").toLowerCase(),
+    opportunity: (row) => (row.opportunity_name || "").toLowerCase(),
+    value: (row) => Number(row.total_payable) || 0,
+    assigned: (row) => userName(row.assigned_to_id).toLowerCase(),
+    date: (row) =>
+      new Date(row.quotation_date || row.created_at || 0).getTime() || 0,
+    status: (row) => String(row.status || "").toLowerCase(),
+  });
+
   const paginated = useMemo(() => {
-    return filtered;
-  }, [filtered]);
+    return sortRows(filtered);
+  }, [filtered, sortRows]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -2545,38 +2575,23 @@ export default function QuotationPage() {
       </div>
 
       <TableCard>
-        <div className="overflow-x-auto">
+        {/* The rows scroll under the heading rather than past it. */}
+        <div className="max-h-[calc(100vh-380px)] min-h-[260px] overflow-auto">
           <table className={`w-full min-w-[900px] ${LIST_TABLE}`}>
-            <thead className="border-b border-slate-200 dark:border-[#17304a]">
-              <tr>
-                <Th className="w-10 px-3!">
-                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300" />
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Proposal ID</SortLabel>
-                </Th>
+            <thead className="sticky top-0 z-20 border-b border-slate-200 dark:border-[#17304a]">
+              <tr className="[&>th]:sticky [&>th]:top-0 [&>th]:bg-white dark:[&>th]:bg-[#071929]">
+                {/* The select-all box had no bulk action behind it. */}
+                <SortTh label="Proposal ID" sortKey="id" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
                 {/* The organisation and where it is, and nothing else, as
                     the design has it. The contact is on the proposal itself
                     and on the opportunity beside this column; repeating it
                     here only made the row taller. */}
-                <Th className="px-3!">
-                  <SortLabel>Organization Name</SortLabel>
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Opportunity</SortLabel>
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Order Value</SortLabel>
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Assigned To</SortLabel>
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Dates</SortLabel>
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Status</SortLabel>
-                </Th>
+                <SortTh label="Organization Name" sortKey="organization" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
+                <SortTh label="Opportunity" sortKey="opportunity" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
+                <SortTh label="Order Value" sortKey="value" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
+                <SortTh label="Assigned To" sortKey="assigned" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
+                <SortTh label="Dates" sortKey="date" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
+                <SortTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
                 <Th className="px-3! text-center">Actions</Th>
               </tr>
             </thead>
@@ -2584,7 +2599,7 @@ export default function QuotationPage() {
             <tbody className="divide-y divide-slate-100 dark:divide-[#0d2336]/70">
               {loading && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-16 text-center">
+                  <td colSpan={8} className="px-4 py-16 text-center">
                     <CgSpinner className="mx-auto animate-spin text-2xl text-slate-400" />
                   </td>
                 </tr>
@@ -2593,7 +2608,7 @@ export default function QuotationPage() {
               {!loading && paginated.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={8}
                     className="px-4 py-16 text-center text-xs text-slate-400"
                   >
                     No quotations found. Use Add New Proposal to raise one.
@@ -2614,16 +2629,6 @@ export default function QuotationPage() {
                     }
                     className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-[#071929]/50"
                   >
-                    <td
-                      className="px-3 py-4"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300"
-                      />
-                    </td>
-
                     <td className="px-3 py-4">
                       <span className="whitespace-nowrap text-[11px] font-medium text-slate-800 dark:text-slate-300">
                         #{quotation.quote_number}
@@ -2708,6 +2713,9 @@ export default function QuotationPage() {
                           <button
                             type="button"
                             title="More Actions"
+                            ref={(node) => {
+                              rowMenuAnchors.current[String(quotation.id)] = node;
+                            }}
                             onClick={() =>
                               setRowMenuId((previous) =>
                                 previous === quotation.id ? null : quotation.id,
@@ -2718,8 +2726,14 @@ export default function QuotationPage() {
                             <FiMoreVertical size={14} />
                           </button>
 
-                          {rowMenuId === quotation.id && (
-                            <div className="absolute right-0 top-full z-40 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#0d2336] dark:bg-[#051422]">
+                          {/* Drawn over the page, so the last rows' menus
+                              are not cut off by the scroll box. */}
+                          <RowMenu
+                            open={rowMenuId === quotation.id}
+                            onClose={() => setRowMenuId(null)}
+                            anchor={() => rowMenuAnchors.current[String(quotation.id)] ?? null}
+                          >
+                            <>
                               {quotation.status === QUOTATION_STATUS.DRAFT && (
                                 <button
                                   type="button"
@@ -2764,8 +2778,8 @@ export default function QuotationPage() {
                                   </button>
                                 ),
                               )}
-                            </div>
-                          )}
+                            </>
+                          </RowMenu>
                         </div>
                       </div>
                     </td>

@@ -101,6 +101,8 @@ import {
 } from "react-icons/fi";
 import { ProductItemsIcon } from "@/components/icons/SectionIcons";
 import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
+import { SortTh, useTableSort } from "@/components/crm/sort";
+import { RowMenu } from "@/components/crm/RowMenu";
 
 interface ProductItem {
   name: string;
@@ -202,6 +204,19 @@ function statusToStage(status?: string | null): OpportunityStage {
 type OpportunityStatus = "Active" | "Inactive";
 
 type Priority = "High" | "Medium" | "Low";
+
+/** Sorting Priority alphabetically puts High, Low, Medium; it is ranked. */
+const PRIORITY_ORDER: Record<Priority, number> = { High: 0, Medium: 1, Low: 2 };
+
+/** The columns the opportunity list can be ordered by. */
+type OppSortKey =
+  | "lead"
+  | "name"
+  | "contact"
+  | "value"
+  | "assigned"
+  | "status"
+  | "priority";
 
 /** The stages the pipeline chart is drawn across, in pipeline order. */
 const OPPORTUNITY_STAGES = [
@@ -2195,36 +2210,47 @@ function ListView({
   onMarkDead: (opportunity: Opportunity) => void;
   onAdvance: (opportunity: Opportunity) => void;
 }) {
+  const { sort, toggleSort, sortRows } = useTableSort<OppSortKey, Opportunity>({
+    lead: (opp) => String(opp.leadId || ""),
+    name: (opp) => (opp.name || "").toLowerCase(),
+    contact: (opp) => (opp.customerName || "").toLowerCase(),
+    value: (opp) => opp.dealValue || 0,
+    assigned: (opp) => (opp.owner || "").toLowerCase(),
+    status: (opp) => (opp.stage || "").toLowerCase(),
+    priority: (opp) => PRIORITY_ORDER[opp.priority] ?? 99,
+  });
+
+  const rows = sortRows(opportunities);
+
   return (
     <div className="overflow-hidden rounded-xl bg-white dark:border dark:border-[#17304a] dark:bg-[#071929]">
-      <div className="overflow-x-auto">
+      {/* The rows scroll under the heading rather than past it. */}
+      <div className="max-h-[calc(100vh-340px)] min-h-[260px] overflow-auto">
         <table className={`w-full min-w-[900px] border-collapse ${LIST_TABLE}`}>
-          <thead>
-            <tr className="border-b border-slate-200 bg-white dark:border-[#17304a] dark:bg-[#071929]">
-              <th className="w-10 px-3 py-3">
-                <input type="checkbox" className="h-3.5 w-3.5 rounded" />
-              </th>
+          <thead className="sticky top-0 z-20">
+            <tr className="border-b border-slate-200 bg-white [&>th]:sticky [&>th]:top-0 [&>th]:bg-white dark:border-[#17304a] dark:bg-[#071929] dark:[&>th]:bg-[#071929]">
+              {/* The select-all box had no bulk action behind it. */}
 
-              <TableHeader>Lead ID</TableHeader>
+              <SortTh label="Lead ID" sortKey="lead" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Opportunity Name</TableHeader>
+              <SortTh label="Opportunity Name" sortKey="name" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Contact Person</TableHeader>
+              <SortTh label="Contact Person" sortKey="contact" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Est. Deal Value</TableHeader>
+              <SortTh label="Est. Deal Value" sortKey="value" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Assigned To</TableHeader>
+              <SortTh label="Assigned To" sortKey="assigned" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Status</TableHeader>
+              <SortTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Priority</TableHeader>
+              <SortTh label="Priority" sortKey="priority" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
               <TableHeader align="right">Actions</TableHeader>
             </tr>
           </thead>
 
           <tbody>
-            {opportunities.map((opp) => (
+            {rows.map((opp) => (
               <tr
                 key={opp.id}
                 /* The whole row opens the opportunity, not just the two name
@@ -2233,13 +2259,6 @@ function ListView({
                 onClick={() => onDetails(opp)}
                 className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-[#17304a]/70 dark:hover:bg-[#0b2034]"
               >
-                <td
-                  className="px-3 py-3.5"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <input type="checkbox" className="h-3.5 w-3.5 rounded" />
-                </td>
-
                 <td className="px-3 py-3.5">
                   <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                     #{opp.leadId}
@@ -2393,10 +2412,15 @@ function ActionMenu({
   onMarkDead: () => void;
   onAdvance: () => void;
 }) {
+  /* The menu is drawn over the page, so it needs the button's place on
+     screen rather than a parent to be absolute inside. */
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+
   return (
-    <div className="relative">
+    <div className="relative" data-row-menu>
       <button
         type="button"
+        ref={anchorRef}
         onClick={(event) => {
           event.stopPropagation();
           onToggle();
@@ -2406,8 +2430,15 @@ function ActionMenu({
         <FiMoreVertical size={15} />
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-8 z-[70] w-32 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
+      <RowMenu
+        open={open}
+        onClose={() => {
+          if (open) onToggle();
+        }}
+        anchor={() => anchorRef.current}
+        width={160}
+      >
+        <>
           <button
             type="button"
             onClick={(event) => {
@@ -2453,8 +2484,8 @@ function ActionMenu({
               Mark as Dead
             </button>
           )}
-        </div>
-      )}
+        </>
+      </RowMenu>
     </div>
   );
 }

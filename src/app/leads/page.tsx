@@ -2375,7 +2375,7 @@ export default function LeadsPage() {
                               <RowMenu
                                 open={rowMenuLeadId === lead.id}
                                 onClose={() => setRowMenuLeadId(null)}
-                                anchor={rowMenuAnchors.current[String(lead.id)] ?? null}
+                                anchor={() => rowMenuAnchors.current[String(lead.id)] ?? null}
                               >
                                 <>
                                   <RowAction
