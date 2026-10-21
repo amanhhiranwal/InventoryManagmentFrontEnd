@@ -216,13 +216,26 @@ export function TableCard({ children }: { children: ReactNode }) {
 export function Th({
   children,
   className = "",
+  wrap = false,
 }: {
   children?: ReactNode;
   className?: string;
+  /** Let a long label break over two lines.
+   *
+   *  A list table scrolls sideways, so its headings stay on one line. A
+   *  table laid out in shares of a panel cannot scroll, and at laptop
+   *  width "Model / Variant" simply ran into "HSN / SAC" beside it. A
+   *  prop rather than a class, because "whitespace-normal" passed in
+   *  through className does not reliably beat the nowrap already here -
+   *  which of two utilities wins depends on their order in the
+   *  stylesheet, not in the attribute. */
+  wrap?: boolean;
 }) {
   return (
     <th
-      className={`whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold text-slate-500 dark:text-slate-400 ${className}`}
+      className={`${
+        wrap ? "whitespace-normal" : "whitespace-nowrap"
+      } px-4 py-3 text-left text-[11px] font-semibold text-slate-500 dark:text-slate-400 ${className}`}
     >
       {children}
     </th>

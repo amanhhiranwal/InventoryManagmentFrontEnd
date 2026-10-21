@@ -24,6 +24,72 @@ import { useAuthStore } from "@/features/auth/store/auth.store";
  * (66) - the same glyph turned through 180 degrees.
  */
 const ICON_OVERRIDES: Record<string, (props: any) => any> = {
+  /* The dashboard's four blocks fill in on the page they belong to and
+     stay outlines everywhere else.
+
+     Solid all the time, the blocks are four dark squares next to seven
+     thin outlines, and that weight alone reads as the selected row even
+     from another page - which is what the design reserves for the page
+     you are on. So the row passes data-active, and only then are the
+     squares filled; the colour still comes from the row's own class. */
+  LuLayoutGrid: ({ className, style, size, ...rest }: any) => {
+    const active = rest["data-active"] === "true" || rest["data-active"] === true;
+
+    return (
+      <svg
+        {...rest}
+        viewBox="0 0 24 24"
+        fill={active ? "currentColor" : "none"}
+        stroke={active ? "none" : "currentColor"}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className={className}
+        style={{ width: size ?? "1em", height: size ?? "1em", ...style }}
+      >
+        <rect x="3" y="3" width="7.5" height="7.5" rx="1.6" />
+        <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" />
+        <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" />
+        <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" />
+      </svg>
+    );
+  },
+
+  /* Sales is a megaphone in the menu table and a person over a rising
+     chart in the design. The menu row keeps its stored name - the shape
+     is swapped here, so nothing has to be migrated.
+
+     Same rule as the dashboard's blocks: the head fills in on the
+     section you are in and is an outline everywhere else. */
+  LuMegaphone: ({ className, style, size, ...rest }: any) => {
+    const active = rest["data-active"] === "true" || rest["data-active"] === true;
+
+    return (
+      <svg
+        {...rest}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className={className}
+        style={{ width: size ?? "1em", height: size ?? "1em", ...style }}
+      >
+        <circle
+          cx="9.5"
+          cy="6.8"
+          r={active ? 4.4 : 3.6}
+          fill={active ? "currentColor" : "none"}
+          stroke={active ? "none" : "currentColor"}
+        />
+        <path d="M2.8 18.2 8.4 13l3.6 3.4 7-6.2" />
+        <path d="M15.3 10.2H19v3.7" />
+      </svg>
+    );
+  },
+
   LuQuoteOpen: ({ style, ...props }: any) => (
     /* Rotated inline rather than with a utility class so it cannot be
        dropped by the CSS scanner, and so the caller's own className
@@ -189,21 +255,48 @@ export default function Sidebar() {
                   <div key={menu.id} className="space-y-0.5">
                     {/* Parent Row */}
                     <div className="relative pl-2">
+                      {isChildActive && !isOpen && (
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute inset-y-1 right-0 w-[3px] rounded-l-full bg-[#16294a] dark:bg-sky-400"
+                        />
+                      )}
+
                       <button
                         onClick={() => toggleMenu(menu.title)}
                         className={`
-                          flex w-full items-center justify-between rounded-l-2xl py-2 px-3 text-left transition-all duration-150 cursor-pointer
+                          flex w-full items-center justify-between rounded-xl py-2 px-3 text-left transition-all duration-150 cursor-pointer
                           ${
-                            isChildActive && !isOpen
-                              ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-semibold border-l-[3.5px] border-[#16294a] dark:border-sky-400 pl-[8.5px]"
+                            isChildActive
+                              ? `text-[#16294a] dark:text-sky-300 font-semibold${
+                                  isOpen ? "" : " bg-[#e8edf2] dark:bg-[#0c2136]"
+                                }`
                               : "text-slate-800 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/40"
                           }
                         `}
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <Icon className="text-[17px] shrink-0 text-slate-800 dark:text-slate-200" />
+                          {/* The group follows the page you are on: navy with
+                              the icon filled in while one of its pages is
+                              open, slate otherwise. Opened, it leaves the
+                              grey pill to the child that is actually
+                              current and keeps only the colour. */}
+                          <Icon
+                            data-active={isChildActive ? "true" : undefined}
+                            className={`text-[17px] shrink-0 ${
+                              isChildActive
+                                ? "text-[#16294a] dark:text-sky-300"
+                                : "text-slate-800 dark:text-slate-200"
+                            }`}
+                          />
                           {(!isSidebarCollapsed || isSidebarOpen) && (
-                            <span className="text-[13.5px] font-medium text-slate-800 dark:text-slate-200 truncate">
+                            <span
+                              className={`text-[13.5px] truncate ${
+                                isChildActive
+                                  ? "font-semibold text-[#16294a] dark:text-sky-300"
+                                  : "font-medium text-slate-800 dark:text-slate-200"
+                              }`}
+                            >
                               {menu.title}
                             </span>
                           )}
@@ -228,13 +321,20 @@ export default function Sidebar() {
 
                           return (
                             <div key={child.id} className="relative">
+                              {isActive && (
+                                <span
+                                  aria-hidden
+                                  className="pointer-events-none absolute inset-y-0.5 right-0 w-[3px] rounded-l-full bg-[#16294a] dark:bg-sky-400"
+                                />
+                              )}
+
                               <Link
                                 href={child.path || "#"}
                                 className={`
-                                  flex items-center gap-2 rounded-l-xl py-1.5 px-2 text-[13px] transition-colors
+                                  flex items-center gap-2 rounded-lg py-1.5 px-2 text-[13px] transition-colors
                                   ${
                                     isActive
-                                      ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-bold border-l-[3px] border-[#16294a] dark:border-sky-400 pl-[5px]"
+                                      ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-bold"
                                       : "text-slate-700 dark:text-slate-300 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 font-medium"
                                   }
                                 `}
@@ -255,18 +355,25 @@ export default function Sidebar() {
 
               return (
                 <div key={menu.id} className="relative pl-2">
+                  {isActive && (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-y-1 right-0 w-[3px] rounded-l-full bg-[#16294a] dark:bg-sky-400"
+                    />
+                  )}
                   <Link
                     href={menu.path || "#"}
                     className={`
-                      flex items-center gap-2 rounded-l-2xl py-2 px-3 transition-all duration-150
+                      flex items-center gap-2 rounded-xl py-2 px-3 transition-all duration-150
                       ${
                         isActive
-                          ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-semibold border-l-[3.5px] border-[#16294a] dark:border-sky-400 pl-[8.5px]"
+                          ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-semibold"
                           : "text-slate-800 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/40 font-medium"
                       }
                     `}
                   >
                     <Icon
+                      data-active={isActive ? "true" : undefined}
                       className={`text-[17px] shrink-0 ${
                         isActive ? "text-[#16294a] dark:text-sky-300" : "text-slate-800 dark:text-slate-200"
                       }`}

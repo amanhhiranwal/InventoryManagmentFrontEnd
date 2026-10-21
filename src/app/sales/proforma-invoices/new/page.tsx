@@ -12,13 +12,13 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  LuFileText,
+  LuPackage,
   LuBookmark,
   LuCalendar,
-  LuClipboardList,
   LuFolderOpen,
   LuInfo,
   LuMapPin,
-  LuPackage,
   LuPlus,
   LuX,
 } from "react-icons/lu";
@@ -59,6 +59,7 @@ import {
   toDateInput,
   type EditableLine,
 } from "@/features/proformaInvoices/components/ProformaParts";
+import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
 
 const DEFAULT_TERMS = [
   "Payment Terms: 30% advance against Proforma Invoice; 70% balance upon delivery challan verification.",
@@ -579,7 +580,7 @@ function GenerateProformaInvoice() {
             {/* PRODUCTS */}
             <section>
               <SectionTitle
-                icon={<LuPackage size={17} />}
+                icon={<ProductItemsIcon size={17} />}
                 title="Products & Order Items"
                 className="border-b-0 pb-0"
                 action={
@@ -659,7 +660,7 @@ function GenerateProformaInvoice() {
 
           <div className="space-y-4">
             <OrderSummaryCard
-              icon={<LuClipboardList size={17} />}
+              icon={<OrderSummaryIcon size={17} />}
               total={totals.total}
               advancePercent={advancePercent}
             />

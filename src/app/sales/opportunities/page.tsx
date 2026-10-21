@@ -3888,45 +3888,54 @@ function NewOpportunityPage({
                   ref={productsRef}
                   className="overflow-x-auto rounded-lg border border-slate-200 dark:border-[#17304a]"
                 >
-                  {/* No min-width: the design has this table fit its panel, and the
-                      floor was what made a scrollbar appear once the HSN
-                      column arrived. table-fixed shares the room out. */}
-                  <table className="w-full table-fixed">
+                  {/* A floor under the column widths, and the wrapper
+                      scrolls below it. The design draws this table at
+                      desktop width, where ten columns fit the panel; on a
+                      laptop, or at 150% zoom, the same shares are narrower
+                      than their contents - the warranty select ran over the
+                      unit price beside it, and the headings ran into each
+                      other. Scrolling sideways is the honest trade there,
+                      and above this width nothing changes. */}
+                  <table className="w-full min-w-[720px] table-fixed">
                     {/* Shared out explicitly rather than left to the browser.
                         Fixed layout gives the first row's cells the say, which
                         handed Product 293px and squeezed Unit Price to 44 -
                         its input then overflowed and the panel grew a
                         scrollbar the design does not have. */}
-                    {/* One col per column, and the percentages add up to
-                        100. Warranty and Selling Price were added to the
-                        header without being added here, and under
-                        table-fixed a column with no col takes its content's
-                        width instead of a share - which is what pushed the
-                        table past its panel and put a scrollbar under it. */}
+                    {/* One col per column. The shares come to 97 rather
+                        than 100: the delete column is a fixed 44px, and
+                        counting the rest to a full 100 beside it meant
+                        every column was quietly squeezed to make room. */}
                     <colgroup>
-                      <col className="w-[19%]" />
-                      <col className="w-[15%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[8%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[8%]" />
-                      <col className="w-[11%]" />
+                      <col className="w-[18%]" />
+                      <col className="w-[14%]" />
                       <col className="w-[9%]" />
+                      <col className="w-[6%]" />
+                      <col className="w-[9%]" />
+                      <col className="w-[7%]" />
+                      {/* Holds a select, so it gets the widest share of
+                          the narrow columns. */}
+                      <col className="w-[13%]" />
                       <col className="w-[10%]" />
+                      <col className="w-[11%]" />
                       <col className="w-[44px]" />
                     </colgroup>
 
                     <thead className="border-b border-slate-200 dark:border-[#17304a]">
                       <tr>
-                        <Th>Product</Th>
-                        <Th>Model / Variant</Th>
-                        <Th>HSN / SAC</Th>
-                        <Th>Qty</Th>
-                        <Th>Discount</Th>
-                        <Th>Tax</Th>
-                        <Th>Warranty</Th>
-                        <Th>Unit Price</Th>
-                        <Th>Selling Price</Th>
+                        {/* wrap: this table is laid out in shares of the
+                            panel and cannot scroll sideways, so a label
+                            too long for its share has to break rather
+                            than run into the one beside it. */}
+                        <Th wrap className="px-2">Product</Th>
+                        <Th wrap className="px-2">Model / Variant</Th>
+                        <Th wrap className="px-2">HSN / SAC</Th>
+                        <Th wrap className="px-2">Qty</Th>
+                        <Th wrap className="px-2">Discount</Th>
+                        <Th wrap className="px-2">Tax</Th>
+                        <Th wrap className="px-2">Warranty</Th>
+                        <Th wrap className="px-2">Unit Price</Th>
+                        <Th wrap className="px-2">Selling Price</Th>
                         <Th />
                       </tr>
                     </thead>
@@ -4100,7 +4109,7 @@ function NewOpportunityPage({
                                     warrantyTerm: event.target.value,
                                   })
                                 }
-                                className="h-8 w-28 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                                className="h-8 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[10px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
                               >
                                 {warrantyTerms.length === 0 && (
                                   <option value="">Standard</option>

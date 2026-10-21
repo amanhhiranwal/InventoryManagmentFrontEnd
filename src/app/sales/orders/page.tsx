@@ -94,11 +94,13 @@ import {
   FiTrash2,
   FiMinus,
   FiBox,
+  FiPackage,
   FiMapPin,
   FiUpload,
   FiShield,
   FiFileText,
 } from "react-icons/fi";
+import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
 
 /* =========================================================
    TYPES
@@ -2621,7 +2623,7 @@ export default function OrdersListPage() {
               <div className="mt-8">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <FiBox size={18} className="text-[#474747] dark:text-slate-300" />
+                    <ProductItemsIcon size={18} className="text-[#474747] dark:text-slate-300" />
 
                     <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                       Products & Order Items
@@ -2811,7 +2813,7 @@ export default function OrdersListPage() {
                                     event.target.value,
                                   )
                                 }
-                                className="h-8 w-28 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                                className="h-8 w-full min-w-0 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] text-slate-700 outline-none focus:border-slate-400 dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
                               >
                                 {warrantyTerms.length === 0 && (
                                   <option value="">Standard</option>
@@ -3230,7 +3232,7 @@ export default function OrdersListPage() {
 
               <div className={`rounded-xl bg-white px-5 py-5 dark:border dark:border-[#17304a] dark:bg-[#071929] ${FORM_FIELDS}`}>
                 <div className="mb-5 flex items-center gap-2.5 border-b border-[#f3f3f3] pb-3 dark:border-[#17304a]">
-                  <FiClipboard size={18} className="text-[#474747] dark:text-slate-300" />
+                  <OrderSummaryIcon size={18} className="text-[#474747] dark:text-slate-300" />
 
                   <h3 className="text-[15px] font-medium text-[#474747] dark:text-white">
                     Order Summary
