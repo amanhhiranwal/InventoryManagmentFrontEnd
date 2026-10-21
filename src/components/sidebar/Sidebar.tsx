@@ -8,7 +8,6 @@ import {
   LuChevronDown,
   LuChevronLeft,
   LuX,
-  LuSettings,
   LuCircle,
 } from "react-icons/lu";
 import * as LuIcons from "react-icons/lu";
@@ -390,27 +389,9 @@ export default function Sidebar() {
           </nav>
         </div>
 
-        {/* Footer Profile / Settings Quicklink */}
-        {(!isSidebarCollapsed || isSidebarOpen) && (
-          <div className="p-3 border-t border-slate-100 dark:border-[#0d2336] shrink-0">
-            <Link
-              href="/profile"
-              className="flex items-center gap-3 rounded-xl px-3 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all text-xs font-medium"
-            >
-              <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-[#0d2336] text-slate-600 dark:text-slate-300">
-                <LuSettings className="text-base" />
-              </div>
-              <div className="truncate">
-                <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">
-                  {user?.first_name ? `${user.first_name} ${user.last_name || ""}` : "Settings"}
-                </p>
-                <p className="text-[10px] text-slate-400 truncate">
-                  {user?.email || "Account & Preferences"}
-                </p>
-              </div>
-            </Link>
-          </div>
-        )}
+        {/* The profile card that used to sit here was a second way into
+            /profile, under the account menu in the top bar that already
+            goes there and carries the same name and address. */}
       </aside>
     </>
   );

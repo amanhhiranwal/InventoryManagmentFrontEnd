@@ -491,16 +491,11 @@ export default function ProformaInvoiceListPage() {
           <>
             <div className="fixed inset-0 z-40" onClick={() => setShowFilters(false)} />
             <div className="absolute right-0 top-[52px] z-50 w-full max-w-[500px] rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.12)] sm:right-[190px] dark:border-[#17304a] dark:bg-[#071929]">
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-xs font-medium text-slate-500">Date Range</h3>
-                <button
-                  type="button"
-                  onClick={() => setDraftFilters(EMPTY_FILTERS)}
-                  className="text-[11px] font-medium text-rose-500 hover:text-rose-600"
-                >
-                  × Clear Filter
-                </button>
-              </div>
+              {/* Clear All Filter at the foot of the panel already does
+                  this, and did it for every field rather than only the
+                  dates - two buttons a few lines apart that read the same
+                  and behaved differently. */}
+              <h3 className="mb-4 text-xs font-medium text-slate-500">Date Range</h3>
 
               <div className="grid grid-cols-2 gap-3">
                 {(["dateFrom", "dateTo"] as const).map((key) => (
@@ -513,6 +508,9 @@ export default function ProformaInvoiceListPage() {
                       type="date"
                       aria-label={key === "dateFrom" ? "Date from" : "Date to"}
                       value={draftFilters[key]}
+                      /* To cannot be earlier than From. */
+                      min={key === "dateTo" ? draftFilters.dateFrom || undefined : undefined}
+                      max={key === "dateFrom" ? draftFilters.dateTo || undefined : undefined}
                       onChange={(event) =>
                         setDraftFilters((current) => ({ ...current, [key]: event.target.value }))
                       }

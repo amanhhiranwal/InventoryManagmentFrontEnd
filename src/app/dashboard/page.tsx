@@ -529,7 +529,6 @@ export default function Dashboard() {
 
   const [openMenu, setOpenMenu] = useState<MenuType>(null);
 
-  const [showAllOrders, setShowAllOrders] = useState(false);
 
   const [orderSort, setOrderSort] = useState<{
     key: OrderSortKey;
@@ -1020,9 +1019,9 @@ export default function Dashboard() {
   );
 
   const displayedOrders = useMemo(() => {
-    const rows = showAllOrders
-      ? sortedSalesOrders
-      : sortedSalesOrders.slice(0, 5);
+    /* The card shows the five most recent; View All Orders goes to the
+       Sales Order page for the rest. */
+    const rows = sortedSalesOrders.slice(0, 5);
 
     if (!orderSort) return rows;
 
@@ -1034,7 +1033,7 @@ export default function Dashboard() {
 
       return (left < right ? -1 : left > right ? 1 : 0) * orderSort.dir;
     });
-  }, [sortedSalesOrders, showAllOrders, orderSort]);
+  }, [sortedSalesOrders, orderSort]);
 
   const toggleOrderSort = (key: OrderSortKey) =>
     setOrderSort((current) =>
@@ -1660,7 +1659,7 @@ export default function Dashboard() {
             font-weight="700"
             fill="#18294a"
           >
-            ${showAllOrders ? "All Orders" : "Recent Orders"}
+            Recent Orders
           </text>
 
           ${header}
@@ -1675,7 +1674,7 @@ export default function Dashboard() {
     );
 
     addToast("Orders chart downloaded.", "success");
-  }, [displayedOrders, showAllOrders, addToast]);
+  }, [displayedOrders, addToast]);
 
   /* ==========================================================
      LOADING
@@ -2294,27 +2293,20 @@ export default function Dashboard() {
         <div className="flex items-center justify-between px-5 py-5">
           <div>
             <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
-              {showAllOrders ? "All Orders" : "Recent Orders"}
+              Recent Orders
             </h3>
-
-            {showAllOrders && (
-              <p className="mt-1 text-xs text-slate-400">
-                Showing all {salesOrders.length} orders
-              </p>
-            )}
           </div>
 
           <div className="flex items-center gap-4">
-            {/* VIEW ALL / SHOW RECENT */}
-            <button
-              type="button"
-              onClick={() => {
-                setShowAllOrders((current) => !current);
-              }}
+            {/* The whole list belongs on the Sales Order page, which can
+                search, filter and page it. Growing this card to hold every
+                order only gave a second, poorer copy of that screen. */}
+            <Link
+              href="/sales/orders"
               className="text-sm text-[#aaaaaa] transition-colors hover:text-[#233353] dark:text-slate-400 dark:hover:text-white"
             >
-              {showAllOrders ? "Show Recent Orders" : "View All Orders"}
-            </button>
+              View All Orders
+            </Link>
 
             {/* EXPORT + DOWNLOAD CHART */}
             <DashboardMenu
@@ -2478,20 +2470,6 @@ export default function Dashboard() {
           </table>
         </div>
 
-        {/* SHOW RECENT FOOTER
-        {showAllOrders && (
-          <div className="flex items-center justify-center border-t border-slate-100 px-5 py-4 dark:border-[#0d2336]">
-            <button
-              type="button"
-              onClick={() => {
-                setShowAllOrders(false);
-              }}
-              className="text-xs font-semibold text-[#38588f] transition-colors hover:text-[#233353] dark:text-[#6f8fc4] dark:hover:text-white"
-            >
-              Show Recent Orders
-            </button>
-          </div>
-        )} */}
       </section>
     </div>
   );

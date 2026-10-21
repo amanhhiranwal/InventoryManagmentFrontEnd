@@ -101,6 +101,7 @@ import {
   FiFileText,
 } from "react-icons/fi";
 import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
+import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
 
 /* =========================================================
    TYPES
@@ -452,6 +453,12 @@ export default function OrdersListPage() {
   const [search, setSearch] = useState("");
 
   const [showFilters, setShowFilters] = useState(false);
+
+  /* Wraps the toolbar and the popover together, so the filter button
+     itself does not count as an outside click. */
+  const filterRef = useCloseOnOutsideClick(showFilters, () =>
+    setShowFilters(false),
+  );
 
   const [filters, setFilters] = useState<FilterState>({
     orderDateFrom: "",
@@ -3871,7 +3878,7 @@ export default function OrdersListPage() {
           SEARCH / FILTER / ADD
       ================================================= */}
 
-      <div className="relative">
+      <div className="relative" ref={filterRef}>
         <ListToolbar
           search={search}
           onSearchChange={setSearch}
@@ -3891,17 +3898,9 @@ export default function OrdersListPage() {
 
         {showFilters && (
           <div className="absolute right-[118px] top-[48px] z-50 w-[500px] rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.12)] p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xs font-medium text-slate-500">Date Range</h3>
-
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="text-[11px] font-medium text-rose-500 hover:text-rose-600"
-              >
-                × Clear Filter
-              </button>
-            </div>
+            {/* Clear All Filter at the foot of the panel already does
+                this - two buttons a few lines apart reading the same. */}
+            <h3 className="mb-4 text-xs font-medium text-slate-500">Date Range</h3>
 
             {/* DATE */}
 
@@ -3915,6 +3914,7 @@ export default function OrdersListPage() {
                 <input
                   type="date"
                   value={filters.orderDateFrom}
+                  max={filters.orderDateTo || undefined}
                   onChange={(e) =>
                     setFilters((current) => ({
                       ...current,
@@ -3934,6 +3934,8 @@ export default function OrdersListPage() {
                 <input
                   type="date"
                   value={filters.orderDateTo}
+                  /* To cannot be earlier than From. */
+                  min={filters.orderDateFrom || undefined}
                   onChange={(e) =>
                     setFilters((current) => ({
                       ...current,
