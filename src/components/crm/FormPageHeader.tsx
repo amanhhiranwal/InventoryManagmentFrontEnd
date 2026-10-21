@@ -38,8 +38,17 @@ export default function FormPageHeader({
     /* Pinned to the top of the page: on a long form the title, the
        breadcrumb and - more to the point - Cancel, Save as Draft and the
        submit button used to scroll away, so finishing a form meant
-       scrolling back up to find the button that saves it. */
-    <div className="sticky top-0 z-30 -mx-1 flex flex-col gap-3 bg-[#f3f3f3] px-1 pb-4 pt-3 sm:flex-row sm:items-center sm:justify-between dark:bg-[#020b12]">
+       scrolling back up to find the button that saves it.
+
+       The negative margins pull the bar out into the page's own padding
+       and the matching padding puts its content back, so the bar is the
+       full width of the page and starts at the very top of it. Without
+       them the bar floated inside a 20px frame and the form scrolled
+       through the gap above and beside it - fields riding over the
+       title. The -top-5 matches: a sticky offset is measured from the
+       scroll area's padding box, so top-0 would still have parked the
+       bar 20px down and left that strip for the form to show through. */
+    <div className="sticky -top-5 z-30 -mx-5 -mt-5 flex flex-col gap-3 bg-[#f3f3f3] px-5 pb-4 pt-5 sm:flex-row sm:items-center sm:justify-between dark:bg-[#020b12]">
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-[18px] font-medium text-[#141414] dark:text-white">

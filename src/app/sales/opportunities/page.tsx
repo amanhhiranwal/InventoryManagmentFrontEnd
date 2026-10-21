@@ -102,6 +102,7 @@ import {
 import { ProductItemsIcon } from "@/components/icons/SectionIcons";
 import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
 import { SortTh, useTableSort } from "@/components/crm/sort";
+import { websiteError } from "@/lib/fieldChecks";
 import { RowMenu } from "@/components/crm/RowMenu";
 
 interface ProductItem {
@@ -3329,6 +3330,10 @@ function NewOpportunityPage({
     seed.organization_name || "",
   );
 
+  /* Said under the website field once the form has been submitted; it
+     clears as soon as the field is touched again. */
+  const [websiteFieldError, setWebsiteFieldError] = useState("");
+
   const [organizationWebsite, setOrganizationWebsite] = useState(
     seed.website || "",
   );
@@ -3606,6 +3611,19 @@ function NewOpportunityPage({
 
     setOpportunityNameError("");
 
+    /* The website is required on this form and nothing had ever looked
+       at what was typed into it, so "zdxfcgv" was saved as a company's
+       web address. The browser's own check only runs on fields it knows
+       are URLs, and this one takes acme.com without a scheme. */
+    const websiteProblem = websiteError(organizationWebsite, {
+      required: true,
+      field: "Organization website",
+    });
+
+    setWebsiteFieldError(websiteProblem || "");
+
+    if (websiteProblem) return;
+
     if (
       !organizationName.trim() ||
       !contactName.trim() ||
@@ -3773,7 +3791,12 @@ function NewOpportunityPage({
                     <FormInput
                       label="Organization Website *"
                       value={organizationWebsite}
-                      onChange={setOrganizationWebsite}
+                      error={websiteFieldError}
+                      onChange={(value) => {
+                        setOrganizationWebsite(value);
+
+                        if (websiteFieldError) setWebsiteFieldError("");
+                      }}
                       placeholder="www.acmesolutions.example"
                     />
                   </div>

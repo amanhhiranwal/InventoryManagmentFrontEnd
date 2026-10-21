@@ -21,6 +21,7 @@ import {
   capMobile,
   capPin,
   emailError,
+  websiteError,
   gstinError,
   mobileError,
   panError,
@@ -146,6 +147,11 @@ interface LeadFormState extends LeadDetails {
   assignedToId: string;
 }
 
+/** A lead nobody has started working: saved from an unfinished form. */
+function isDraftLead(lead: { status?: string | null }) {
+  return String(lead?.status || "").toUpperCase() === "DRAFT";
+}
+
 /** The columns the list can be ordered by. */
 type LeadSortKey =
   | "id"
@@ -169,55 +175,6 @@ interface LeadFilters {
 ============================================================================ */
 
 const PAGE_SIZE = 10;
-
-/* ----------------------------------------------------------------------
-   THE UNFINISHED FORM
-
-   Save as Draft used to close the page and throw the form away, which
-   looked exactly like a save. There is no draft status for a lead on
-   the server, so the half-filled form is kept on this browser and
-   restored the next time New Lead is opened.
-
-   Attachments are left out: they are already uploaded and referenced by
-   id, and a stale id in a week-old draft points at nothing.
----------------------------------------------------------------------- */
-
-const LEAD_DRAFT_KEY = "synergy.lead.draft";
-
-function writeLeadDraft(form: LeadFormState): boolean {
-  try {
-    const { attachments: _attachments, ...rest } = form;
-
-    window.localStorage.setItem(LEAD_DRAFT_KEY, JSON.stringify(rest));
-
-    return true;
-  } catch {
-    // Private windows and blocked site data both throw here.
-    return false;
-  }
-}
-
-function readLeadDraft(): Partial<LeadFormState> | null {
-  try {
-    const raw = window.localStorage.getItem(LEAD_DRAFT_KEY);
-
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function clearLeadDraft() {
-  try {
-    window.localStorage.removeItem(LEAD_DRAFT_KEY);
-  } catch {
-    // Nothing to clear if it could never be written.
-  }
-}
 
 const EMPTY_FORM: LeadFormState = {
   customerType: "",
@@ -282,6 +239,10 @@ const LEAD_PIPELINE: { label: string; status: string }[] = [
    creates the opportunity - and the backend refuses to set it from the
    status menu or the activity log. CONVERTED and LOST are terminal. */
 const LEAD_NEXT_STATUSES: Record<string, string[]> = {
+  /* A draft has not been worked, so it cannot have been contacted or
+     qualified. Finishing the form makes it a lead; the other way out is
+     to drop it. Same two moves the server allows. */
+  DRAFT: ["LOST"],
   NEW: ["CONTACTED", "QUALIFIED", "LOST"],
   CONTACTED: ["QUALIFIED", "LOST"],
   QUALIFIED: ["LOST"],
@@ -290,6 +251,7 @@ const LEAD_NEXT_STATUSES: Record<string, string[]> = {
 };
 
 const LEAD_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Draft",
   NEW: "New",
   CONTACTED: "Contacted",
   QUALIFIED: "Qualified",
@@ -312,7 +274,13 @@ function canAdvanceLead(lead: Lead, target: string) {
    opportunity and the lead follows. Anything still live may be converted,
    from wherever it stands. */
 function canConvertLead(lead: Lead) {
-  return lead.status !== "CONVERTED" && lead.status !== "LOST";
+  /* A draft is not a lead yet - there is nothing in it to carry into an
+     opportunity, and half of it is usually blank. Finish it first. */
+  return (
+    lead.status !== "CONVERTED" &&
+    lead.status !== "LOST" &&
+    !isDraftLead(lead)
+  );
 }
 
 /* What the Log Activity form may move a lead to. CONVERTED is excluded on
@@ -1039,34 +1007,11 @@ export default function LeadsPage() {
   };
 
   const openCreatePage = () => {
-    /* A draft saved earlier comes back, so Save as Draft means what it
-       says: the half-filled form is still there next time. */
-    const draft = readLeadDraft();
-
-    if (draft) {
-      setForm({ ...EMPTY_FORM, ...draft });
-      addToast("Picked up where your draft left off.", "info");
-    } else {
-      resetForm();
-    }
+    resetForm();
 
     setPageMode("create");
 
     setShowAddMenu(false);
-  };
-
-  /* Keep what is typed so far without creating a lead from it.
-     A lead has no draft state on the server - the statuses are New,
-     Contacted, Qualified, Converted and Lost - so saving one here would
-     put an unfinished lead in front of the whole sales team. It is held
-     on this browser instead, and cleared once the lead is created. */
-  const saveLeadDraft = () => {
-    if (writeLeadDraft(form)) {
-      addToast("Draft saved. It will be here when you come back.", "success");
-      setPageMode("list");
-    } else {
-      addToast("Could not save the draft on this browser.", "error");
-    }
   };
 
   const openEditPage = (lead: Lead) => {
@@ -1113,6 +1058,7 @@ export default function LeadsPage() {
     const problems = [
       mobileError(form.mobileNumber),
       emailError(form.email),
+      websiteError(form.website),
       pinError(form.zipCode),
       gstinError(form.gstNumber),
       panError(form.panNumber),
@@ -1124,6 +1070,119 @@ export default function LeadsPage() {
     }
 
     return true;
+  };
+
+  /* The form as the API wants it. Create, update and Save as Draft all
+     send the same body and differ only in the status on it, so a draft
+     cannot drift from the lead it becomes. */
+  const leadPayload = () => {
+    const details: LeadDetails = {
+      customerType: form.customerType,
+      contactName: form.contactName.trim(),
+      organizationName: form.organizationName.trim(),
+      website: form.website.trim(),
+
+      address: form.address.trim(),
+      city: form.city.trim(),
+      state: form.state.trim(),
+      zipCode: form.zipCode.trim(),
+      country: form.country,
+
+      gstNumber: form.gstNumber.trim(),
+      panNumber: form.panNumber.trim(),
+      coiNumber: form.coiNumber.trim(),
+
+      designation: form.designation.trim(),
+      mobileNumber: form.mobileNumber.trim(),
+      email: form.email.trim(),
+
+      leadSource: form.leadSource,
+      remarks: form.remarks.trim(),
+      attachments: form.attachments,
+    };
+
+    const selectedCt = customerTypesList.find(
+      (c) =>
+        c.name === form.customerType ||
+        String(c.id) === String(form.customerType),
+    );
+
+    const selectedSt = statesList.find(
+      (st) => st.name === form.state || String(st.id) === String(form.state),
+    );
+
+    const selectedSource = leadSourcesList.find(
+      (item) =>
+        item.name === form.leadSource ||
+        String(item.id) === String(form.leadSource),
+    );
+
+    return {
+      /* A draft usually has neither name yet, so it is titled by whatever
+         it does have rather than reading "()" in the list. */
+      title:
+        details.contactName || details.organizationName
+          ? `${details.contactName || "Unnamed"} (${
+              details.organizationName || "No organization"
+            })`
+          : "Untitled draft",
+      contact_name: details.contactName,
+      organization_name: details.organizationName,
+      email: details.email,
+      mobile_number: details.mobileNumber,
+      website: details.website,
+      office_address: details.address,
+      city: details.city,
+      zip_code: details.zipCode,
+      country: details.country,
+      gst_number: details.gstNumber,
+      pan_number: details.panNumber,
+      coi_number: details.coiNumber,
+      designation: details.designation,
+      remarks: details.remarks,
+      customer_type_id: selectedCt?.id,
+      state_id: selectedSt?.id,
+      lead_source_id: selectedSource?.id,
+      assigned_to_id: form.assignedToId || undefined,
+    };
+  };
+
+  /* Keep what has been typed so far without asking the sales team to
+     work it. The lead is saved with the status DRAFT, which is outside
+     the pipeline: it is not counted as New and the only moves open to it
+     are becoming a lead or being dropped. Nothing is validated, because
+     the point of a draft is that it is not finished. */
+  const saveLeadDraft = async () => {
+    try {
+      setSaving(true);
+
+      if (editingLead) {
+        const updated = await updateLeadApi(editingLead.id, {
+          ...leadPayload(),
+          status: "DRAFT",
+        });
+
+        setLeads((previous) =>
+          previous.map((lead) =>
+            lead.id === editingLead.id ? { ...lead, ...updated } : lead,
+          ),
+        );
+      } else {
+        await createLeadApi({ ...leadPayload(), status: "DRAFT" });
+      }
+
+      addToast("Saved as a draft. It is in the list, marked Draft.", "success");
+
+      closeLeadForm();
+
+      await fetchLeads();
+    } catch (error) {
+      console.error(error);
+
+      addToast("Could not save the draft.", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   /* --------------------------------------------------------------------------
@@ -1138,70 +1197,9 @@ export default function LeadsPage() {
     try {
       setSaving(true);
 
-      const details: LeadDetails = {
-        customerType: form.customerType,
-        contactName: form.contactName.trim(),
-        organizationName: form.organizationName.trim(),
-        website: form.website.trim(),
-
-        address: form.address.trim(),
-        city: form.city.trim(),
-        state: form.state.trim(),
-        zipCode: form.zipCode.trim(),
-        country: form.country,
-
-
-        gstNumber: form.gstNumber.trim(),
-        panNumber: form.panNumber.trim(),
-        coiNumber: form.coiNumber.trim(),
-
-        designation: form.designation.trim(),
-        mobileNumber: form.mobileNumber.trim(),
-        email: form.email.trim(),
-
-        leadSource: form.leadSource,
-        remarks: form.remarks.trim(),
-        attachments: form.attachments,
-      };
-
-      const selectedCt = customerTypesList.find((c) => c.name === form.customerType || String(c.id) === String(form.customerType));
-      const selectedSt = statesList.find((s) => s.name === form.state || String(s.id) === String(form.state));
-
-      /* The form has always collected a Lead Source and never sent it, so
-         every lead was stored without one - and the Opportunity it converted
-         into inherited that blank. */
-      const selectedSource = leadSourcesList.find(
-        (item) =>
-          item.name === form.leadSource ||
-          String(item.id) === String(form.leadSource),
-      );
-
-      await createLeadApi({
-        title: `${details.contactName} (${details.organizationName})`,
-        contact_name: details.contactName,
-        organization_name: details.organizationName,
-        email: details.email,
-        mobile_number: details.mobileNumber,
-        website: details.website,
-        office_address: details.address,
-        city: details.city,
-        zip_code: details.zipCode,
-        country: details.country,
-        gst_number: details.gstNumber,
-        pan_number: details.panNumber,
-        coi_number: details.coiNumber,
-        designation: details.designation,
-        remarks: details.remarks,
-        status: "NEW",
-        customer_type_id: selectedCt?.id,
-        state_id: selectedSt?.id,
-        lead_source_id: selectedSource?.id,
-        assigned_to_id: form.assignedToId || undefined,
-      });
+      await createLeadApi({ ...leadPayload(), status: "NEW" });
 
       addToast("New lead created successfully.", "success");
-
-      clearLeadDraft();
 
       closeLeadForm();
 
@@ -1229,64 +1227,11 @@ export default function LeadsPage() {
     try {
       setSaving(true);
 
-      const details: LeadDetails = {
-        customerType: form.customerType,
-        contactName: form.contactName.trim(),
-        organizationName: form.organizationName.trim(),
-        website: form.website.trim(),
-
-        address: form.address.trim(),
-        city: form.city.trim(),
-        state: form.state.trim(),
-        zipCode: form.zipCode.trim(),
-        country: form.country,
-
-
-        gstNumber: form.gstNumber.trim(),
-        panNumber: form.panNumber.trim(),
-        coiNumber: form.coiNumber.trim(),
-
-        designation: form.designation.trim(),
-        mobileNumber: form.mobileNumber.trim(),
-        email: form.email.trim(),
-
-        leadSource: form.leadSource,
-        remarks: form.remarks.trim(),
-        attachments: form.attachments,
-      };
-
-      const selectedCt = customerTypesList.find((c) => c.name === form.customerType || String(c.id) === String(form.customerType));
-      const selectedSt = statesList.find((s) => s.name === form.state || String(s.id) === String(form.state));
-
-      /* The form has always collected a Lead Source and never sent it, so
-         every lead was stored without one - and the Opportunity it converted
-         into inherited that blank. */
-      const selectedSource = leadSourcesList.find(
-        (item) =>
-          item.name === form.leadSource ||
-          String(item.id) === String(form.leadSource),
-      );
-
       const updated = await updateLeadApi(editingLead.id, {
-        title: `${details.contactName} (${details.organizationName})`,
-        contact_name: details.contactName,
-        organization_name: details.organizationName,
-        email: details.email,
-        mobile_number: details.mobileNumber,
-        website: details.website,
-        office_address: details.address,
-        city: details.city,
-        zip_code: details.zipCode,
-        country: details.country,
-        gst_number: details.gstNumber,
-        pan_number: details.panNumber,
-        coi_number: details.coiNumber,
-        designation: details.designation,
-        remarks: details.remarks,
-        customer_type_id: selectedCt?.id,
-        state_id: selectedSt?.id,
-        lead_source_id: selectedSource?.id,
-        assigned_to_id: form.assignedToId || undefined,
+        ...leadPayload(),
+        /* Saving a finished draft is what turns it into a lead. Any
+           other lead keeps the status it already had. */
+        ...(isDraftLead(editingLead) ? { status: "NEW" } : {}),
       });
 
       const refreshedLead = {
@@ -1862,7 +1807,11 @@ export default function LeadsPage() {
         onSubmit={pageMode === "create" ? handleCreateLead : handleUpdateLead}
         onAttachment={addAttachment}
         uploadingAttachments={uploadingAttachments}
-        onSaveDraft={pageMode === "create" ? saveLeadDraft : undefined}
+        onSaveDraft={
+          pageMode === "create" || (editingLead && isDraftLead(editingLead))
+            ? saveLeadDraft
+            : undefined
+        }
         onClose={closeLeadForm}
       />
     );
@@ -2706,6 +2655,7 @@ function LeadFormPage({
     setTouched({
       mobileNumber: true,
       email: true,
+      website: true,
       zipCode: true,
       gstNumber: true,
       panNumber: true,
@@ -2774,6 +2724,10 @@ function LeadFormPage({
                 label="Organization Website"
                 value={form.website}
                 placeholder="www.company.com"
+                /* Optional here, but if something is typed it has to be a
+                   web address. */
+                error={shown("website", websiteError(form.website))}
+                onBlur={() => touch("website")}
                 onChange={(value) => onChange("website", value)}
               />
             </div>
