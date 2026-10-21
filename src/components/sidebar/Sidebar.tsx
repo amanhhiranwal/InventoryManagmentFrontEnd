@@ -24,6 +24,27 @@ import { useAuthStore } from "@/features/auth/store/auth.store";
  * (66) - the same glyph turned through 180 degrees.
  */
 const ICON_OVERRIDES: Record<string, (props: any) => any> = {
+  /* The dashboard's four blocks are solid in the design. lucide's
+     LayoutGrid is an outline, so on every page but the dashboard the icon
+     read as four empty boxes - hollow where the design has them filled.
+     Drawn here as filled squares in currentColor, so the colour still
+     comes from whatever class the row passes: slate when it is just
+     another menu entry, navy when it is the page you are on. */
+  LuLayoutGrid: ({ className, style, size }: any) => (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+      style={{ width: size ?? "1em", height: size ?? "1em", ...style }}
+    >
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.6" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" />
+    </svg>
+  ),
+
   LuQuoteOpen: ({ style, ...props }: any) => (
     /* Rotated inline rather than with a utility class so it cannot be
        dropped by the CSS scanner, and so the caller's own className

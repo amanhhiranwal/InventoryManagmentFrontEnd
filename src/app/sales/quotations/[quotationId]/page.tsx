@@ -59,6 +59,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
+import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
 
 /* =========================================================
    HELPERS
@@ -801,7 +802,7 @@ export default function QuotationDetailPage() {
             </div>
           </Card>
 
-          <Card icon={<FiPackage size={15} />} title="Products & Order Items">
+          <Card icon={<ProductItemsIcon size={15} />} title="Products & Order Items">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[620px] border-collapse text-left">
                 <thead>
@@ -995,7 +996,7 @@ export default function QuotationDetailPage() {
         {/* RIGHT */}
 
         <div className="h-fit space-y-8 rounded-xl bg-white p-5 dark:border dark:border-[#17304a] dark:bg-[#071929]">
-          <Card icon={<FiFileText size={15} />} title="Order Summary">
+          <Card icon={<OrderSummaryIcon size={15} />} title="Order Summary">
             <div className="rounded-xl bg-emerald-50 px-4 py-3 dark:bg-emerald-950/20">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">

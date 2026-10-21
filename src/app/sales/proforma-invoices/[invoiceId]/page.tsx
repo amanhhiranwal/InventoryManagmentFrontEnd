@@ -83,6 +83,7 @@ import {
   usePrintProformaInvoice,
 } from "@/features/proformaInvoices/components/ProformaInvoiceDocument";
 import SendProformaInvoiceModal from "@/features/proformaInvoices/components/SendProformaInvoiceModal";
+import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
 
 export default function ProformaInvoiceDetailPage() {
   return (
@@ -572,7 +573,7 @@ function ProformaInvoiceDetail() {
           </section>
 
           <section>
-            <SectionTitle icon={<LuPackage size={17} />} title="Products & Order Items" />
+            <SectionTitle icon={<ProductItemsIcon size={17} />} title="Products & Order Items" />
             <ProductsTable lines={invoice.items.map(itemToLine)} />
             <TotalsBlock
               figures={{
@@ -610,7 +611,7 @@ function ProformaInvoiceDetail() {
         {/* RIGHT */}
         <div className="space-y-4">
           <OrderSummaryCard
-            icon={<LuFileText size={17} />}
+            icon={<OrderSummaryIcon size={17} />}
             total={invoice.grand_total}
             advancePercent={invoice.advance_percent}
           />
@@ -620,7 +621,7 @@ function ProformaInvoiceDetail() {
           </SideCard>
 
           <SideCard
-            icon={<LuFileText size={17} />}
+            icon={<OrderSummaryIcon size={17} />}
             title="Attached Documents"
             action={
               <button

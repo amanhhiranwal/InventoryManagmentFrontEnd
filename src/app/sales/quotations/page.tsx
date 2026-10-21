@@ -132,6 +132,7 @@ import {
 } from "react-icons/fi";
 
 import { CgSpinner } from "react-icons/cg";
+import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
 
 /* ============================================================================
    TYPES
@@ -1856,7 +1857,7 @@ export default function QuotationPage() {
             {/* PRODUCTS */}
 
             <FormSectionBlock
-              icon={<FiPackage size={16} />}
+              icon={<ProductItemsIcon size={16} />}
               title="Products & Order Items"
               /* Inline with the heading, as the design has it - on its own
                  row it cost a full line and read as detached from the
@@ -2063,7 +2064,7 @@ export default function QuotationPage() {
                                     warrantyTerm: event.target.value,
                                   })
                                 }
-                                className="h-8 w-28 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+                                className="h-8 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
                               >
                                 {warrantyTerms.length === 0 && (
                                   <option value="">Standard</option>
@@ -2269,7 +2270,7 @@ export default function QuotationPage() {
             <FormCard>
               <FormSectionBlock
                 first
-                icon={<FiFileText size={16} />}
+                icon={<OrderSummaryIcon size={16} />}
                 title="Order Summary"
               >
                 <div className="rounded-xl bg-emerald-50 px-4 py-4 dark:bg-emerald-950/20">
