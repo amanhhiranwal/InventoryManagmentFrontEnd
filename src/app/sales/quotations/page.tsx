@@ -2891,8 +2891,24 @@ function Field({
   required?: boolean;
   children: ReactNode;
 }) {
+  const box = useRef<HTMLDivElement | null>(null);
+
+  /* The asterisk used to be the whole of it: the control inside was
+     never marked, so the form submitted with starred fields empty.
+     Field wraps whatever the caller nests - a plain input here, a whole
+     address block there - so rather than threading the flag through
+     every one of them, it is set on the control this label belongs to.
+     React does not manage `required` on these, so it does not undo it. */
+  useEffect(() => {
+    const control = box.current?.querySelector<HTMLInputElement>(
+      "input, select, textarea",
+    );
+
+    if (control) control.required = Boolean(required);
+  }, [required, children]);
+
   return (
-    <div>
+    <div ref={box}>
       <label className="mb-1.5 block text-[11px] font-medium text-slate-600 dark:text-slate-300">
         {label}
         {required && <span className="text-rose-500"> *</span>}

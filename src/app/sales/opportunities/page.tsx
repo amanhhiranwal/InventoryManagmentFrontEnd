@@ -4926,6 +4926,18 @@ function OpportunityProductModal({
    FORM COMPONENTS
 ================================================================ */
 
+/* The form marks a field as required by ending its label with an
+   asterisk, and nothing ever did anything with it: the control was not
+   marked, so the page submitted with every starred field empty. The
+   asterisk is now read off the label, so each of the twenty call sites
+   already says which fields are required and none of them has to be
+   touched. */
+function requiredFromLabel(label: string) {
+  const required = /\*\s*$/.test(label);
+
+  return { required, text: required ? label.replace(/\s*\*\s*$/, "") : label };
+}
+
 function FormInput({
   label,
   value,
@@ -4945,15 +4957,20 @@ function FormInput({
   /** Said under the field in grey, when there is nothing wrong. */
   hint?: string;
 }) {
+  const { required, text } = requiredFromLabel(label);
+
   return (
     <div>
       <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-        {label}
+        {text}
+
+        {required && <span className="ml-0.5">*</span>}
       </label>
 
       <input
         type={type}
         value={value}
+        required={required}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
         className={`h-10 w-full rounded-lg border bg-white px-3 text-[10px] outline-none placeholder:text-slate-400 dark:bg-[#071929] dark:text-white ${
@@ -4992,14 +5009,19 @@ function FormSelect({
   }[];
   onChange: (value: string) => void;
 }) {
+  const { required, text } = requiredFromLabel(label);
+
   return (
     <div>
       <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-        {label}
+        {text}
+
+        {required && <span className="ml-0.5">*</span>}
       </label>
 
       <select
         value={value}
+        required={required}
         onChange={(event) => onChange(event.target.value)}
         className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[10px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
       >
