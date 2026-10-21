@@ -12,7 +12,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 
-import { parseAmount } from "@/components/crm/AmountInput";
+import { parseAmount, numericText } from "@/components/crm/AmountInput";
 import { formatRupees } from "@/lib/money";
 import {
   useWarrantyTerms,
@@ -4552,8 +4552,10 @@ function LineNumberInput({
         event.target.select();
       }}
       onChange={(event) => {
-        setDraft(event.target.value);
-        onChange(parseAmount(event.target.value));
+        const text = numericText(event.target.value);
+
+        setDraft(text);
+        onChange(parseAmount(text));
       }}
       onBlur={() => {
         focusedRef.current = false;

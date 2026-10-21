@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { useUIStore } from "@/lib/store/ui.store";
+import { numericText } from "@/components/crm/AmountInput";
 import { StatusPill } from "@/components/crm/Pill";
 import {
   getOpportunityApi,
@@ -1588,7 +1589,8 @@ function SummaryLine({
               inputMode="decimal"
               aria-label={label}
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              /* Letters never reach the field; a half-typed "12." does. */
+              onChange={(event) => setDraft(numericText(event.target.value))}
               onBlur={commit}
               onKeyDown={(event) => {
                 if (event.key === "Enter") commit();

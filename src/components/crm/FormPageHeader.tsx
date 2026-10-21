@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect } from "react";
-import { FiDownload, FiUpload, FiX } from "react-icons/fi";
+import { FiBookmark, FiSend, FiX } from "react-icons/fi";
 
 import { useUIStore } from "@/lib/store/ui.store";
 
@@ -96,11 +96,16 @@ export function CancelButton({
   );
 }
 
-/** Neutral outlined button, used for "Save as Draft". */
+/** Neutral outlined button, used for "Save as Draft".
+ *
+ *  A bookmark, as the design draws it: putting something aside to come
+ *  back to. The download arrow that stood here said the opposite - that
+ *  a file was about to land in Downloads - and only one of the five
+ *  screens asked for an icon at all. */
 export function DraftButton({
   onClick,
   disabled,
-  withIcon = false,
+  withIcon = true,
   children = "Save as Draft",
 }: {
   onClick: () => void;
@@ -115,13 +120,18 @@ export function DraftButton({
       disabled={disabled}
       className="flex h-9 items-center gap-1.5 rounded-lg border border-white bg-white px-3.5 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200 dark:hover:bg-[#0b2034]"
     >
-      {withIcon && <FiDownload size={13} />}
+      {withIcon && <FiBookmark size={13} />}
       {children}
     </button>
   );
 }
 
-/** Filled navy button that commits the form. */
+/** Filled navy button that commits the form.
+ *
+ *  withIcon puts a paper plane on it, for the screens whose primary
+ *  action sends the document to somebody - Send For Approval. Create
+ *  Lead and Save Proposal keep a plain label, as the design has them:
+ *  nothing is being sent anywhere. */
 export function SubmitButton({
   onClick,
   disabled,
@@ -144,7 +154,7 @@ export function SubmitButton({
       disabled={disabled}
       className="flex h-9 items-center gap-1.5 rounded-lg bg-[#243454] px-3.5 text-[13px] font-medium text-white shadow-sm transition hover:bg-[#18243a] disabled:opacity-50"
     >
-      {withIcon && <FiUpload size={13} />}
+      {withIcon && <FiSend size={13} />}
       {children}
     </button>
   );

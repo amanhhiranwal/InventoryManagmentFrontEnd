@@ -3254,11 +3254,11 @@ export default function OrdersListPage() {
               RIGHT SIDEBAR
           ================================================= */}
 
-            <div className="space-y-3">
-              {/* =================================================
-                ORDER SUMMARY
-            ================================================= */}
-
+            {/* The summary stays put while the form scrolls: it is what
+                the figures are being entered against, and on a form this
+                long it was off screen for most of the filling in. top-24
+                clears the page header, which is pinned above it. */}
+            <div className="space-y-3 lg:sticky lg:top-24 lg:self-start">
               {/* =================================================
                 ORDER SUMMARY
             ================================================= */}

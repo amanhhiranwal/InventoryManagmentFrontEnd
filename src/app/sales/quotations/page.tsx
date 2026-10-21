@@ -289,7 +289,18 @@ function todayInput() {
 
 /** Default offer validity: 30 days out, matching the form's label. */
 function validityInput() {
-  return new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  return validityFor(todayInput());
+}
+
+/** Thirty days after whatever the proposal is dated, as the label says. */
+function validityFor(proposalDate: string): string {
+  const start = proposalDate ? new Date(proposalDate) : new Date();
+
+  // An unparseable date falls back to thirty days from today rather than
+  // writing "Invalid Date" into the field.
+  const from = Number.isNaN(start.getTime()) ? new Date() : start;
+
+  return new Date(from.getTime() + 30 * 86400000).toISOString().slice(0, 10);
 }
 
 function toInputDate(value?: string | null) {
@@ -1843,7 +1854,17 @@ export default function QuotationPage() {
                     <input
                       type="date"
                       value={quotationDate}
-                      onChange={(event) => setQuotationDate(event.target.value)}
+                      /* The validity follows the proposal date, which is
+                         what the label beside it promises. It was fixed at
+                         thirty days from today whatever the proposal was
+                         dated, so backdating one left it valid for longer
+                         than the offer said. */
+                      onChange={(event) => {
+                        const next = event.target.value;
+
+                        setQuotationDate(next);
+                        setValidationDate(validityFor(next));
+                      }}
                       className={INPUT}
                     />
                   </Field>
@@ -1852,6 +1873,9 @@ export default function QuotationPage() {
                     <input
                       type="date"
                       value={validationDate}
+                      /* Still editable - thirty days is the default, not
+                         a rule - but it cannot end before it begins. */
+                      min={quotationDate || undefined}
                       onChange={(event) => setValidationDate(event.target.value)}
                       className={INPUT}
                     />
@@ -2296,7 +2320,9 @@ export default function QuotationPage() {
 
           {/* ---------------- RIGHT: ORDER SUMMARY ---------------- */}
 
-          <div className="lg:sticky lg:top-4 lg:self-start">
+          {/* top-24 rather than top-4: the page header is pinned above
+              this, and at top-4 the summary slid underneath it. */}
+          <div className="lg:sticky lg:top-24 lg:self-start">
             <FormCard>
               <FormSectionBlock
                 first
