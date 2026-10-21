@@ -45,6 +45,28 @@ const ICON_OVERRIDES: Record<string, (props: any) => any> = {
     </svg>
   ),
 
+  /* Sales is a megaphone in the menu table and a person over a rising
+     chart in the design. The menu row keeps its stored name - the shape
+     is swapped here, so nothing has to be migrated - and the head is
+     solid the way the design draws it. */
+  LuMegaphone: ({ className, style, size }: any) => (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+      style={{ width: size ?? "1em", height: size ?? "1em", ...style }}
+    >
+      <circle cx="9.5" cy="6.8" r="4.4" fill="currentColor" stroke="none" />
+      <path d="M2.8 18.2 8.4 13l3.6 3.4 7-6.2" />
+      <path d="M15.3 10.2H19v3.7" />
+    </svg>
+  ),
+
   LuQuoteOpen: ({ style, ...props }: any) => (
     /* Rotated inline rather than with a utility class so it cannot be
        dropped by the CSS scanner, and so the caller's own className

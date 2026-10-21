@@ -22,7 +22,11 @@ const box = (size: IconProps["size"]) => ({
   height: size ?? "1em",
 });
 
-/** A summary card: a rounded panel with a rule under its heading. */
+/**
+ * A receipt: straight across the top, torn along the bottom, two lines
+ * of figures inside. This is the shape in the design - the rounded panel
+ * that stood here before read as a plain box at 17px.
+ */
 export function OrderSummaryIcon({ size, className, style }: IconProps) {
   return (
     <svg
@@ -36,8 +40,9 @@ export function OrderSummaryIcon({ size, className, style }: IconProps) {
       className={className}
       style={{ ...box(size), ...style }}
     >
-      <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
-      <line x1="3.5" y1="9.5" x2="20.5" y2="9.5" />
+      <path d="M5 21V3h14v18l-2.8-1.4-2.8 1.4-2.8-1.4-2.8 1.4L5 21Z" />
+      <path d="M8.75 9h6.5" />
+      <path d="M8.75 13h5" />
     </svg>
   );
 }
