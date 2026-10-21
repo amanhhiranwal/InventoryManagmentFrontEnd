@@ -57,25 +57,38 @@ const ICON_OVERRIDES: Record<string, (props: any) => any> = {
 
   /* Sales is a megaphone in the menu table and a person over a rising
      chart in the design. The menu row keeps its stored name - the shape
-     is swapped here, so nothing has to be migrated - and the head is
-     solid the way the design draws it. */
-  LuMegaphone: ({ className, style, size }: any) => (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className={className}
-      style={{ width: size ?? "1em", height: size ?? "1em", ...style }}
-    >
-      <circle cx="9.5" cy="6.8" r="4.4" fill="currentColor" stroke="none" />
-      <path d="M2.8 18.2 8.4 13l3.6 3.4 7-6.2" />
-      <path d="M15.3 10.2H19v3.7" />
-    </svg>
-  ),
+     is swapped here, so nothing has to be migrated.
+
+     Same rule as the dashboard's blocks: the head fills in on the
+     section you are in and is an outline everywhere else. */
+  LuMegaphone: ({ className, style, size, ...rest }: any) => {
+    const active = rest["data-active"] === "true" || rest["data-active"] === true;
+
+    return (
+      <svg
+        {...rest}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className={className}
+        style={{ width: size ?? "1em", height: size ?? "1em", ...style }}
+      >
+        <circle
+          cx="9.5"
+          cy="6.8"
+          r={active ? 4.4 : 3.6}
+          fill={active ? "currentColor" : "none"}
+          stroke={active ? "none" : "currentColor"}
+        />
+        <path d="M2.8 18.2 8.4 13l3.6 3.4 7-6.2" />
+        <path d="M15.3 10.2H19v3.7" />
+      </svg>
+    );
+  },
 
   LuQuoteOpen: ({ style, ...props }: any) => (
     /* Rotated inline rather than with a utility class so it cannot be
@@ -254,16 +267,36 @@ export default function Sidebar() {
                         className={`
                           flex w-full items-center justify-between rounded-xl py-2 px-3 text-left transition-all duration-150 cursor-pointer
                           ${
-                            isChildActive && !isOpen
-                              ? "bg-[#e8edf2] dark:bg-[#0c2136] text-[#16294a] dark:text-sky-300 font-semibold"
+                            isChildActive
+                              ? `text-[#16294a] dark:text-sky-300 font-semibold${
+                                  isOpen ? "" : " bg-[#e8edf2] dark:bg-[#0c2136]"
+                                }`
                               : "text-slate-800 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/40"
                           }
                         `}
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <Icon className="text-[17px] shrink-0 text-slate-800 dark:text-slate-200" />
+                          {/* The group follows the page you are on: navy with
+                              the icon filled in while one of its pages is
+                              open, slate otherwise. Opened, it leaves the
+                              grey pill to the child that is actually
+                              current and keeps only the colour. */}
+                          <Icon
+                            data-active={isChildActive ? "true" : undefined}
+                            className={`text-[17px] shrink-0 ${
+                              isChildActive
+                                ? "text-[#16294a] dark:text-sky-300"
+                                : "text-slate-800 dark:text-slate-200"
+                            }`}
+                          />
                           {(!isSidebarCollapsed || isSidebarOpen) && (
-                            <span className="text-[13.5px] font-medium text-slate-800 dark:text-slate-200 truncate">
+                            <span
+                              className={`text-[13.5px] truncate ${
+                                isChildActive
+                                  ? "font-semibold text-[#16294a] dark:text-sky-300"
+                                  : "font-medium text-slate-800 dark:text-slate-200"
+                              }`}
+                            >
                               {menu.title}
                             </span>
                           )}
