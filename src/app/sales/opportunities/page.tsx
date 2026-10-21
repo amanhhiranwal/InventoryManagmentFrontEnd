@@ -1209,6 +1209,30 @@ function OpportunitiesPageInner() {
     setStageMove({ opportunity: opp, next });
   };
 
+  /* Dropping a card on a column is the same move as choosing the stage
+     from the card's menu, so it goes through the same confirmation and
+     writes the same remark - a stage change that leaves no trace of why
+     is not worth having. */
+  const handleDropOnStage = (opp: Opportunity, stage: OpportunityStage) => {
+    if (opp.stage === stage) return;
+
+    const current = STAGE_TO_STATUS[opp.stage];
+    const next = STAGE_TO_STATUS[stage];
+
+    if (!next) return;
+
+    if (!canTransitionOpportunity(current, next)) {
+      addToast(
+        `An opportunity at ${opp.stage} cannot move to ${stage}.`,
+        "warning",
+      );
+      return;
+    }
+
+    setOpenActionMenu(null);
+    setStageMove({ opportunity: opp, next });
+  };
+
   const confirmStageMove = async (remarks: string) => {
     if (!stageMove) return;
 
@@ -1547,6 +1571,7 @@ function OpportunitiesPageInner() {
             }}
             onMarkDead={handleMarkDead}
             onAdvance={handleAdvanceStage}
+            onDropStage={handleDropOnStage}
           />
         ) : (
           <ListView
@@ -1839,6 +1864,7 @@ function BoardView({
   onEdit,
   onMarkDead,
   onAdvance,
+  onDropStage,
 }: {
   opportunities: Opportunity[];
   onDetails: (opportunity: Opportunity) => void;
@@ -1847,7 +1873,13 @@ function BoardView({
   onEdit: (opportunity: Opportunity) => void;
   onMarkDead: (opportunity: Opportunity) => void;
   onAdvance: (opportunity: Opportunity) => void;
+  /** A card dropped on a column. */
+  onDropStage: (opportunity: Opportunity, stage: OpportunityStage) => void;
 }) {
+  /* The card being carried, and the column under the pointer. */
+  const [carrying, setCarrying] = useState<Opportunity | null>(null);
+  const [over, setOver] = useState<OpportunityStage | null>(null);
+
   /* Grab-and-pan the board sideways, the way a Kanban board behaves. */
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -1900,6 +1932,13 @@ function BoardView({
           return;
         }
 
+        /* A card carries itself to another column; the board pans from
+           the space around the cards. Without this the two gestures
+           fought and the card never left its column. */
+        if ((event.target as HTMLElement).closest("[draggable='true']")) {
+          return;
+        }
+
         const element = scrollRef.current;
 
         if (!element) return;
@@ -1939,9 +1978,36 @@ function BoardView({
           return (
             <div
               key={stage}
+              onDragOver={(event) => {
+                if (!carrying || carrying.stage === stage) return;
+
+                /* Without preventDefault the browser refuses the drop and
+                   the card springs back. */
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+
+                if (over !== stage) setOver(stage);
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                  setOver((current) => (current === stage ? null : current));
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setOver(null);
+
+                if (carrying) onDropStage(carrying, stage);
+
+                setCarrying(null);
+              }}
               /* Viewport-relative so the board's horizontal scrollbar
                  always sits above the fold, whatever the screen height. */
-              className="flex h-[calc(100vh-380px)] max-h-[720px] min-h-[380px] w-[290px] shrink-0 flex-col rounded-xl border border-slate-200 bg-white p-3 dark:border-[#17304a] dark:bg-[#071929]"
+              className={`flex h-[calc(100vh-380px)] max-h-[720px] min-h-[380px] w-[290px] shrink-0 flex-col rounded-xl border bg-white p-3 transition-colors dark:bg-[#071929] ${
+                over === stage
+                  ? "border-[#233353] bg-slate-50 dark:border-sky-400 dark:bg-[#0b2034]"
+                  : "border-slate-200 dark:border-[#17304a]"
+              }`}
             >
               {/* Column Header */}
               <div className="mb-3 flex shrink-0 items-center justify-between border-b border-slate-100 pb-3 dark:border-[#17304a]">
@@ -1971,6 +2037,8 @@ function BoardView({
                   <OpportunityBoardCard
                     key={opp.id}
                     opportunity={opp}
+                    carrying={carrying?.id === opp.id}
+                    onCarry={setCarrying}
                     onDetails={onDetails}
                     openActionMenu={openActionMenu}
                     setOpenActionMenu={setOpenActionMenu}
@@ -2006,6 +2074,8 @@ function OpportunityBoardCard({
   onEdit,
   onMarkDead,
   onAdvance,
+  carrying = false,
+  onCarry,
 }: {
   opportunity: Opportunity;
   onDetails: (opportunity: Opportunity) => void;
@@ -2014,9 +2084,26 @@ function OpportunityBoardCard({
   onEdit: (opportunity: Opportunity) => void;
   onMarkDead: (opportunity: Opportunity) => void;
   onAdvance: (opportunity: Opportunity) => void;
+  /** This is the card currently being carried to another column. */
+  carrying?: boolean;
+  onCarry?: (opportunity: Opportunity | null) => void;
 }) {
   return (
-    <div className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md dark:border-[#17304a] dark:bg-[#0b1d2e]">
+    <div
+      draggable={Boolean(onCarry)}
+      onDragStart={(event) => {
+        onCarry?.(opportunity);
+        event.dataTransfer.effectAllowed = "move";
+        // Firefox will not start a drag without something on the
+        // transfer, even when nothing reads it.
+        event.dataTransfer.setData("text/plain", String(opportunity.id));
+      }}
+      onDragEnd={() => onCarry?.(null)}
+      title={onCarry ? "Drag onto another stage to move it" : undefined}
+      className={`relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md dark:border-[#17304a] dark:bg-[#0b1d2e] ${
+        onCarry ? "cursor-grab active:cursor-grabbing" : ""
+      } ${carrying ? "opacity-40" : ""}`}
+    >
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"

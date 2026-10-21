@@ -35,7 +35,11 @@ export default function FormPageHeader({
   }, [setFormFocus]);
 
   return (
-    <div className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-center sm:justify-between">
+    /* Pinned to the top of the page: on a long form the title, the
+       breadcrumb and - more to the point - Cancel, Save as Draft and the
+       submit button used to scroll away, so finishing a form meant
+       scrolling back up to find the button that saves it. */
+    <div className="sticky top-0 z-30 -mx-1 flex flex-col gap-3 bg-[#f3f3f3] px-1 pb-4 pt-3 sm:flex-row sm:items-center sm:justify-between dark:bg-[#020b12]">
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-[18px] font-medium text-[#141414] dark:text-white">

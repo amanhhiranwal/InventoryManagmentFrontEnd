@@ -62,6 +62,9 @@ import ListActionsMenu, {
 } from "@/components/crm/ListActions";
 import { percentChange } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
+import { SortTh, useTableSort } from "@/components/crm/sort";
+import { COUNTRIES, regionBelongsTo, regionsFor } from "@/lib/regions";
+import { RowMenu } from "@/components/crm/RowMenu";
 import { StatusPill } from "@/components/crm/Pill";
 import { FormCard, FormSectionBlock } from "@/components/crm/FormCard";
 import FormPageHeader, {
@@ -143,6 +146,15 @@ interface LeadFormState extends LeadDetails {
   assignedToId: string;
 }
 
+/** The columns the list can be ordered by. */
+type LeadSortKey =
+  | "id"
+  | "company"
+  | "contact"
+  | "assigned"
+  | "status"
+  | "created";
+
 interface LeadFilters {
   dateFrom: string;
   dateTo: string;
@@ -157,6 +169,55 @@ interface LeadFilters {
 ============================================================================ */
 
 const PAGE_SIZE = 10;
+
+/* ----------------------------------------------------------------------
+   THE UNFINISHED FORM
+
+   Save as Draft used to close the page and throw the form away, which
+   looked exactly like a save. There is no draft status for a lead on
+   the server, so the half-filled form is kept on this browser and
+   restored the next time New Lead is opened.
+
+   Attachments are left out: they are already uploaded and referenced by
+   id, and a stale id in a week-old draft points at nothing.
+---------------------------------------------------------------------- */
+
+const LEAD_DRAFT_KEY = "synergy.lead.draft";
+
+function writeLeadDraft(form: LeadFormState): boolean {
+  try {
+    const { attachments: _attachments, ...rest } = form;
+
+    window.localStorage.setItem(LEAD_DRAFT_KEY, JSON.stringify(rest));
+
+    return true;
+  } catch {
+    // Private windows and blocked site data both throw here.
+    return false;
+  }
+}
+
+function readLeadDraft(): Partial<LeadFormState> | null {
+  try {
+    const raw = window.localStorage.getItem(LEAD_DRAFT_KEY);
+
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearLeadDraft() {
+  try {
+    window.localStorage.removeItem(LEAD_DRAFT_KEY);
+  } catch {
+    // Nothing to clear if it could never be written.
+  }
+}
 
 const EMPTY_FORM: LeadFormState = {
   customerType: "",
@@ -268,7 +329,7 @@ function logActivityStatuses(status: string) {
    this is what the picker offers if that endpoint is unavailable. */
 const FALLBACK_LEAD_SOURCES = ["Marketing", "Cold Calling", "In-bound"];
 
-const COUNTRIES = ["India", "United States", "China", "Malaysia", "Indonesia"];
+
 
 /* ============================================================================
    HELPERS
@@ -661,6 +722,11 @@ export default function LeadsPage() {
 
   const [rowMenuLeadId, setRowMenuLeadId] = useState<number | string | null>(null);
 
+  /* The buttons the row menus hang from. The panel is drawn into the
+     body, so it needs the button's position on screen rather than a
+     parent to be absolute inside. */
+  const rowMenuAnchors = useRef<Record<string, HTMLButtonElement | null>>({});
+
   /* Id of the lead whose status call is in flight, so the row and the drawer
      can disable their actions instead of allowing a double submit. */
   const [statusUpdatingId, setStatusUpdatingId] = useState<
@@ -935,7 +1001,21 @@ export default function LeadsPage() {
 
   const safeCurrentPage = Math.min(currentPage, totalPages);
 
-  const paginatedLeads = filteredLeads;
+  /* One column at a time, over the page the server sent. */
+  const { sort, toggleSort, sortRows } = useTableSort<LeadSortKey, Lead>({
+    id: (lead) => Number(lead.id) || 0,
+    company: (lead) => getLeadCompany(lead).toLowerCase(),
+    contact: (lead) => getLeadDisplayName(lead).toLowerCase(),
+    assigned: (lead) =>
+      (lead.assigned_to_name || lead.creator_name || "").toLowerCase(),
+    status: (lead) => `${lead.stage || ""} ${lead.status || ""}`.toLowerCase(),
+    created: (lead) => new Date(lead.created_at).getTime() || 0,
+  });
+
+  const paginatedLeads = useMemo(
+    () => sortRows(filteredLeads),
+    [filteredLeads, sortRows],
+  );
 
   /* --------------------------------------------------------------------------
      FORM
@@ -959,11 +1039,34 @@ export default function LeadsPage() {
   };
 
   const openCreatePage = () => {
-    resetForm();
+    /* A draft saved earlier comes back, so Save as Draft means what it
+       says: the half-filled form is still there next time. */
+    const draft = readLeadDraft();
+
+    if (draft) {
+      setForm({ ...EMPTY_FORM, ...draft });
+      addToast("Picked up where your draft left off.", "info");
+    } else {
+      resetForm();
+    }
 
     setPageMode("create");
 
     setShowAddMenu(false);
+  };
+
+  /* Keep what is typed so far without creating a lead from it.
+     A lead has no draft state on the server - the statuses are New,
+     Contacted, Qualified, Converted and Lost - so saving one here would
+     put an unfinished lead in front of the whole sales team. It is held
+     on this browser instead, and cleared once the lead is created. */
+  const saveLeadDraft = () => {
+    if (writeLeadDraft(form)) {
+      addToast("Draft saved. It will be here when you come back.", "success");
+      setPageMode("list");
+    } else {
+      addToast("Could not save the draft on this browser.", "error");
+    }
   };
 
   const openEditPage = (lead: Lead) => {
@@ -1097,6 +1200,8 @@ export default function LeadsPage() {
       });
 
       addToast("New lead created successfully.", "success");
+
+      clearLeadDraft();
 
       closeLeadForm();
 
@@ -1757,6 +1862,7 @@ export default function LeadsPage() {
         onSubmit={pageMode === "create" ? handleCreateLead : handleUpdateLead}
         onAttachment={addAttachment}
         uploadingAttachments={uploadingAttachments}
+        onSaveDraft={pageMode === "create" ? saveLeadDraft : undefined}
         onClose={closeLeadForm}
       />
     );
@@ -2101,57 +2207,49 @@ export default function LeadsPage() {
           <EmptyLeads />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* The rows scroll under the heading rather than past it, so
+                the column a value belongs to is still readable at the
+                bottom of a full page. */}
+            <div className="max-h-[calc(100vh-330px)] min-h-[260px] overflow-auto">
               <table className={`w-full min-w-[900px] border-collapse text-left ${LIST_TABLE}`}>
-                <thead>
+                <thead className="sticky top-0 z-20">
                   <tr
                     className="
                       border-b
                       border-slate-200
-                      bg-slate-50/70
+                      bg-slate-50
                       text-[10px]
                       font-bold
                       uppercase
                       tracking-wider
                       text-slate-400
+                      [&>th]:sticky
+                      [&>th]:top-0
+                      [&>th]:bg-slate-50
                       dark:border-[#0d2336]
-                      dark:bg-[#071929]/60
+                      dark:bg-[#071929]
+                      dark:[&>th]:bg-[#071929]
                     "
                   >
-                    <th className="w-12 px-4 py-4">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300"
-                      />
-                    </th>
+                    {/* The select-all box selected nothing - there was no
+                        bulk action behind it on this list - so it is gone
+                        rather than left looking broken. */}
 
-                    <th className="px-4 py-4">
-                      <TableHeader label="Lead ID" />
-                    </th>
+                    <SortTh label="Lead ID" sortKey="id" sort={sort} onSort={toggleSort} />
 
                     {/* The organisation leads, and the person second. A list
                         of leads is read company by company - "who is this
                         from?" before "who do I call?" - which is the order
                         Figma settled on. */}
-                    <th className="px-4 py-4">
-                      <TableHeader label="Organization Name" />
-                    </th>
+                    <SortTh label="Organization Name" sortKey="company" sort={sort} onSort={toggleSort} />
 
-                    <th className="px-4 py-4">
-                      <TableHeader label="Contact Person" />
-                    </th>
+                    <SortTh label="Contact Person" sortKey="contact" sort={sort} onSort={toggleSort} />
 
-                    <th className="px-4 py-4">
-                      <TableHeader label="Assigned To" />
-                    </th>
+                    <SortTh label="Assigned To" sortKey="assigned" sort={sort} onSort={toggleSort} />
 
-                    <th className="px-4 py-4">
-                      <TableHeader label="Status" />
-                    </th>
+                    <SortTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
 
-                    <th className="px-4 py-4">
-                      <TableHeader label="Created" />
-                    </th>
+                    <SortTh label="Created" sortKey="created" sort={sort} onSort={toggleSort} />
 
                     <th className="px-4 py-4 text-center">Actions</th>
                   </tr>
@@ -2180,16 +2278,6 @@ export default function LeadsPage() {
                             dark:hover:bg-[#071929]/50
                           "
                       >
-                        <td
-                          className="px-4 py-4"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-slate-300"
-                          />
-                        </td>
-
                         <td className="px-4 py-4">
                           <span className="whitespace-nowrap text-[11px] font-medium text-slate-800 dark:text-slate-300">
                             {formatLeadId(lead.id)}
@@ -2260,6 +2348,9 @@ export default function LeadsPage() {
                               <button
                                 type="button"
                                 title="More Actions"
+                                ref={(node) => {
+                                  rowMenuAnchors.current[String(lead.id)] = node;
+                                }}
                                 onClick={() =>
                                   setRowMenuLeadId((previous) =>
                                     previous === lead.id ? null : lead.id,
@@ -2278,25 +2369,15 @@ export default function LeadsPage() {
                                 <FiMoreVertical />
                               </button>
 
-                              {rowMenuLeadId === lead.id && (
-                                <div
-                                  className="
-                                      absolute
-                                      right-0
-                                      top-full
-                                      z-40
-                                      mt-1
-                                      w-52
-                                      rounded-xl
-                                      border
-                                      border-slate-200
-                                      bg-white
-                                      p-1
-                                      shadow-xl
-                                      dark:border-[#0d2336]
-                                      dark:bg-[#051422]
-                                    "
-                                >
+                              {/* Drawn over the page, not inside the table,
+                                  so the last rows' menus are not cut off by
+                                  the scroll box they sit in. */}
+                              <RowMenu
+                                open={rowMenuLeadId === lead.id}
+                                onClose={() => setRowMenuLeadId(null)}
+                                anchor={rowMenuAnchors.current[String(lead.id)] ?? null}
+                              >
+                                <>
                                   <RowAction
                                     icon={<FiEdit3 />}
                                     onClick={() => openEditPage(lead)}
@@ -2351,8 +2432,8 @@ export default function LeadsPage() {
                                       Convert to Opportunity
                                     </RowAction>
                                   )}
-                                </div>
-                              )}
+                                </>
+                              </RowMenu>
                             </div>
                           </div>
                         </td>
@@ -2589,6 +2670,7 @@ function LeadFormPage({
   onSubmit,
   onAttachment,
   uploadingAttachments,
+  onSaveDraft,
   onClose,
 }: {
   title: string;
@@ -2605,6 +2687,8 @@ function LeadFormPage({
   onSubmit: (event: FormEvent) => void;
   onAttachment: (event: ChangeEvent<HTMLInputElement>) => void;
   uploadingAttachments: number;
+  /** Keeps the half-filled form. Absent while editing a saved lead. */
+  onSaveDraft?: () => void;
   onClose: () => void;
 }) {
   /* A field complains once it has been left, not while it is being filled:
@@ -2642,7 +2726,9 @@ function LeadFormPage({
           <>
             <CancelButton onClick={onClose} />
 
-            <DraftButton disabled={saving} onClick={onClose} />
+            {onSaveDraft && (
+              <DraftButton disabled={saving} onClick={onSaveDraft} />
+            )}
 
             <SubmitButton formId="lead-form" disabled={saving}>
               {saving
@@ -2704,12 +2790,23 @@ function LeadFormPage({
                   onChange={(value) => onChange("address", value)}
                 />
 
+                {/* The list follows the country: the masters table holds
+                    India's states, and the others come from the regions
+                    map. Without this the picker offered Indian states
+                    whatever the country was, so a lead could sit in
+                    Jharkhand, China. */}
                 <FormSelect
                   label="State / Province"
                   required
                   value={form.state}
                   onChange={(value) => onChange("state", value)}
-                  options={states}
+                  options={regionsFor(form.country, states)}
+                  disabled={!form.country}
+                  placeholder={
+                    form.country
+                      ? "Select State / Province"
+                      : "Choose a country first"
+                  }
                   allowCustom
                 />
               </div>
@@ -2727,8 +2824,16 @@ function LeadFormPage({
                   label="Country"
                   required
                   value={form.country}
-                  onChange={(value) => onChange("country", value)}
-                  options={COUNTRIES}
+                  onChange={(value) => {
+                    onChange("country", value);
+
+                    /* A state that does not exist in the new country
+                       would otherwise stay in the field and be saved. */
+                    if (!regionBelongsTo(value, form.state, states)) {
+                      onChange("state", "");
+                    }
+                  }}
+                  options={[...COUNTRIES]}
                 />
               </div>
 
@@ -4170,6 +4275,10 @@ function FormInput({
         className={fieldOverride(error)}
         type={type}
         value={value}
+        /* The asterisk used to be the whole of it - the control itself
+           was never marked, so a form could be submitted with every
+           starred field empty. */
+        required={required}
         inputMode={inputMode}
         aria-invalid={Boolean(error)}
         placeholder={placeholder || `Enter ${label.toLowerCase()}`}
@@ -4195,6 +4304,8 @@ function FormSelect({
   options,
   required,
   allowCustom = false,
+  disabled = false,
+  placeholder,
 }: {
   label: string;
   value: string;
@@ -4202,6 +4313,9 @@ function FormSelect({
   options: string[];
   required?: boolean;
   allowCustom?: boolean;
+  /** Greyed out until whatever it depends on has been chosen. */
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   const isCustom = allowCustom && value && !options.includes(value);
 
@@ -4216,14 +4330,18 @@ function FormSelect({
       <div className="relative">
         <select
           value={isCustom ? "" : value}
+          required={required}
+          disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           className={`
             ${filterInput}
             appearance-none
             pr-9
+            disabled:cursor-not-allowed
+            disabled:opacity-60
           `}
         >
-          <option value="">Select {label}</option>
+          <option value="">{placeholder || `Select ${label}`}</option>
 
           {options.map((option) => (
             <option key={option} value={option}>
