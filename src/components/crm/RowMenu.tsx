@@ -109,6 +109,12 @@ export function RowMenu({
     <div
       ref={panelRef}
       role="menu"
+      /* The pages that own these menus close them from a document
+         mousedown handler that spares anything inside [data-row-menu].
+         In the body the panel is no longer inside the cell that carries
+         that marker, so it carries its own - otherwise the menu is
+         unmounted on mousedown and the click never reaches the item. */
+      data-row-menu
       style={{
         position: "fixed",
         top: box?.top ?? -9999,
