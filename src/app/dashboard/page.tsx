@@ -1738,7 +1738,7 @@ export default function Dashboard() {
       ====================================================== */}
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 min-[68.75rem]:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-[#0d2336] dark:bg-[#051422]">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
@@ -1771,7 +1771,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-[#0d2336] dark:bg-[#051422]">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">Units Sold</p>
@@ -1802,7 +1802,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-[#0d2336] dark:bg-[#051422]">
           <p className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
             State Performance
           </p>
@@ -1817,7 +1817,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-[#0d2336] dark:bg-[#051422]">
           <p className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
             Sales Team Performance
           </p>
@@ -1837,7 +1837,7 @@ export default function Dashboard() {
           REVENUE TREND
       ====================================================== */}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-[#0d2336] dark:bg-[#051422]">
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
@@ -2034,7 +2034,7 @@ export default function Dashboard() {
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* PRODUCT */}
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-[#0d2336] dark:bg-[#051422]">
           <div className="flex items-center justify-between">
             <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
               Units by Product
@@ -2085,7 +2085,7 @@ export default function Dashboard() {
     SALES PIPELINE
 ==================================================== */}
 
-<div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+<div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-[#0d2336] dark:bg-[#051422]">
   {/* HEADER */}
   <div className="flex items-center justify-between">
     <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
@@ -2235,7 +2235,7 @@ export default function Dashboard() {
 
         {/* REGIONAL */}
 
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-[#0d2336] dark:bg-[#051422]">
           <div className="flex items-center justify-between">
             <h3 className="text-[17px] font-medium text-[#172839] dark:text-white">
               Regional Performance
@@ -2288,7 +2288,7 @@ export default function Dashboard() {
         RECENT ORDERS
       ====================================================== */}
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-[#0d2336] dark:bg-[#051422]">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-[#0d2336] dark:bg-[#051422]">
         {/* HEADER */}
         <div className="flex items-center justify-between px-5 py-5">
           <div>
