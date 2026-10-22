@@ -3256,9 +3256,12 @@ export default function OrdersListPage() {
 
             {/* The summary stays put while the form scrolls: it is what
                 the figures are being entered against, and on a form this
-                long it was off screen for most of the filling in. top-24
-                clears the page header, which is pinned above it. */}
-            <div className="space-y-3 lg:sticky lg:top-24 lg:self-start">
+                long it was off screen for most of the filling in. It pins
+                exactly under the page header, whose height the header
+                publishes - a guessed offset larger than the panel's
+                natural position pushes it down before anything has been
+                scrolled, which is where the gap above it came from. */}
+            <div className="space-y-3 lg:sticky lg:self-start lg:top-[var(--form-header-offset,62px)]">
               {/* =================================================
                 ORDER SUMMARY
             ================================================= */}

@@ -306,7 +306,7 @@ function WorkedExample({ rows }: { rows: Row[] }) {
       </div>
 
       <p className="border-t border-slate-100 pt-3 text-[11px] leading-relaxed text-slate-400 dark:border-[#17304a]">
-        A quotation waits at each role in turn and is only released once the
+        A proposal waits at each role in turn and is only released once the
         last one has signed. The request goes to the salesperson&apos;s own
         manager holding that role, so one region&apos;s discount never lands
         with another region&apos;s AVP.

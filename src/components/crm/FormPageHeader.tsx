@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { FiBookmark, FiSend, FiX } from "react-icons/fi";
 
 import { useUIStore } from "@/lib/store/ui.store";
@@ -27,6 +27,43 @@ export default function FormPageHeader({
 }) {
   const setFormFocus = useUIStore((state) => state.setFormFocus);
 
+  const bar = useRef<HTMLDivElement | null>(null);
+
+  /* Publish how tall this bar is, so the panels that pin themselves
+     below it line up with the top of the form rather than guessing.
+
+     The page is scrolled by <main>, which is padded, and a sticky offset
+     is measured from its padding box - so what a panel wants is the
+     bar's height less that padding. Guessed at, the summary sat 35px
+     lower than the card beside it before anything had been scrolled,
+     because a sticky top larger than the element's natural position
+     pushes it down immediately. */
+  useEffect(() => {
+    const element = bar.current;
+
+    if (!element) return;
+
+    const PAGE_PADDING = 20;
+
+    const publish = () => {
+      document.documentElement.style.setProperty(
+        "--form-header-offset",
+        `${Math.max(0, element.offsetHeight - PAGE_PADDING)}px`,
+      );
+    };
+
+    publish();
+
+    const observer = new ResizeObserver(publish);
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty("--form-header-offset");
+    };
+  }, []);
+
   /* Form pages take the full width in the design: the sidebar hides while
      one is open and comes back when it closes. */
   useEffect(() => {
@@ -48,7 +85,10 @@ export default function FormPageHeader({
        title. The -top-5 matches: a sticky offset is measured from the
        scroll area's padding box, so top-0 would still have parked the
        bar 20px down and left that strip for the form to show through. */
-    <div className="sticky -top-5 z-30 -mx-5 -mt-5 flex flex-col gap-3 bg-[#f3f3f3] px-5 pb-4 pt-5 sm:flex-row sm:items-center sm:justify-between dark:bg-[#020b12]">
+    <div
+      ref={bar}
+      className="sticky -top-5 z-30 -mx-5 -mt-5 flex flex-col gap-3 bg-[#f3f3f3] px-5 pb-4 pt-5 sm:flex-row sm:items-center sm:justify-between dark:bg-[#020b12]"
+    >
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-[18px] font-medium text-[#141414] dark:text-white">

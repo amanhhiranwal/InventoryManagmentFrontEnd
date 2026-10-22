@@ -1052,7 +1052,7 @@ export default function QuotationPage() {
   /* -------------------------------------------------------
      EDIT AN EXISTING QUOTATION
 
-     The detail page's Edit Quotation button navigates here with ?edit=<id>,
+     The detail page's Edit Proposal button navigates here with ?edit=<id>,
      and its Send To Client with ?send=<id>. Everything the form collects is
      read back off the saved record, so the user edits what is stored rather
      than a blank form.
@@ -1580,7 +1580,7 @@ export default function QuotationPage() {
     }
 
     setItems((current) => [...current, ...picked]);
-    addToast(`${picked.length} product(s) added to the quotation.`, "success");
+    addToast(`${picked.length} product(s) added to the proposal.`, "success");
 
     setShowProductModal(false);
     setPicked([]);
@@ -2320,9 +2320,13 @@ export default function QuotationPage() {
 
           {/* ---------------- RIGHT: ORDER SUMMARY ---------------- */}
 
-          {/* top-24 rather than top-4: the page header is pinned above
-              this, and at top-4 the summary slid underneath it. */}
-          <div className="lg:sticky lg:top-24 lg:self-start">
+          {/* Pinned exactly under the page header, whose height the
+              header itself publishes. A guessed offset larger than the
+              panel's natural position pushes it down straight away, which
+              is where the gap above the summary came from. */}
+          <div
+            className="lg:sticky lg:self-start lg:top-[var(--form-header-offset,62px)]"
+          >
             <FormCard>
               <FormSectionBlock
                 first
@@ -2412,7 +2416,7 @@ export default function QuotationPage() {
                       <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
                         {opportunityId ? (
                           <>
-                            Generating this quotation will automatically move
+                            Generating this proposal will automatically move
                             Opportunity{" "}
                             <span className="font-bold text-slate-700 dark:text-slate-200">
                               #{opportunityId}
@@ -2637,7 +2641,7 @@ export default function QuotationPage() {
                     colSpan={8}
                     className="px-4 py-16 text-center text-xs text-slate-400"
                   >
-                    No quotations found. Use Add New Proposal to raise one.
+                    No proposals found. Use Add New Proposal to raise one.
                   </td>
                 </tr>
               )}
@@ -2769,7 +2773,7 @@ export default function QuotationPage() {
                                   }}
                                   className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#071929]"
                                 >
-                                  Edit Quotation
+                                  Edit Proposal
                                 </button>
                               )}
 
@@ -3698,7 +3702,7 @@ function SendQuotationModal({
   const [showBcc, setShowBcc] = useState(false);
 
   const [subject, setSubject] = useState(
-    `Commercial & Technical Quotation [${quotation.quote_number}] — ${
+    `Commercial & Technical Proposal [${quotation.quote_number}] — ${
       quotation.opportunity_name || quotation.organization_name || ""
     }`.trim(),
   );
@@ -3707,7 +3711,7 @@ function SendQuotationModal({
     const lines = [
       `Dear ${quotation.contact_name || "Sir/Madam"},`,
       "",
-      `Please find attached the official quotation (${quotation.quote_number}) for the proposed ${
+      `Please find attached the official proposal (${quotation.quote_number}) for the proposed ${
         quotation.opportunity_name || "requirement"
       }.`,
       "",
@@ -3844,7 +3848,7 @@ function SendQuotationModal({
       <div className="flex max-h-[92vh] w-full max-w-[920px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#051422]">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-6 dark:border-[#17304a]">
           <h2 className="text-sm font-semibold text-slate-800 dark:text-white">
-            Send Quotation to Client
+            Send Proposal to Client
           </h2>
 
           <button
@@ -4014,13 +4018,13 @@ function SendQuotationModal({
               <div className="mb-2 flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-[#0b2034]">
                 <FiFileText size={12} className="shrink-0 text-rose-500" />
                 <span className="flex-1 truncate text-[10px] font-medium text-slate-700 dark:text-slate-200">
-                  {quotation.quote_number || "Quotation"} proposal (PDF)
+                  {quotation.quote_number || "Proposal"} (PDF)
                 </span>
               </div>
 
               {(quotation.attachments || []).length + extraFiles.length === 0 && (
                 <p className="text-[10px] text-slate-400">
-                  No annexures attached to this quotation.
+                  No annexures attached to this proposal.
                 </p>
               )}
 

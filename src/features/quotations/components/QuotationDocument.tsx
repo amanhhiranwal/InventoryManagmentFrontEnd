@@ -264,7 +264,7 @@ export default function QuotationDocument({
                   colSpan={9}
                   className="border border-[#c9d2e0] px-2 py-6 text-center italic text-slate-400"
                 >
-                  No items on this quotation.
+                  No items on this proposal.
                 </td>
               </tr>
             ) : (
