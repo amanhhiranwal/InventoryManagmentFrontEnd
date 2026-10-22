@@ -2160,6 +2160,9 @@ export default function OrdersListPage() {
                       <input
                         type="date"
                         value={newOrder.orderDate}
+                        /* The order cannot be raised before the PO it is
+                           raised against. */
+                        min={newOrder.poDate || undefined}
                         onChange={(e) =>
                           updateNewOrder("orderDate", e.target.value)
                         }
@@ -2193,6 +2196,13 @@ export default function OrdersListPage() {
                       <input
                         type="date"
                         value={newOrder.poDate}
+                        /* The customer's purchase order is what the sales
+                           order is raised against, so it cannot be dated
+                           after it. A PO dated the 18th on an order
+                           created on the 16th put "Customer PO Received"
+                           two days into the future on the order's own
+                           timeline. */
+                        max={newOrder.orderDate || undefined}
                         onChange={(e) =>
                           updateNewOrder("poDate", e.target.value)
                         }
@@ -2219,6 +2229,30 @@ export default function OrdersListPage() {
                 {/* Customer Details */}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-3">
+                  {/* Registration comes first because it decides what the
+                      rest of this block asks for. It used to sit under
+                      GST, PAN and COI, so an unregistered customer was
+                      asked for three numbers they do not have and the
+                      form was filled in with NA three times. */}
+
+                  <div className="flex items-center">
+                    <span className="w-[110px] text-[11px] text-[#777777]">
+                      Registration:
+                    </span>
+
+                    <select
+                      value={newOrder.registration}
+                      onChange={(e) =>
+                        updateNewOrder("registration", e.target.value)
+                      }
+                      className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none"
+                    >
+                      <option value="">Select</option>
+                      <option value="Registered">Registered</option>
+                      <option value="Unregistered">Unregistered</option>
+                    </select>
+                  </div>
+
                   {/* Customer Type */}
 
                   <div className="flex items-center">
@@ -2260,8 +2294,12 @@ export default function OrdersListPage() {
                     />
                   </div>
 
-                  {/* GST */}
-
+                  {/* An unregistered customer has no GSTIN, no PAN on
+                      the business and no certificate of incorporation, so
+                      the three fields are not shown rather than filled in
+                      with NA. */}
+                  {newOrder.registration !== "Unregistered" && (
+                    <>
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-[#777777]">
                       GST:
@@ -2304,26 +2342,9 @@ export default function OrdersListPage() {
                       className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
                   </div>
+                    </>
+                  )}
 
-                  {/* Registration */}
-
-                  <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-[#777777]">
-                      Registration:
-                    </span>
-
-                    <select
-                      value={newOrder.registration}
-                      onChange={(e) =>
-                        updateNewOrder("registration", e.target.value)
-                      }
-                      className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none"
-                    >
-                      <option value="">Select</option>
-                      <option value="Registered">Registered</option>
-                      <option value="Unregistered">Unregistered</option>
-                    </select>
-                  </div>
                 </div>
 
                 {/* =================================================

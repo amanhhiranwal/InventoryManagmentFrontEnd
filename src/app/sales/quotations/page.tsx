@@ -216,13 +216,25 @@ const EMPTY_FILTERS: QuotationFilters = {
   state: "",
 };
 
+/** The status moves a person makes, as against the ones that happen.
+ *
+ *  Expired is reached by the validity date going by, not by anybody
+ *  choosing it, so it is not offered in the row menu. */
+function manualStatuses(status?: string | null): QuotationStatus[] {
+  return nextQuotationStatuses(status).filter(
+    (next) => next !== QUOTATION_STATUS.EXPIRED,
+  );
+}
+
 /** Status tabs, matching the canonical vocabulary on the backend. */
 const STATUS_TABS: { label: string; value: "All" | QuotationStatus }[] = [
   { label: "All", value: "All" },
   { label: "Draft", value: QUOTATION_STATUS.DRAFT },
   { label: "Sent", value: QUOTATION_STATUS.SENT },
-  { label: "Accepted", value: QUOTATION_STATUS.ACCEPTED },
-  { label: "Rejected", value: QUOTATION_STATUS.REJECTED },
+  /* Accepted and Rejected are gone: nothing sets them any more, so the
+     two tabs only ever read (0) and invited somebody to go looking for
+     a step that does not exist. Expired stays - the server lapses a
+     proposal once its validity date passes. */
   { label: "Expired", value: QUOTATION_STATUS.EXPIRED },
 ];
 
@@ -2504,8 +2516,6 @@ export default function QuotationPage() {
               { label: "Total", value: stats.total },
               { label: "Draft", value: stats.drafts },
               { label: "Sent", value: stats.sent },
-              { label: "Accepted", value: stats.accepted },
-              { label: "Rejected", value: stats.rejected },
               { label: "Expired", value: stats.expired },
             ]}
           />
@@ -2543,8 +2553,8 @@ export default function QuotationPage() {
           caption={`${compactMoney(stats.sentValue)} awaiting`}
         />
 
-        <StatCard compact label="Accepted" value={String(stats.accepted)} caption="" />
-
+        {/* Accepted is gone with the status that fed it. What says a
+            customer agreed is that a sales order exists. */}
         <StatCard compact label="Expired" value={String(stats.expired)} caption="" />
       </StatGrid>
 
@@ -2781,8 +2791,13 @@ export default function QuotationPage() {
                                 </button>
                               )}
 
-                              {nextQuotationStatuses(quotation.status).length ===
-                                0 && (
+                              {/* Expiry is not an action: the server lapses
+                                  a proposal the day its validity date
+                                  passes, so offering Mark as Expired asked
+                                  somebody to do by hand what already
+                                  happens - and left the Expired tab
+                                  counting only the ones they remembered. */}
+                              {manualStatuses(quotation.status).length === 0 && (
                                 <p className="px-3 py-2 text-[11px] text-slate-400">
                                   No further actions —{" "}
                                   {quotationStatusLabel(quotation.status).toLowerCase()}{" "}
@@ -2790,7 +2805,7 @@ export default function QuotationPage() {
                                 </p>
                               )}
 
-                              {nextQuotationStatuses(quotation.status).map(
+                              {manualStatuses(quotation.status).map(
                                 (status) => (
                                   <button
                                     key={status}
