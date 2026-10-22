@@ -5,10 +5,17 @@ import {
   FiChevronRight,
 } from "react-icons/fi";
 import { pageWindow } from "./pageWindow";
+import { SortState, SortCarets } from "@/components/crm/sort";
 
 interface TableProps {
   headers: string[];
   children: ReactNode;
+  /** One per header, in the same order: the key that column sorts by, or
+      null for a column that does not sort (Actions, a checkbox). Leave
+      the prop out and the table behaves exactly as it did. */
+  sortKeys?: (string | null)[];
+  sort?: SortState<string>;
+  onSort?: (key: string) => void;
   loading?: boolean;
   currentPage?: number;
   /** How many records there are in total, across every page. Only needed
@@ -21,6 +28,9 @@ interface TableProps {
 export default function Table({
   headers,
   children,
+  sortKeys,
+  sort = null,
+  onSort,
   loading = false,
   currentPage = 1,
   totalItems,
@@ -66,18 +76,49 @@ export default function Table({
        TableCard and LIST_TABLE in components/crm/ListPageShell - so a
        Masters table and a Leads table are recognisably the same table. */
     <div className="overflow-hidden rounded-xl bg-white dark:border dark:border-[#17304a] dark:bg-[#071929]">
-      <div className="overflow-x-auto">
+      {/* The rows scroll under the heading rather than past it, so the
+          column a value belongs to is readable at the foot of a full
+          page. */}
+      <div className="max-h-[calc(100vh-330px)] min-h-[240px] overflow-auto">
         <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b border-[#e2e2e2] bg-white dark:border-[#17304a] dark:bg-transparent">
-              {headers.map((header, index) => (
-                <th
-                  key={`${header}-${index}`}
-                  className="whitespace-nowrap px-4 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400"
-                >
-                  {header}
-                </th>
-              ))}
+          <thead className="sticky top-0 z-20">
+            <tr className="border-b border-[#e2e2e2] bg-white [&>th]:sticky [&>th]:top-0 [&>th]:bg-white dark:border-[#17304a] dark:bg-[#071929] dark:[&>th]:bg-[#071929]">
+              {headers.map((header, index) => {
+                const key = sortKeys?.[index] ?? null;
+                const sortable = Boolean(key && onSort);
+                const active = sortable && sort?.key === key;
+
+                return (
+                  <th
+                    key={`${header}-${index}`}
+                    aria-sort={
+                      sortable
+                        ? active
+                          ? sort!.dir === 1
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                        : undefined
+                    }
+                    className="whitespace-nowrap px-4 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400"
+                  >
+                    {sortable ? (
+                      <button
+                        type="button"
+                        title={`Sort by ${header}`}
+                        onClick={() => onSort!(key!)}
+                        className="flex items-center gap-1.5"
+                      >
+                        <span>{header}</span>
+
+                        <SortCarets dir={active ? sort!.dir : null} />
+                      </button>
+                    ) : (
+                      header
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
 

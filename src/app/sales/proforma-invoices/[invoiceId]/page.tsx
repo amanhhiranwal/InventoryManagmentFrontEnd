@@ -35,6 +35,7 @@ import {
 import { CgSpinner } from "react-icons/cg";
 
 import { useUIStore } from "@/lib/store/ui.store";
+import { numericText } from "@/components/crm/AmountInput";
 import { StatusPill } from "@/components/crm/Pill";
 import {
   PROFORMA_INVOICE_STATUS_TONE,
@@ -1006,7 +1007,8 @@ function PaymentModal({
                     inputMode="decimal"
                     aria-label="Payment received"
                     value={received}
-                    onChange={(event) => setReceived(event.target.value)}
+                    /* A payment is a number; letters never reach it. */
+                    onChange={(event) => setReceived(numericText(event.target.value))}
                     placeholder={Math.round(
                       /* Suggest the advance until it is in, then the rest. */
                       invoice.amount_paid < invoice.advance_expected

@@ -21,6 +21,7 @@ import {
   capMobile,
   capPin,
   emailError,
+  websiteError,
   gstinError,
   mobileError,
   panError,
@@ -62,6 +63,9 @@ import ListActionsMenu, {
 } from "@/components/crm/ListActions";
 import { percentChange } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
+import { SortTh, useTableSort } from "@/components/crm/sort";
+import { COUNTRIES, regionBelongsTo, regionsFor } from "@/lib/regions";
+import { RowMenu } from "@/components/crm/RowMenu";
 import { StatusPill } from "@/components/crm/Pill";
 import { FormCard, FormSectionBlock } from "@/components/crm/FormCard";
 import FormPageHeader, {
@@ -143,6 +147,20 @@ interface LeadFormState extends LeadDetails {
   assignedToId: string;
 }
 
+/** A lead nobody has started working: saved from an unfinished form. */
+function isDraftLead(lead: { status?: string | null }) {
+  return String(lead?.status || "").toUpperCase() === "DRAFT";
+}
+
+/** The columns the list can be ordered by. */
+type LeadSortKey =
+  | "id"
+  | "company"
+  | "contact"
+  | "assigned"
+  | "status"
+  | "created";
+
 interface LeadFilters {
   dateFrom: string;
   dateTo: string;
@@ -221,6 +239,10 @@ const LEAD_PIPELINE: { label: string; status: string }[] = [
    creates the opportunity - and the backend refuses to set it from the
    status menu or the activity log. CONVERTED and LOST are terminal. */
 const LEAD_NEXT_STATUSES: Record<string, string[]> = {
+  /* A draft has not been worked, so it cannot have been contacted or
+     qualified. Finishing the form makes it a lead; the other way out is
+     to drop it. Same two moves the server allows. */
+  DRAFT: ["LOST"],
   NEW: ["CONTACTED", "QUALIFIED", "LOST"],
   CONTACTED: ["QUALIFIED", "LOST"],
   QUALIFIED: ["LOST"],
@@ -229,6 +251,7 @@ const LEAD_NEXT_STATUSES: Record<string, string[]> = {
 };
 
 const LEAD_STATUS_LABELS: Record<string, string> = {
+  DRAFT: "Draft",
   NEW: "New",
   CONTACTED: "Contacted",
   QUALIFIED: "Qualified",
@@ -251,7 +274,13 @@ function canAdvanceLead(lead: Lead, target: string) {
    opportunity and the lead follows. Anything still live may be converted,
    from wherever it stands. */
 function canConvertLead(lead: Lead) {
-  return lead.status !== "CONVERTED" && lead.status !== "LOST";
+  /* A draft is not a lead yet - there is nothing in it to carry into an
+     opportunity, and half of it is usually blank. Finish it first. */
+  return (
+    lead.status !== "CONVERTED" &&
+    lead.status !== "LOST" &&
+    !isDraftLead(lead)
+  );
 }
 
 /* What the Log Activity form may move a lead to. CONVERTED is excluded on
@@ -268,7 +297,7 @@ function logActivityStatuses(status: string) {
    this is what the picker offers if that endpoint is unavailable. */
 const FALLBACK_LEAD_SOURCES = ["Marketing", "Cold Calling", "In-bound"];
 
-const COUNTRIES = ["India", "United States", "China", "Malaysia", "Indonesia"];
+
 
 /* ============================================================================
    HELPERS
@@ -661,6 +690,11 @@ export default function LeadsPage() {
 
   const [rowMenuLeadId, setRowMenuLeadId] = useState<number | string | null>(null);
 
+  /* The buttons the row menus hang from. The panel is drawn into the
+     body, so it needs the button's position on screen rather than a
+     parent to be absolute inside. */
+  const rowMenuAnchors = useRef<Record<string, HTMLButtonElement | null>>({});
+
   /* Id of the lead whose status call is in flight, so the row and the drawer
      can disable their actions instead of allowing a double submit. */
   const [statusUpdatingId, setStatusUpdatingId] = useState<
@@ -935,7 +969,21 @@ export default function LeadsPage() {
 
   const safeCurrentPage = Math.min(currentPage, totalPages);
 
-  const paginatedLeads = filteredLeads;
+  /* One column at a time, over the page the server sent. */
+  const { sort, toggleSort, sortRows } = useTableSort<LeadSortKey, Lead>({
+    id: (lead) => Number(lead.id) || 0,
+    company: (lead) => getLeadCompany(lead).toLowerCase(),
+    contact: (lead) => getLeadDisplayName(lead).toLowerCase(),
+    assigned: (lead) =>
+      (lead.assigned_to_name || lead.creator_name || "").toLowerCase(),
+    status: (lead) => `${lead.stage || ""} ${lead.status || ""}`.toLowerCase(),
+    created: (lead) => new Date(lead.created_at).getTime() || 0,
+  });
+
+  const paginatedLeads = useMemo(
+    () => sortRows(filteredLeads),
+    [filteredLeads, sortRows],
+  );
 
   /* --------------------------------------------------------------------------
      FORM
@@ -1010,6 +1058,7 @@ export default function LeadsPage() {
     const problems = [
       mobileError(form.mobileNumber),
       emailError(form.email),
+      websiteError(form.website),
       pinError(form.zipCode),
       gstinError(form.gstNumber),
       panError(form.panNumber),
@@ -1021,6 +1070,119 @@ export default function LeadsPage() {
     }
 
     return true;
+  };
+
+  /* The form as the API wants it. Create, update and Save as Draft all
+     send the same body and differ only in the status on it, so a draft
+     cannot drift from the lead it becomes. */
+  const leadPayload = () => {
+    const details: LeadDetails = {
+      customerType: form.customerType,
+      contactName: form.contactName.trim(),
+      organizationName: form.organizationName.trim(),
+      website: form.website.trim(),
+
+      address: form.address.trim(),
+      city: form.city.trim(),
+      state: form.state.trim(),
+      zipCode: form.zipCode.trim(),
+      country: form.country,
+
+      gstNumber: form.gstNumber.trim(),
+      panNumber: form.panNumber.trim(),
+      coiNumber: form.coiNumber.trim(),
+
+      designation: form.designation.trim(),
+      mobileNumber: form.mobileNumber.trim(),
+      email: form.email.trim(),
+
+      leadSource: form.leadSource,
+      remarks: form.remarks.trim(),
+      attachments: form.attachments,
+    };
+
+    const selectedCt = customerTypesList.find(
+      (c) =>
+        c.name === form.customerType ||
+        String(c.id) === String(form.customerType),
+    );
+
+    const selectedSt = statesList.find(
+      (st) => st.name === form.state || String(st.id) === String(form.state),
+    );
+
+    const selectedSource = leadSourcesList.find(
+      (item) =>
+        item.name === form.leadSource ||
+        String(item.id) === String(form.leadSource),
+    );
+
+    return {
+      /* A draft usually has neither name yet, so it is titled by whatever
+         it does have rather than reading "()" in the list. */
+      title:
+        details.contactName || details.organizationName
+          ? `${details.contactName || "Unnamed"} (${
+              details.organizationName || "No organization"
+            })`
+          : "Untitled draft",
+      contact_name: details.contactName,
+      organization_name: details.organizationName,
+      email: details.email,
+      mobile_number: details.mobileNumber,
+      website: details.website,
+      office_address: details.address,
+      city: details.city,
+      zip_code: details.zipCode,
+      country: details.country,
+      gst_number: details.gstNumber,
+      pan_number: details.panNumber,
+      coi_number: details.coiNumber,
+      designation: details.designation,
+      remarks: details.remarks,
+      customer_type_id: selectedCt?.id,
+      state_id: selectedSt?.id,
+      lead_source_id: selectedSource?.id,
+      assigned_to_id: form.assignedToId || undefined,
+    };
+  };
+
+  /* Keep what has been typed so far without asking the sales team to
+     work it. The lead is saved with the status DRAFT, which is outside
+     the pipeline: it is not counted as New and the only moves open to it
+     are becoming a lead or being dropped. Nothing is validated, because
+     the point of a draft is that it is not finished. */
+  const saveLeadDraft = async () => {
+    try {
+      setSaving(true);
+
+      if (editingLead) {
+        const updated = await updateLeadApi(editingLead.id, {
+          ...leadPayload(),
+          status: "DRAFT",
+        });
+
+        setLeads((previous) =>
+          previous.map((lead) =>
+            lead.id === editingLead.id ? { ...lead, ...updated } : lead,
+          ),
+        );
+      } else {
+        await createLeadApi({ ...leadPayload(), status: "DRAFT" });
+      }
+
+      addToast("Saved as a draft. It is in the list, marked Draft.", "success");
+
+      closeLeadForm();
+
+      await fetchLeads();
+    } catch (error) {
+      console.error(error);
+
+      addToast("Could not save the draft.", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   /* --------------------------------------------------------------------------
@@ -1035,66 +1197,7 @@ export default function LeadsPage() {
     try {
       setSaving(true);
 
-      const details: LeadDetails = {
-        customerType: form.customerType,
-        contactName: form.contactName.trim(),
-        organizationName: form.organizationName.trim(),
-        website: form.website.trim(),
-
-        address: form.address.trim(),
-        city: form.city.trim(),
-        state: form.state.trim(),
-        zipCode: form.zipCode.trim(),
-        country: form.country,
-
-
-        gstNumber: form.gstNumber.trim(),
-        panNumber: form.panNumber.trim(),
-        coiNumber: form.coiNumber.trim(),
-
-        designation: form.designation.trim(),
-        mobileNumber: form.mobileNumber.trim(),
-        email: form.email.trim(),
-
-        leadSource: form.leadSource,
-        remarks: form.remarks.trim(),
-        attachments: form.attachments,
-      };
-
-      const selectedCt = customerTypesList.find((c) => c.name === form.customerType || String(c.id) === String(form.customerType));
-      const selectedSt = statesList.find((s) => s.name === form.state || String(s.id) === String(form.state));
-
-      /* The form has always collected a Lead Source and never sent it, so
-         every lead was stored without one - and the Opportunity it converted
-         into inherited that blank. */
-      const selectedSource = leadSourcesList.find(
-        (item) =>
-          item.name === form.leadSource ||
-          String(item.id) === String(form.leadSource),
-      );
-
-      await createLeadApi({
-        title: `${details.contactName} (${details.organizationName})`,
-        contact_name: details.contactName,
-        organization_name: details.organizationName,
-        email: details.email,
-        mobile_number: details.mobileNumber,
-        website: details.website,
-        office_address: details.address,
-        city: details.city,
-        zip_code: details.zipCode,
-        country: details.country,
-        gst_number: details.gstNumber,
-        pan_number: details.panNumber,
-        coi_number: details.coiNumber,
-        designation: details.designation,
-        remarks: details.remarks,
-        status: "NEW",
-        customer_type_id: selectedCt?.id,
-        state_id: selectedSt?.id,
-        lead_source_id: selectedSource?.id,
-        assigned_to_id: form.assignedToId || undefined,
-      });
+      await createLeadApi({ ...leadPayload(), status: "NEW" });
 
       addToast("New lead created successfully.", "success");
 
@@ -1124,64 +1227,11 @@ export default function LeadsPage() {
     try {
       setSaving(true);
 
-      const details: LeadDetails = {
-        customerType: form.customerType,
-        contactName: form.contactName.trim(),
-        organizationName: form.organizationName.trim(),
-        website: form.website.trim(),
-
-        address: form.address.trim(),
-        city: form.city.trim(),
-        state: form.state.trim(),
-        zipCode: form.zipCode.trim(),
-        country: form.country,
-
-
-        gstNumber: form.gstNumber.trim(),
-        panNumber: form.panNumber.trim(),
-        coiNumber: form.coiNumber.trim(),
-
-        designation: form.designation.trim(),
-        mobileNumber: form.mobileNumber.trim(),
-        email: form.email.trim(),
-
-        leadSource: form.leadSource,
-        remarks: form.remarks.trim(),
-        attachments: form.attachments,
-      };
-
-      const selectedCt = customerTypesList.find((c) => c.name === form.customerType || String(c.id) === String(form.customerType));
-      const selectedSt = statesList.find((s) => s.name === form.state || String(s.id) === String(form.state));
-
-      /* The form has always collected a Lead Source and never sent it, so
-         every lead was stored without one - and the Opportunity it converted
-         into inherited that blank. */
-      const selectedSource = leadSourcesList.find(
-        (item) =>
-          item.name === form.leadSource ||
-          String(item.id) === String(form.leadSource),
-      );
-
       const updated = await updateLeadApi(editingLead.id, {
-        title: `${details.contactName} (${details.organizationName})`,
-        contact_name: details.contactName,
-        organization_name: details.organizationName,
-        email: details.email,
-        mobile_number: details.mobileNumber,
-        website: details.website,
-        office_address: details.address,
-        city: details.city,
-        zip_code: details.zipCode,
-        country: details.country,
-        gst_number: details.gstNumber,
-        pan_number: details.panNumber,
-        coi_number: details.coiNumber,
-        designation: details.designation,
-        remarks: details.remarks,
-        customer_type_id: selectedCt?.id,
-        state_id: selectedSt?.id,
-        lead_source_id: selectedSource?.id,
-        assigned_to_id: form.assignedToId || undefined,
+        ...leadPayload(),
+        /* Saving a finished draft is what turns it into a lead. Any
+           other lead keeps the status it already had. */
+        ...(isDraftLead(editingLead) ? { status: "NEW" } : {}),
       });
 
       const refreshedLead = {
@@ -1757,6 +1807,11 @@ export default function LeadsPage() {
         onSubmit={pageMode === "create" ? handleCreateLead : handleUpdateLead}
         onAttachment={addAttachment}
         uploadingAttachments={uploadingAttachments}
+        onSaveDraft={
+          pageMode === "create" || (editingLead && isDraftLead(editingLead))
+            ? saveLeadDraft
+            : undefined
+        }
         onClose={closeLeadForm}
       />
     );
@@ -2101,57 +2156,49 @@ export default function LeadsPage() {
           <EmptyLeads />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* The rows scroll under the heading rather than past it, so
+                the column a value belongs to is still readable at the
+                bottom of a full page. */}
+            <div className="max-h-[calc(100vh-330px)] min-h-[260px] overflow-auto">
               <table className={`w-full min-w-[900px] border-collapse text-left ${LIST_TABLE}`}>
-                <thead>
+                <thead className="sticky top-0 z-20">
                   <tr
                     className="
                       border-b
                       border-slate-200
-                      bg-slate-50/70
+                      bg-slate-50
                       text-[10px]
                       font-bold
                       uppercase
                       tracking-wider
                       text-slate-400
+                      [&>th]:sticky
+                      [&>th]:top-0
+                      [&>th]:bg-slate-50
                       dark:border-[#0d2336]
-                      dark:bg-[#071929]/60
+                      dark:bg-[#071929]
+                      dark:[&>th]:bg-[#071929]
                     "
                   >
-                    <th className="w-12 px-4 py-4">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300"
-                      />
-                    </th>
+                    {/* The select-all box selected nothing - there was no
+                        bulk action behind it on this list - so it is gone
+                        rather than left looking broken. */}
 
-                    <th className="px-4 py-4">
-                      <TableHeader label="Lead ID" />
-                    </th>
+                    <SortTh label="Lead ID" sortKey="id" sort={sort} onSort={toggleSort} />
 
                     {/* The organisation leads, and the person second. A list
                         of leads is read company by company - "who is this
                         from?" before "who do I call?" - which is the order
                         Figma settled on. */}
-                    <th className="px-4 py-4">
-                      <TableHeader label="Organization Name" />
-                    </th>
+                    <SortTh label="Organization Name" sortKey="company" sort={sort} onSort={toggleSort} />
 
-                    <th className="px-4 py-4">
-                      <TableHeader label="Contact Person" />
-                    </th>
+                    <SortTh label="Contact Person" sortKey="contact" sort={sort} onSort={toggleSort} />
 
-                    <th className="px-4 py-4">
-                      <TableHeader label="Assigned To" />
-                    </th>
+                    <SortTh label="Assigned To" sortKey="assigned" sort={sort} onSort={toggleSort} />
 
-                    <th className="px-4 py-4">
-                      <TableHeader label="Status" />
-                    </th>
+                    <SortTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
 
-                    <th className="px-4 py-4">
-                      <TableHeader label="Created" />
-                    </th>
+                    <SortTh label="Created" sortKey="created" sort={sort} onSort={toggleSort} />
 
                     <th className="px-4 py-4 text-center">Actions</th>
                   </tr>
@@ -2180,16 +2227,6 @@ export default function LeadsPage() {
                             dark:hover:bg-[#071929]/50
                           "
                       >
-                        <td
-                          className="px-4 py-4"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-slate-300"
-                          />
-                        </td>
-
                         <td className="px-4 py-4">
                           <span className="whitespace-nowrap text-[11px] font-medium text-slate-800 dark:text-slate-300">
                             {formatLeadId(lead.id)}
@@ -2260,6 +2297,9 @@ export default function LeadsPage() {
                               <button
                                 type="button"
                                 title="More Actions"
+                                ref={(node) => {
+                                  rowMenuAnchors.current[String(lead.id)] = node;
+                                }}
                                 onClick={() =>
                                   setRowMenuLeadId((previous) =>
                                     previous === lead.id ? null : lead.id,
@@ -2278,25 +2318,15 @@ export default function LeadsPage() {
                                 <FiMoreVertical />
                               </button>
 
-                              {rowMenuLeadId === lead.id && (
-                                <div
-                                  className="
-                                      absolute
-                                      right-0
-                                      top-full
-                                      z-40
-                                      mt-1
-                                      w-52
-                                      rounded-xl
-                                      border
-                                      border-slate-200
-                                      bg-white
-                                      p-1
-                                      shadow-xl
-                                      dark:border-[#0d2336]
-                                      dark:bg-[#051422]
-                                    "
-                                >
+                              {/* Drawn over the page, not inside the table,
+                                  so the last rows' menus are not cut off by
+                                  the scroll box they sit in. */}
+                              <RowMenu
+                                open={rowMenuLeadId === lead.id}
+                                onClose={() => setRowMenuLeadId(null)}
+                                anchor={() => rowMenuAnchors.current[String(lead.id)] ?? null}
+                              >
+                                <>
                                   <RowAction
                                     icon={<FiEdit3 />}
                                     onClick={() => openEditPage(lead)}
@@ -2351,8 +2381,8 @@ export default function LeadsPage() {
                                       Convert to Opportunity
                                     </RowAction>
                                   )}
-                                </div>
-                              )}
+                                </>
+                              </RowMenu>
                             </div>
                           </div>
                         </td>
@@ -2589,6 +2619,7 @@ function LeadFormPage({
   onSubmit,
   onAttachment,
   uploadingAttachments,
+  onSaveDraft,
   onClose,
 }: {
   title: string;
@@ -2605,6 +2636,8 @@ function LeadFormPage({
   onSubmit: (event: FormEvent) => void;
   onAttachment: (event: ChangeEvent<HTMLInputElement>) => void;
   uploadingAttachments: number;
+  /** Keeps the half-filled form. Absent while editing a saved lead. */
+  onSaveDraft?: () => void;
   onClose: () => void;
 }) {
   /* A field complains once it has been left, not while it is being filled:
@@ -2622,6 +2655,7 @@ function LeadFormPage({
     setTouched({
       mobileNumber: true,
       email: true,
+      website: true,
       zipCode: true,
       gstNumber: true,
       panNumber: true,
@@ -2642,7 +2676,9 @@ function LeadFormPage({
           <>
             <CancelButton onClick={onClose} />
 
-            <DraftButton disabled={saving} onClick={onClose} />
+            {onSaveDraft && (
+              <DraftButton disabled={saving} onClick={onSaveDraft} />
+            )}
 
             <SubmitButton formId="lead-form" disabled={saving}>
               {saving
@@ -2688,6 +2724,10 @@ function LeadFormPage({
                 label="Organization Website"
                 value={form.website}
                 placeholder="www.company.com"
+                /* Optional here, but if something is typed it has to be a
+                   web address. */
+                error={shown("website", websiteError(form.website))}
+                onBlur={() => touch("website")}
                 onChange={(value) => onChange("website", value)}
               />
             </div>
@@ -2704,12 +2744,23 @@ function LeadFormPage({
                   onChange={(value) => onChange("address", value)}
                 />
 
+                {/* The list follows the country: the masters table holds
+                    India's states, and the others come from the regions
+                    map. Without this the picker offered Indian states
+                    whatever the country was, so a lead could sit in
+                    Jharkhand, China. */}
                 <FormSelect
                   label="State / Province"
                   required
                   value={form.state}
                   onChange={(value) => onChange("state", value)}
-                  options={states}
+                  options={regionsFor(form.country, states)}
+                  disabled={!form.country}
+                  placeholder={
+                    form.country
+                      ? "Select State / Province"
+                      : "Choose a country first"
+                  }
                   allowCustom
                 />
               </div>
@@ -2727,8 +2778,16 @@ function LeadFormPage({
                   label="Country"
                   required
                   value={form.country}
-                  onChange={(value) => onChange("country", value)}
-                  options={COUNTRIES}
+                  onChange={(value) => {
+                    onChange("country", value);
+
+                    /* A state that does not exist in the new country
+                       would otherwise stay in the field and be saved. */
+                    if (!regionBelongsTo(value, form.state, states)) {
+                      onChange("state", "");
+                    }
+                  }}
+                  options={[...COUNTRIES]}
                 />
               </div>
 
@@ -4170,6 +4229,10 @@ function FormInput({
         className={fieldOverride(error)}
         type={type}
         value={value}
+        /* The asterisk used to be the whole of it - the control itself
+           was never marked, so a form could be submitted with every
+           starred field empty. */
+        required={required}
         inputMode={inputMode}
         aria-invalid={Boolean(error)}
         placeholder={placeholder || `Enter ${label.toLowerCase()}`}
@@ -4195,6 +4258,8 @@ function FormSelect({
   options,
   required,
   allowCustom = false,
+  disabled = false,
+  placeholder,
 }: {
   label: string;
   value: string;
@@ -4202,6 +4267,9 @@ function FormSelect({
   options: string[];
   required?: boolean;
   allowCustom?: boolean;
+  /** Greyed out until whatever it depends on has been chosen. */
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   const isCustom = allowCustom && value && !options.includes(value);
 
@@ -4216,14 +4284,18 @@ function FormSelect({
       <div className="relative">
         <select
           value={isCustom ? "" : value}
+          required={required}
+          disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           className={`
             ${filterInput}
             appearance-none
             pr-9
+            disabled:cursor-not-allowed
+            disabled:opacity-60
           `}
         >
-          <option value="">Select {label}</option>
+          <option value="">{placeholder || `Select ${label}`}</option>
 
           {options.map((option) => (
             <option key={option} value={option}>

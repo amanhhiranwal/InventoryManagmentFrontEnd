@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import api from "@/lib/axios";
+import { numericText } from "@/components/crm/AmountInput";
 import { useUIStore } from "@/lib/store/ui.store";
 import { StatusPill } from "@/components/crm/Pill";
 import {
@@ -1759,7 +1760,8 @@ function PercentCell({
         inputMode="decimal"
         value={draft}
         disabled={disabled}
-        onChange={(event) => setDraft(event.target.value)}
+        /* Letters never reach the field; a half-typed "12." still does. */
+        onChange={(event) => setDraft(numericText(event.target.value))}
         onBlur={commit}
         onKeyDown={(event) => {
           /* Commit on Enter directly rather than leaning on blur() to do it

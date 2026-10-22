@@ -102,6 +102,18 @@ import {
 } from "react-icons/fi";
 import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
 import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
+import { SortTh, useTableSort } from "@/components/crm/sort";
+import { RowMenu } from "@/components/crm/RowMenu";
+
+/** The columns the sales order list can be ordered by. */
+type OrderSortKey =
+  | "id"
+  | "customer"
+  | "company"
+  | "value"
+  | "assigned"
+  | "date"
+  | "status";
 
 /* =========================================================
    TYPES
@@ -438,6 +450,10 @@ export default function OrdersListPage() {
   ======================================================= */
 
   const [orders, setOrders] = useState<Order[]>([]);
+
+  /* The buttons the row menus hang from; the panel is drawn into the
+     body and needs their place on screen. */
+  const rowMenuAnchors = useRef<Record<string, HTMLButtonElement | null>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -816,7 +832,17 @@ export default function OrdersListPage() {
      page count is of everything that matches. */
   const totalPages = Math.max(1, Math.ceil(totalOrders / PAGE_SIZE));
 
-  const paginatedOrders = filteredOrders;
+  const { sort, toggleSort, sortRows } = useTableSort<OrderSortKey, Order>({
+    id: (order) => order.order_number || String(order._id || ""),
+    customer: (order) => (order.customer_name || "").toLowerCase(),
+    company: (order) => (order.company_name || "").toLowerCase(),
+    value: (order) => Number(order.grand_total) || 0,
+    assigned: (order) => getAssignedTo(order).toLowerCase(),
+    date: (order) => new Date(getOrderDate(order) || 0).getTime() || 0,
+    status: (order) => normalizeStatus(order.status).toLowerCase(),
+  });
+
+  const paginatedOrders = sortRows(filteredOrders);
 
   useEffect(() => {
     const timer = setTimeout(() => setAppliedSearch(search.trim()), 300);
@@ -3228,11 +3254,14 @@ export default function OrdersListPage() {
               RIGHT SIDEBAR
           ================================================= */}
 
-            <div className="space-y-3">
-              {/* =================================================
-                ORDER SUMMARY
-            ================================================= */}
-
+            {/* The summary stays put while the form scrolls: it is what
+                the figures are being entered against, and on a form this
+                long it was off screen for most of the filling in. It pins
+                exactly under the page header, whose height the header
+                publishes - a guessed offset larger than the panel's
+                natural position pushes it down before anything has been
+                scrolled, which is where the gap above it came from. */}
+            <div className="space-y-3 lg:sticky lg:self-start lg:top-[var(--form-header-offset,62px)]">
               {/* =================================================
                 ORDER SUMMARY
             ================================================= */}
@@ -4115,41 +4144,26 @@ export default function OrdersListPage() {
       ================================================= */}
 
       <div className="overflow-hidden rounded-xl bg-white dark:border dark:border-[#17304a] dark:bg-[#071929]">
-        <div className="overflow-x-auto">
+        {/* The rows scroll under the heading rather than past it. */}
+        <div className="max-h-[calc(100vh-390px)] min-h-[260px] overflow-auto">
           <table className={`w-full text-left ${LIST_TABLE}`}>
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-[#17304a]">
-                <th className="w-10 px-4 py-3">
-                  <input type="checkbox" className="rounded" />
-                </th>
+            <thead className="sticky top-0 z-20">
+              <tr className="border-b border-slate-200 [&>th]:sticky [&>th]:top-0 [&>th]:bg-white dark:border-[#17304a] dark:[&>th]:bg-[#071929]">
+                {/* The select-all box had no bulk action behind it. */}
 
-                <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
-                  Order ID
-                </th>
+                <SortTh label="Order ID" sortKey="id" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[11px] font-medium text-slate-500" />
 
-                <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
-                  Customer Name
-                </th>
+                <SortTh label="Customer Name" sortKey="customer" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[11px] font-medium text-slate-500" />
 
-                <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
-                  Company
-                </th>
+                <SortTh label="Company" sortKey="company" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[11px] font-medium text-slate-500" />
 
-                <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
-                  Order Value
-                </th>
+                <SortTh label="Order Value" sortKey="value" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[11px] font-medium text-slate-500" />
 
-                <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
-                  Assigned To
-                </th>
+                <SortTh label="Assigned To" sortKey="assigned" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[11px] font-medium text-slate-500" />
 
-                <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
-                  Order Date
-                </th>
+                <SortTh label="Order Date" sortKey="date" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[11px] font-medium text-slate-500" />
 
-                <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
-                  Status
-                </th>
+                <SortTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[11px] font-medium text-slate-500" />
 
                 <th className="px-3 py-3 text-[11px] font-medium text-slate-500">
                   Actions
@@ -4161,7 +4175,7 @@ export default function OrdersListPage() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={8}
                     className="py-16 text-center text-xs text-slate-400"
                   >
                     Fetching order records...
@@ -4170,7 +4184,7 @@ export default function OrdersListPage() {
               ) : paginatedOrders.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={8}
                     className="py-16 text-center text-xs text-slate-400"
                   >
                     No sales orders found.
@@ -4190,13 +4204,6 @@ export default function OrdersListPage() {
                       onClick={() => router.push(`/sales/orders/${order._id}`)}
                       className="cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50 dark:border-[#17304a]/70 dark:hover:bg-[#0b2034]"
                     >
-                      <td
-                        className="px-4 py-3"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <input type="checkbox" className="rounded" />
-                      </td>
-
                       <td className="whitespace-nowrap px-3 py-3 text-[11px] font-medium text-slate-800 dark:text-slate-300">
                         #{order.order_number || `SO-${order._id}`}
                       </td>
@@ -4252,6 +4259,9 @@ export default function OrdersListPage() {
                       >
                         <button
                           type="button"
+                          ref={(node) => {
+                            rowMenuAnchors.current[String(order._id)] = node;
+                          }}
                           onClick={() =>
                             setOpenMenu(
                               openMenu === order._id ? null : order._id,
@@ -4262,14 +4272,15 @@ export default function OrdersListPage() {
                           <FiMoreVertical size={15} />
                         </button>
 
-                        {openMenu === order._id && (
-                          <>
-                            <div
-                              className="fixed inset-0 z-20"
-                              onClick={() => setOpenMenu(null)}
-                            />
-
-                            <div className="absolute right-4 top-9 z-30 w-40 rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200">
+                        {/* Drawn over the page, so the last rows' menus
+                            are not cut off by the scroll box. */}
+                        <RowMenu
+                          open={openMenu === order._id}
+                          onClose={() => setOpenMenu(null)}
+                          anchor={() => rowMenuAnchors.current[String(order._id)] ?? null}
+                          width={170}
+                        >
+                            <>
                               <Link
                                 href={`/sales/orders/${order._id}`}
                                 className="block px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-[#0b2034]"
@@ -4296,9 +4307,8 @@ export default function OrdersListPage() {
                                   </button>
                                 ),
                               )}
-                            </div>
-                          </>
-                        )}
+                            </>
+                        </RowMenu>
                       </td>
                     </tr>
                   );

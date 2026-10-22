@@ -13,6 +13,24 @@ import { useEffect, useState } from "react";
 
 export type AmountMode = "AMOUNT" | "PERCENT";
 
+/**
+ * Keeps only what can be part of a number, as it is typed.
+ *
+ * The field used to hold whatever was typed until it lost focus, so
+ * "FHFHD" sat in a rupee box reading as a freight charge and quietly
+ * counted as zero. Letters never reach the field now; a half-typed
+ * "12." still does, because it is on its way to being a number.
+ */
+export function numericText(raw: string): string {
+  const cleaned = raw.replace(/[^0-9.]/g, "");
+
+  const [head, ...rest] = cleaned.split(".");
+
+  // One decimal point only: the second full stop is dropped, not kept
+  // to be silently discarded later.
+  return rest.length ? `${head}.${rest.join("")}` : head;
+}
+
 /** Parses whatever the user typed into a non-negative number. */
 export function parseAmount(raw: string): number {
   const cleaned = raw.replace(/[^0-9.]/g, "");
@@ -107,8 +125,10 @@ export default function AmountInput({
           event.target.select();
         }}
         onChange={(event) => {
-          setDraft(event.target.value);
-          onChange(parseAmount(event.target.value));
+          const text = numericText(event.target.value);
+
+          setDraft(text);
+          onChange(parseAmount(text));
         }}
         onBlur={() => {
           setEditing(false);

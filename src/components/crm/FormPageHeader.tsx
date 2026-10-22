@@ -1,7 +1,7 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
-import { FiDownload, FiUpload, FiX } from "react-icons/fi";
+import { ReactNode, useEffect, useRef } from "react";
+import { FiBookmark, FiSend, FiX } from "react-icons/fi";
 
 import { useUIStore } from "@/lib/store/ui.store";
 
@@ -27,6 +27,43 @@ export default function FormPageHeader({
 }) {
   const setFormFocus = useUIStore((state) => state.setFormFocus);
 
+  const bar = useRef<HTMLDivElement | null>(null);
+
+  /* Publish how tall this bar is, so the panels that pin themselves
+     below it line up with the top of the form rather than guessing.
+
+     The page is scrolled by <main>, which is padded, and a sticky offset
+     is measured from its padding box - so what a panel wants is the
+     bar's height less that padding. Guessed at, the summary sat 35px
+     lower than the card beside it before anything had been scrolled,
+     because a sticky top larger than the element's natural position
+     pushes it down immediately. */
+  useEffect(() => {
+    const element = bar.current;
+
+    if (!element) return;
+
+    const PAGE_PADDING = 20;
+
+    const publish = () => {
+      document.documentElement.style.setProperty(
+        "--form-header-offset",
+        `${Math.max(0, element.offsetHeight - PAGE_PADDING)}px`,
+      );
+    };
+
+    publish();
+
+    const observer = new ResizeObserver(publish);
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty("--form-header-offset");
+    };
+  }, []);
+
   /* Form pages take the full width in the design: the sidebar hides while
      one is open and comes back when it closes. */
   useEffect(() => {
@@ -35,7 +72,23 @@ export default function FormPageHeader({
   }, [setFormFocus]);
 
   return (
-    <div className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-center sm:justify-between">
+    /* Pinned to the top of the page: on a long form the title, the
+       breadcrumb and - more to the point - Cancel, Save as Draft and the
+       submit button used to scroll away, so finishing a form meant
+       scrolling back up to find the button that saves it.
+
+       The negative margins pull the bar out into the page's own padding
+       and the matching padding puts its content back, so the bar is the
+       full width of the page and starts at the very top of it. Without
+       them the bar floated inside a 20px frame and the form scrolled
+       through the gap above and beside it - fields riding over the
+       title. The -top-5 matches: a sticky offset is measured from the
+       scroll area's padding box, so top-0 would still have parked the
+       bar 20px down and left that strip for the form to show through. */
+    <div
+      ref={bar}
+      className="sticky -top-5 z-30 -mx-5 -mt-5 flex flex-col gap-3 bg-[#f3f3f3] px-5 pb-4 pt-5 sm:flex-row sm:items-center sm:justify-between dark:bg-[#020b12]"
+    >
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-[18px] font-medium text-[#141414] dark:text-white">
@@ -83,11 +136,16 @@ export function CancelButton({
   );
 }
 
-/** Neutral outlined button, used for "Save as Draft". */
+/** Neutral outlined button, used for "Save as Draft".
+ *
+ *  A bookmark, as the design draws it: putting something aside to come
+ *  back to. The download arrow that stood here said the opposite - that
+ *  a file was about to land in Downloads - and only one of the five
+ *  screens asked for an icon at all. */
 export function DraftButton({
   onClick,
   disabled,
-  withIcon = false,
+  withIcon = true,
   children = "Save as Draft",
 }: {
   onClick: () => void;
@@ -102,13 +160,18 @@ export function DraftButton({
       disabled={disabled}
       className="flex h-9 items-center gap-1.5 rounded-lg border border-white bg-white px-3.5 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200 dark:hover:bg-[#0b2034]"
     >
-      {withIcon && <FiDownload size={13} />}
+      {withIcon && <FiBookmark size={13} />}
       {children}
     </button>
   );
 }
 
-/** Filled navy button that commits the form. */
+/** Filled navy button that commits the form.
+ *
+ *  withIcon puts a paper plane on it, for the screens whose primary
+ *  action sends the document to somebody - Send For Approval. Create
+ *  Lead and Save Proposal keep a plain label, as the design has them:
+ *  nothing is being sent anywhere. */
 export function SubmitButton({
   onClick,
   disabled,
@@ -131,7 +194,7 @@ export function SubmitButton({
       disabled={disabled}
       className="flex h-9 items-center gap-1.5 rounded-lg bg-[#243454] px-3.5 text-[13px] font-medium text-white shadow-sm transition hover:bg-[#18243a] disabled:opacity-50"
     >
-      {withIcon && <FiUpload size={13} />}
+      {withIcon && <FiSend size={13} />}
       {children}
     </button>
   );

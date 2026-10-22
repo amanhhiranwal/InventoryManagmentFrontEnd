@@ -133,6 +133,18 @@ import {
 
 import { CgSpinner } from "react-icons/cg";
 import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
+import { SortTh, useTableSort } from "@/components/crm/sort";
+import { RowMenu } from "@/components/crm/RowMenu";
+
+/** The columns the proposal list can be ordered by. */
+type QuotationSortKey =
+  | "id"
+  | "organization"
+  | "opportunity"
+  | "value"
+  | "assigned"
+  | "date"
+  | "status";
 
 /* ============================================================================
    TYPES
@@ -277,7 +289,18 @@ function todayInput() {
 
 /** Default offer validity: 30 days out, matching the form's label. */
 function validityInput() {
-  return new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  return validityFor(todayInput());
+}
+
+/** Thirty days after whatever the proposal is dated, as the label says. */
+function validityFor(proposalDate: string): string {
+  const start = proposalDate ? new Date(proposalDate) : new Date();
+
+  // An unparseable date falls back to thirty days from today rather than
+  // writing "Invalid Date" into the field.
+  const from = Number.isNaN(start.getTime()) ? new Date() : start;
+
+  return new Date(from.getTime() + 30 * 86400000).toISOString().slice(0, 10);
 }
 
 function toInputDate(value?: string | null) {
@@ -480,6 +503,10 @@ export default function QuotationPage() {
   const [draftFilters, setDraftFilters] = useState<QuotationFilters>(EMPTY_FILTERS);
 
   const [rowMenuId, setRowMenuId] = useState<number | null>(null);
+
+  /* The buttons the row menus hang from; the panel is drawn into the
+     body and needs their place on screen. */
+  const rowMenuAnchors = useRef<Record<string, HTMLButtonElement | null>>({});
 
   /* ---- create form ---- */
   const [opportunityId, setOpportunityId] = useState<number | null>(null);
@@ -785,9 +812,23 @@ export default function QuotationPage() {
     });
   }, [quotations, filters]);
 
+  const { sort, toggleSort, sortRows } = useTableSort<
+    QuotationSortKey,
+    QuotationModel
+  >({
+    id: (row) => row.quote_number || "",
+    organization: (row) => (row.organization_name || "").toLowerCase(),
+    opportunity: (row) => (row.opportunity_name || "").toLowerCase(),
+    value: (row) => Number(row.total_payable) || 0,
+    assigned: (row) => userName(row.assigned_to_id).toLowerCase(),
+    date: (row) =>
+      new Date(row.quotation_date || row.created_at || 0).getTime() || 0,
+    status: (row) => String(row.status || "").toLowerCase(),
+  });
+
   const paginated = useMemo(() => {
-    return filtered;
-  }, [filtered]);
+    return sortRows(filtered);
+  }, [filtered, sortRows]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1011,7 +1052,7 @@ export default function QuotationPage() {
   /* -------------------------------------------------------
      EDIT AN EXISTING QUOTATION
 
-     The detail page's Edit Quotation button navigates here with ?edit=<id>,
+     The detail page's Edit Proposal button navigates here with ?edit=<id>,
      and its Send To Client with ?send=<id>. Everything the form collects is
      read back off the saved record, so the user edits what is stored rather
      than a blank form.
@@ -1539,7 +1580,7 @@ export default function QuotationPage() {
     }
 
     setItems((current) => [...current, ...picked]);
-    addToast(`${picked.length} product(s) added to the quotation.`, "success");
+    addToast(`${picked.length} product(s) added to the proposal.`, "success");
 
     setShowProductModal(false);
     setPicked([]);
@@ -1813,7 +1854,17 @@ export default function QuotationPage() {
                     <input
                       type="date"
                       value={quotationDate}
-                      onChange={(event) => setQuotationDate(event.target.value)}
+                      /* The validity follows the proposal date, which is
+                         what the label beside it promises. It was fixed at
+                         thirty days from today whatever the proposal was
+                         dated, so backdating one left it valid for longer
+                         than the offer said. */
+                      onChange={(event) => {
+                        const next = event.target.value;
+
+                        setQuotationDate(next);
+                        setValidationDate(validityFor(next));
+                      }}
                       className={INPUT}
                     />
                   </Field>
@@ -1822,6 +1873,9 @@ export default function QuotationPage() {
                     <input
                       type="date"
                       value={validationDate}
+                      /* Still editable - thirty days is the default, not
+                         a rule - but it cannot end before it begins. */
+                      min={quotationDate || undefined}
                       onChange={(event) => setValidationDate(event.target.value)}
                       className={INPUT}
                     />
@@ -2266,7 +2320,13 @@ export default function QuotationPage() {
 
           {/* ---------------- RIGHT: ORDER SUMMARY ---------------- */}
 
-          <div className="lg:sticky lg:top-4 lg:self-start">
+          {/* Pinned exactly under the page header, whose height the
+              header itself publishes. A guessed offset larger than the
+              panel's natural position pushes it down straight away, which
+              is where the gap above the summary came from. */}
+          <div
+            className="lg:sticky lg:self-start lg:top-[var(--form-header-offset,62px)]"
+          >
             <FormCard>
               <FormSectionBlock
                 first
@@ -2356,7 +2416,7 @@ export default function QuotationPage() {
                       <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
                         {opportunityId ? (
                           <>
-                            Generating this quotation will automatically move
+                            Generating this proposal will automatically move
                             Opportunity{" "}
                             <span className="font-bold text-slate-700 dark:text-slate-200">
                               #{opportunityId}
@@ -2545,38 +2605,23 @@ export default function QuotationPage() {
       </div>
 
       <TableCard>
-        <div className="overflow-x-auto">
+        {/* The rows scroll under the heading rather than past it. */}
+        <div className="max-h-[calc(100vh-380px)] min-h-[260px] overflow-auto">
           <table className={`w-full min-w-[900px] ${LIST_TABLE}`}>
-            <thead className="border-b border-slate-200 dark:border-[#17304a]">
-              <tr>
-                <Th className="w-10 px-3!">
-                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300" />
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Proposal ID</SortLabel>
-                </Th>
+            <thead className="sticky top-0 z-20 border-b border-slate-200 dark:border-[#17304a]">
+              <tr className="[&>th]:sticky [&>th]:top-0 [&>th]:bg-white dark:[&>th]:bg-[#071929]">
+                {/* The select-all box had no bulk action behind it. */}
+                <SortTh label="Proposal ID" sortKey="id" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
                 {/* The organisation and where it is, and nothing else, as
                     the design has it. The contact is on the proposal itself
                     and on the opportunity beside this column; repeating it
                     here only made the row taller. */}
-                <Th className="px-3!">
-                  <SortLabel>Organization Name</SortLabel>
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Opportunity</SortLabel>
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Order Value</SortLabel>
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Assigned To</SortLabel>
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Dates</SortLabel>
-                </Th>
-                <Th className="px-3!">
-                  <SortLabel>Status</SortLabel>
-                </Th>
+                <SortTh label="Organization Name" sortKey="organization" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
+                <SortTh label="Opportunity" sortKey="opportunity" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
+                <SortTh label="Order Value" sortKey="value" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
+                <SortTh label="Assigned To" sortKey="assigned" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
+                <SortTh label="Dates" sortKey="date" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
+                <SortTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} className="px-3 text-[11px] font-semibold text-slate-500" />
                 <Th className="px-3! text-center">Actions</Th>
               </tr>
             </thead>
@@ -2584,7 +2629,7 @@ export default function QuotationPage() {
             <tbody className="divide-y divide-slate-100 dark:divide-[#0d2336]/70">
               {loading && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-16 text-center">
+                  <td colSpan={8} className="px-4 py-16 text-center">
                     <CgSpinner className="mx-auto animate-spin text-2xl text-slate-400" />
                   </td>
                 </tr>
@@ -2593,10 +2638,10 @@ export default function QuotationPage() {
               {!loading && paginated.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={8}
                     className="px-4 py-16 text-center text-xs text-slate-400"
                   >
-                    No quotations found. Use Add New Proposal to raise one.
+                    No proposals found. Use Add New Proposal to raise one.
                   </td>
                 </tr>
               )}
@@ -2614,16 +2659,6 @@ export default function QuotationPage() {
                     }
                     className="cursor-pointer transition hover:bg-slate-50 dark:hover:bg-[#071929]/50"
                   >
-                    <td
-                      className="px-3 py-4"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300"
-                      />
-                    </td>
-
                     <td className="px-3 py-4">
                       <span className="whitespace-nowrap text-[11px] font-medium text-slate-800 dark:text-slate-300">
                         #{quotation.quote_number}
@@ -2708,6 +2743,9 @@ export default function QuotationPage() {
                           <button
                             type="button"
                             title="More Actions"
+                            ref={(node) => {
+                              rowMenuAnchors.current[String(quotation.id)] = node;
+                            }}
                             onClick={() =>
                               setRowMenuId((previous) =>
                                 previous === quotation.id ? null : quotation.id,
@@ -2718,8 +2756,14 @@ export default function QuotationPage() {
                             <FiMoreVertical size={14} />
                           </button>
 
-                          {rowMenuId === quotation.id && (
-                            <div className="absolute right-0 top-full z-40 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-[#0d2336] dark:bg-[#051422]">
+                          {/* Drawn over the page, so the last rows' menus
+                              are not cut off by the scroll box. */}
+                          <RowMenu
+                            open={rowMenuId === quotation.id}
+                            onClose={() => setRowMenuId(null)}
+                            anchor={() => rowMenuAnchors.current[String(quotation.id)] ?? null}
+                          >
+                            <>
                               {quotation.status === QUOTATION_STATUS.DRAFT && (
                                 <button
                                   type="button"
@@ -2729,7 +2773,7 @@ export default function QuotationPage() {
                                   }}
                                   className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-[#071929]"
                                 >
-                                  Edit Quotation
+                                  Edit Proposal
                                 </button>
                               )}
 
@@ -2764,8 +2808,8 @@ export default function QuotationPage() {
                                   </button>
                                 ),
                               )}
-                            </div>
-                          )}
+                            </>
+                          </RowMenu>
                         </div>
                       </div>
                     </td>
@@ -2877,8 +2921,24 @@ function Field({
   required?: boolean;
   children: ReactNode;
 }) {
+  const box = useRef<HTMLDivElement | null>(null);
+
+  /* The asterisk used to be the whole of it: the control inside was
+     never marked, so the form submitted with starred fields empty.
+     Field wraps whatever the caller nests - a plain input here, a whole
+     address block there - so rather than threading the flag through
+     every one of them, it is set on the control this label belongs to.
+     React does not manage `required` on these, so it does not undo it. */
+  useEffect(() => {
+    const control = box.current?.querySelector<HTMLInputElement>(
+      "input, select, textarea",
+    );
+
+    if (control) control.required = Boolean(required);
+  }, [required, children]);
+
   return (
-    <div>
+    <div ref={box}>
       <label className="mb-1.5 block text-[11px] font-medium text-slate-600 dark:text-slate-300">
         {label}
         {required && <span className="text-rose-500"> *</span>}
@@ -3642,7 +3702,7 @@ function SendQuotationModal({
   const [showBcc, setShowBcc] = useState(false);
 
   const [subject, setSubject] = useState(
-    `Commercial & Technical Quotation [${quotation.quote_number}] — ${
+    `Commercial & Technical Proposal [${quotation.quote_number}] — ${
       quotation.opportunity_name || quotation.organization_name || ""
     }`.trim(),
   );
@@ -3651,7 +3711,7 @@ function SendQuotationModal({
     const lines = [
       `Dear ${quotation.contact_name || "Sir/Madam"},`,
       "",
-      `Please find attached the official quotation (${quotation.quote_number}) for the proposed ${
+      `Please find attached the official proposal (${quotation.quote_number}) for the proposed ${
         quotation.opportunity_name || "requirement"
       }.`,
       "",
@@ -3788,7 +3848,7 @@ function SendQuotationModal({
       <div className="flex max-h-[92vh] w-full max-w-[920px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#051422]">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-6 dark:border-[#17304a]">
           <h2 className="text-sm font-semibold text-slate-800 dark:text-white">
-            Send Quotation to Client
+            Send Proposal to Client
           </h2>
 
           <button
@@ -3958,13 +4018,13 @@ function SendQuotationModal({
               <div className="mb-2 flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-[#0b2034]">
                 <FiFileText size={12} className="shrink-0 text-rose-500" />
                 <span className="flex-1 truncate text-[10px] font-medium text-slate-700 dark:text-slate-200">
-                  {quotation.quote_number || "Quotation"} proposal (PDF)
+                  {quotation.quote_number || "Proposal"} (PDF)
                 </span>
               </div>
 
               {(quotation.attachments || []).length + extraFiles.length === 0 && (
                 <p className="text-[10px] text-slate-400">
-                  No annexures attached to this quotation.
+                  No annexures attached to this proposal.
                 </p>
               )}
 

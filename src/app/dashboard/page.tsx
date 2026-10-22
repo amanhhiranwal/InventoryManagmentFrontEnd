@@ -1005,7 +1005,7 @@ export default function Dashboard() {
 
   /* ==========================================================
      SALES ACTIVITY
-     The latest leads, quotations and orders, newest first.
+     The latest leads, proposals and orders, newest first.
   ========================================================== */
 
   const sortedSalesOrders = useMemo(

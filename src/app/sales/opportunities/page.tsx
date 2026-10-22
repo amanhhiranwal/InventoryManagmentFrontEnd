@@ -12,7 +12,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import api from "@/lib/axios";
 import { useUIStore } from "@/lib/store/ui.store";
 
-import { parseAmount } from "@/components/crm/AmountInput";
+import { parseAmount, numericText } from "@/components/crm/AmountInput";
 import { formatRupees } from "@/lib/money";
 import {
   useWarrantyTerms,
@@ -101,6 +101,9 @@ import {
 } from "react-icons/fi";
 import { ProductItemsIcon } from "@/components/icons/SectionIcons";
 import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
+import { SortTh, useTableSort } from "@/components/crm/sort";
+import { websiteError } from "@/lib/fieldChecks";
+import { RowMenu } from "@/components/crm/RowMenu";
 
 interface ProductItem {
   name: string;
@@ -202,6 +205,19 @@ function statusToStage(status?: string | null): OpportunityStage {
 type OpportunityStatus = "Active" | "Inactive";
 
 type Priority = "High" | "Medium" | "Low";
+
+/** Sorting Priority alphabetically puts High, Low, Medium; it is ranked. */
+const PRIORITY_ORDER: Record<Priority, number> = { High: 0, Medium: 1, Low: 2 };
+
+/** The columns the opportunity list can be ordered by. */
+type OppSortKey =
+  | "lead"
+  | "name"
+  | "contact"
+  | "value"
+  | "assigned"
+  | "status"
+  | "priority";
 
 /** The stages the pipeline chart is drawn across, in pipeline order. */
 const OPPORTUNITY_STAGES = [
@@ -1209,6 +1225,30 @@ function OpportunitiesPageInner() {
     setStageMove({ opportunity: opp, next });
   };
 
+  /* Dropping a card on a column is the same move as choosing the stage
+     from the card's menu, so it goes through the same confirmation and
+     writes the same remark - a stage change that leaves no trace of why
+     is not worth having. */
+  const handleDropOnStage = (opp: Opportunity, stage: OpportunityStage) => {
+    if (opp.stage === stage) return;
+
+    const current = STAGE_TO_STATUS[opp.stage];
+    const next = STAGE_TO_STATUS[stage];
+
+    if (!next) return;
+
+    if (!canTransitionOpportunity(current, next)) {
+      addToast(
+        `An opportunity at ${opp.stage} cannot move to ${stage}.`,
+        "warning",
+      );
+      return;
+    }
+
+    setOpenActionMenu(null);
+    setStageMove({ opportunity: opp, next });
+  };
+
   const confirmStageMove = async (remarks: string) => {
     if (!stageMove) return;
 
@@ -1547,6 +1587,7 @@ function OpportunitiesPageInner() {
             }}
             onMarkDead={handleMarkDead}
             onAdvance={handleAdvanceStage}
+            onDropStage={handleDropOnStage}
           />
         ) : (
           <ListView
@@ -1839,6 +1880,7 @@ function BoardView({
   onEdit,
   onMarkDead,
   onAdvance,
+  onDropStage,
 }: {
   opportunities: Opportunity[];
   onDetails: (opportunity: Opportunity) => void;
@@ -1847,7 +1889,13 @@ function BoardView({
   onEdit: (opportunity: Opportunity) => void;
   onMarkDead: (opportunity: Opportunity) => void;
   onAdvance: (opportunity: Opportunity) => void;
+  /** A card dropped on a column. */
+  onDropStage: (opportunity: Opportunity, stage: OpportunityStage) => void;
 }) {
+  /* The card being carried, and the column under the pointer. */
+  const [carrying, setCarrying] = useState<Opportunity | null>(null);
+  const [over, setOver] = useState<OpportunityStage | null>(null);
+
   /* Grab-and-pan the board sideways, the way a Kanban board behaves. */
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -1900,6 +1948,13 @@ function BoardView({
           return;
         }
 
+        /* A card carries itself to another column; the board pans from
+           the space around the cards. Without this the two gestures
+           fought and the card never left its column. */
+        if ((event.target as HTMLElement).closest("[draggable='true']")) {
+          return;
+        }
+
         const element = scrollRef.current;
 
         if (!element) return;
@@ -1939,9 +1994,36 @@ function BoardView({
           return (
             <div
               key={stage}
+              onDragOver={(event) => {
+                if (!carrying || carrying.stage === stage) return;
+
+                /* Without preventDefault the browser refuses the drop and
+                   the card springs back. */
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+
+                if (over !== stage) setOver(stage);
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                  setOver((current) => (current === stage ? null : current));
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setOver(null);
+
+                if (carrying) onDropStage(carrying, stage);
+
+                setCarrying(null);
+              }}
               /* Viewport-relative so the board's horizontal scrollbar
                  always sits above the fold, whatever the screen height. */
-              className="flex h-[calc(100vh-380px)] max-h-[720px] min-h-[380px] w-[290px] shrink-0 flex-col rounded-xl border border-slate-200 bg-white p-3 dark:border-[#17304a] dark:bg-[#071929]"
+              className={`flex h-[calc(100vh-380px)] max-h-[720px] min-h-[380px] w-[290px] shrink-0 flex-col rounded-xl border bg-white p-3 transition-colors dark:bg-[#071929] ${
+                over === stage
+                  ? "border-[#233353] bg-slate-50 dark:border-sky-400 dark:bg-[#0b2034]"
+                  : "border-slate-200 dark:border-[#17304a]"
+              }`}
             >
               {/* Column Header */}
               <div className="mb-3 flex shrink-0 items-center justify-between border-b border-slate-100 pb-3 dark:border-[#17304a]">
@@ -1971,6 +2053,8 @@ function BoardView({
                   <OpportunityBoardCard
                     key={opp.id}
                     opportunity={opp}
+                    carrying={carrying?.id === opp.id}
+                    onCarry={setCarrying}
                     onDetails={onDetails}
                     openActionMenu={openActionMenu}
                     setOpenActionMenu={setOpenActionMenu}
@@ -2006,6 +2090,8 @@ function OpportunityBoardCard({
   onEdit,
   onMarkDead,
   onAdvance,
+  carrying = false,
+  onCarry,
 }: {
   opportunity: Opportunity;
   onDetails: (opportunity: Opportunity) => void;
@@ -2014,9 +2100,26 @@ function OpportunityBoardCard({
   onEdit: (opportunity: Opportunity) => void;
   onMarkDead: (opportunity: Opportunity) => void;
   onAdvance: (opportunity: Opportunity) => void;
+  /** This is the card currently being carried to another column. */
+  carrying?: boolean;
+  onCarry?: (opportunity: Opportunity | null) => void;
 }) {
   return (
-    <div className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md dark:border-[#17304a] dark:bg-[#0b1d2e]">
+    <div
+      draggable={Boolean(onCarry)}
+      onDragStart={(event) => {
+        onCarry?.(opportunity);
+        event.dataTransfer.effectAllowed = "move";
+        // Firefox will not start a drag without something on the
+        // transfer, even when nothing reads it.
+        event.dataTransfer.setData("text/plain", String(opportunity.id));
+      }}
+      onDragEnd={() => onCarry?.(null)}
+      title={onCarry ? "Drag onto another stage to move it" : undefined}
+      className={`relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md dark:border-[#17304a] dark:bg-[#0b1d2e] ${
+        onCarry ? "cursor-grab active:cursor-grabbing" : ""
+      } ${carrying ? "opacity-40" : ""}`}
+    >
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"
@@ -2108,36 +2211,47 @@ function ListView({
   onMarkDead: (opportunity: Opportunity) => void;
   onAdvance: (opportunity: Opportunity) => void;
 }) {
+  const { sort, toggleSort, sortRows } = useTableSort<OppSortKey, Opportunity>({
+    lead: (opp) => String(opp.leadId || ""),
+    name: (opp) => (opp.name || "").toLowerCase(),
+    contact: (opp) => (opp.customerName || "").toLowerCase(),
+    value: (opp) => opp.dealValue || 0,
+    assigned: (opp) => (opp.owner || "").toLowerCase(),
+    status: (opp) => (opp.stage || "").toLowerCase(),
+    priority: (opp) => PRIORITY_ORDER[opp.priority] ?? 99,
+  });
+
+  const rows = sortRows(opportunities);
+
   return (
     <div className="overflow-hidden rounded-xl bg-white dark:border dark:border-[#17304a] dark:bg-[#071929]">
-      <div className="overflow-x-auto">
+      {/* The rows scroll under the heading rather than past it. */}
+      <div className="max-h-[calc(100vh-340px)] min-h-[260px] overflow-auto">
         <table className={`w-full min-w-[900px] border-collapse ${LIST_TABLE}`}>
-          <thead>
-            <tr className="border-b border-slate-200 bg-white dark:border-[#17304a] dark:bg-[#071929]">
-              <th className="w-10 px-3 py-3">
-                <input type="checkbox" className="h-3.5 w-3.5 rounded" />
-              </th>
+          <thead className="sticky top-0 z-20">
+            <tr className="border-b border-slate-200 bg-white [&>th]:sticky [&>th]:top-0 [&>th]:bg-white dark:border-[#17304a] dark:bg-[#071929] dark:[&>th]:bg-[#071929]">
+              {/* The select-all box had no bulk action behind it. */}
 
-              <TableHeader>Lead ID</TableHeader>
+              <SortTh label="Lead ID" sortKey="lead" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Opportunity Name</TableHeader>
+              <SortTh label="Opportunity Name" sortKey="name" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Contact Person</TableHeader>
+              <SortTh label="Contact Person" sortKey="contact" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Est. Deal Value</TableHeader>
+              <SortTh label="Est. Deal Value" sortKey="value" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Assigned To</TableHeader>
+              <SortTh label="Assigned To" sortKey="assigned" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Status</TableHeader>
+              <SortTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
-              <TableHeader>Priority</TableHeader>
+              <SortTh label="Priority" sortKey="priority" sort={sort} onSort={toggleSort} className="px-3 py-3 text-[10px] font-semibold text-slate-500" />
 
               <TableHeader align="right">Actions</TableHeader>
             </tr>
           </thead>
 
           <tbody>
-            {opportunities.map((opp) => (
+            {rows.map((opp) => (
               <tr
                 key={opp.id}
                 /* The whole row opens the opportunity, not just the two name
@@ -2146,13 +2260,6 @@ function ListView({
                 onClick={() => onDetails(opp)}
                 className="cursor-pointer border-b border-slate-100 transition hover:bg-slate-50 dark:border-[#17304a]/70 dark:hover:bg-[#0b2034]"
               >
-                <td
-                  className="px-3 py-3.5"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <input type="checkbox" className="h-3.5 w-3.5 rounded" />
-                </td>
-
                 <td className="px-3 py-3.5">
                   <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                     #{opp.leadId}
@@ -2306,10 +2413,15 @@ function ActionMenu({
   onMarkDead: () => void;
   onAdvance: () => void;
 }) {
+  /* The menu is drawn over the page, so it needs the button's place on
+     screen rather than a parent to be absolute inside. */
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+
   return (
-    <div className="relative">
+    <div className="relative" data-row-menu>
       <button
         type="button"
+        ref={anchorRef}
         onClick={(event) => {
           event.stopPropagation();
           onToggle();
@@ -2319,8 +2431,15 @@ function ActionMenu({
         <FiMoreVertical size={15} />
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-8 z-[70] w-32 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
+      <RowMenu
+        open={open}
+        onClose={() => {
+          if (open) onToggle();
+        }}
+        anchor={() => anchorRef.current}
+        width={160}
+      >
+        <>
           <button
             type="button"
             onClick={(event) => {
@@ -2366,8 +2485,8 @@ function ActionMenu({
               Mark as Dead
             </button>
           )}
-        </div>
-      )}
+        </>
+      </RowMenu>
     </div>
   );
 }
@@ -3211,6 +3330,10 @@ function NewOpportunityPage({
     seed.organization_name || "",
   );
 
+  /* Said under the website field once the form has been submitted; it
+     clears as soon as the field is touched again. */
+  const [websiteFieldError, setWebsiteFieldError] = useState("");
+
   const [organizationWebsite, setOrganizationWebsite] = useState(
     seed.website || "",
   );
@@ -3488,6 +3611,19 @@ function NewOpportunityPage({
 
     setOpportunityNameError("");
 
+    /* The website is required on this form and nothing had ever looked
+       at what was typed into it, so "zdxfcgv" was saved as a company's
+       web address. The browser's own check only runs on fields it knows
+       are URLs, and this one takes acme.com without a scheme. */
+    const websiteProblem = websiteError(organizationWebsite, {
+      required: true,
+      field: "Organization website",
+    });
+
+    setWebsiteFieldError(websiteProblem || "");
+
+    if (websiteProblem) return;
+
     if (
       !organizationName.trim() ||
       !contactName.trim() ||
@@ -3655,7 +3791,12 @@ function NewOpportunityPage({
                     <FormInput
                       label="Organization Website *"
                       value={organizationWebsite}
-                      onChange={setOrganizationWebsite}
+                      error={websiteFieldError}
+                      onChange={(value) => {
+                        setOrganizationWebsite(value);
+
+                        if (websiteFieldError) setWebsiteFieldError("");
+                      }}
                       placeholder="www.acmesolutions.example"
                     />
                   </div>
@@ -4411,8 +4552,10 @@ function LineNumberInput({
         event.target.select();
       }}
       onChange={(event) => {
-        setDraft(event.target.value);
-        onChange(parseAmount(event.target.value));
+        const text = numericText(event.target.value);
+
+        setDraft(text);
+        onChange(parseAmount(text));
       }}
       onBlur={() => {
         focusedRef.current = false;
@@ -4808,6 +4951,18 @@ function OpportunityProductModal({
    FORM COMPONENTS
 ================================================================ */
 
+/* The form marks a field as required by ending its label with an
+   asterisk, and nothing ever did anything with it: the control was not
+   marked, so the page submitted with every starred field empty. The
+   asterisk is now read off the label, so each of the twenty call sites
+   already says which fields are required and none of them has to be
+   touched. */
+function requiredFromLabel(label: string) {
+  const required = /\*\s*$/.test(label);
+
+  return { required, text: required ? label.replace(/\s*\*\s*$/, "") : label };
+}
+
 function FormInput({
   label,
   value,
@@ -4827,15 +4982,20 @@ function FormInput({
   /** Said under the field in grey, when there is nothing wrong. */
   hint?: string;
 }) {
+  const { required, text } = requiredFromLabel(label);
+
   return (
     <div>
       <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-        {label}
+        {text}
+
+        {required && <span className="ml-0.5">*</span>}
       </label>
 
       <input
         type={type}
         value={value}
+        required={required}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
         className={`h-10 w-full rounded-lg border bg-white px-3 text-[10px] outline-none placeholder:text-slate-400 dark:bg-[#071929] dark:text-white ${
@@ -4874,14 +5034,19 @@ function FormSelect({
   }[];
   onChange: (value: string) => void;
 }) {
+  const { required, text } = requiredFromLabel(label);
+
   return (
     <div>
       <label className="mb-1.5 block text-[10px] font-medium text-slate-500">
-        {label}
+        {text}
+
+        {required && <span className="ml-0.5">*</span>}
       </label>
 
       <select
         value={value}
+        required={required}
         onChange={(event) => onChange(event.target.value)}
         className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[10px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
       >

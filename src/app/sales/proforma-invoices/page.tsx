@@ -31,6 +31,7 @@ import { CgSpinner } from "react-icons/cg";
 
 import { useUIStore } from "@/lib/store/ui.store";
 import StatCard from "@/components/crm/StatCard";
+import { RowMenu } from "@/components/crm/RowMenu";
 import { monthOverMonth, percentChange, startOfMonth } from "@/components/crm/kpiChange";
 import Pagination from "@/components/crm/Pagination";
 import { StatusPill } from "@/components/crm/Pill";
@@ -176,6 +177,10 @@ export default function ProformaInvoiceListPage() {
   const [page, setPage] = useState(1);
 
   const [openMenu, setOpenMenu] = useState<number | null>(null);
+
+  /* The buttons the row menus hang from; the panel is drawn into the
+     body and needs their place on screen. */
+  const rowMenuAnchors = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const [showCreate, setShowCreate] = useState(false);
 
@@ -590,13 +595,12 @@ export default function ProformaInvoiceListPage() {
       </div>
 
       <div className="overflow-hidden rounded-xl bg-white dark:border dark:border-[#17304a] dark:bg-[#071929]">
-        <div className="overflow-x-auto">
+        {/* The rows scroll under the heading rather than past it. */}
+        <div className="max-h-[calc(100vh-370px)] min-h-[260px] overflow-auto">
           <table className={`w-full min-w-[900px] ${LIST_TABLE}`}>
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-[#17304a]">
-                <th className="w-12 border-r border-slate-100 px-4 py-3 dark:border-[#17304a]">
-                  <input type="checkbox" aria-label="Select all" className="rounded border-slate-300" />
-                </th>
+            <thead className="sticky top-0 z-20">
+              <tr className="border-b border-slate-200 [&>th]:sticky [&>th]:top-0 [&>th]:bg-white dark:border-[#17304a] dark:[&>th]:bg-[#071929]">
+                {/* The select-all box had no bulk action behind it. */}
                 <SortTh sort={sort} onSort={toggleSort} label="PI ID" sortKey="pi" />
                 <SortTh sort={sort} onSort={toggleSort} label="Customer Name" sortKey="customer" className="min-w-[140px]" />
                 <SortTh sort={sort} onSort={toggleSort} label="Company" sortKey="company" />
@@ -637,14 +641,6 @@ export default function ProformaInvoiceListPage() {
                       onClick={() => router.push(`/sales/proforma-invoices/${invoice.id}`)}
                       className="cursor-pointer border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50 dark:border-[#17304a]/70 dark:hover:bg-[#0b2034]"
                     >
-                      <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${invoice.pi_number}`}
-                          className="rounded border-slate-300"
-                        />
-                      </td>
-
                       <td className="whitespace-nowrap px-3 py-3 text-[11px] font-medium text-slate-800 dark:text-white">
                         #{invoice.pi_number}
                       </td>
@@ -719,16 +715,24 @@ export default function ProformaInvoiceListPage() {
                         <button
                           type="button"
                           aria-label={`Actions for ${invoice.pi_number}`}
+                          ref={(node) => {
+                            rowMenuAnchors.current[String(invoice.id)] = node;
+                          }}
                           onClick={() => setOpenMenu(openMenu === invoice.id ? null : invoice.id)}
                           className="rounded p-1 text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-[#0b2034]"
                         >
                           <LuEllipsisVertical size={15} />
                         </button>
 
-                        {openMenu === invoice.id && (
-                          <>
-                            <div className="fixed inset-0 z-20" onClick={() => setOpenMenu(null)} />
-                            <div className="absolute right-6 top-9 z-30 w-44 rounded-lg border border-slate-200 bg-white py-1 text-left shadow-xl dark:border-[#17304a] dark:bg-[#071929]">
+                        {/* Drawn over the page, so the last rows' menus
+                            are not cut off by the scroll box. */}
+                        <RowMenu
+                          open={openMenu === invoice.id}
+                          onClose={() => setOpenMenu(null)}
+                          anchor={() => rowMenuAnchors.current[String(invoice.id)] ?? null}
+                          width={180}
+                        >
+                            <>
                               <MenuItem
                                 icon={<LuEye size={13} />}
                                 label="View"
@@ -783,9 +787,8 @@ export default function ProformaInvoiceListPage() {
                                   }}
                                 />
                               )}
-                            </div>
-                          </>
-                        )}
+                            </>
+                        </RowMenu>
                       </td>
                     </tr>
                   );

@@ -10,6 +10,7 @@ import {
   StatGrid,
   TableCard,
 } from "@/components/crm/ListPageShell";
+import { SortTh, useTableSort } from "@/components/crm/sort";
 import StatCard from "@/components/crm/StatCard";
 import Pagination from "@/components/crm/Pagination";
 import QueueTabs from "@/components/crm/QueueTabs";
@@ -508,7 +509,23 @@ export default function InventoryPage() {
 
   /* The server already sent this category's page, so there is nothing
      left to filter here. */
-  const visibleItems = items;
+  const { sort, toggleSort, sortRows } = useTableSort<string, InventoryItem>({
+    model: (item) => String(item.attributes?.model_number ?? "").toLowerCase(),
+    name: (item) => (item.name || "").toLowerCase(),
+    specification: (item) =>
+      String(item.attributes?.specification ?? "").toLowerCase(),
+    serial: (item) => (item.serial_number || "").toLowerCase(),
+    category: (item) => (item.category || "").toLowerCase(),
+    company: (item) => (item.company_name || "").toLowerCase(),
+    hsn: (item) => String(item.attributes?.hsn_code ?? ""),
+    stock: (item) =>
+      Number(item.attributes?.instock ?? item.attributes?.stock ?? 0),
+    rate: (item) => Number(item.attributes?.rate ?? 0),
+    dtp: (item) => Number(item.attributes?.dtp_rate ?? 0),
+  });
+
+  /* The server sends one page of the catalogue; this orders that page. */
+  const visibleItems = sortRows(items);
 
   const money = (value: number) =>
     `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
@@ -1013,26 +1030,29 @@ export default function InventoryPage() {
             <span className="text-xs">Loading inventory items...</span>
           </div>
         ) : visibleItems.length > 0 ? (
-          <div className="overflow-x-auto">
+          /* The rows scroll under the heading rather than past it. */
+          <div className="max-h-[calc(100vh-360px)] min-h-[260px] overflow-auto">
             {/* The same fields as the form, in the same order: the model
                 says which one it is, the name says what it is, the
                 specification says what is in it. Reading them off the row
                 is the point - they were only visible by opening the
                 product. */}
             <table className={`w-full min-w-[1240px] text-left ${LIST_TABLE}`}>
-              <thead>
-                <tr>
+              <thead className="sticky top-0 z-20">
+                <tr className="[&>th]:sticky [&>th]:top-0 [&>th]:bg-white dark:[&>th]:bg-[#071929]">
+                  {/* The picture is the only column with nothing to order
+                      by, and Actions is a button. */}
                   <th className="px-5 py-3">Product</th>
-                  <th className="px-5 py-3">Model Number</th>
-                  <th className="px-5 py-3">Item Name</th>
-                  <th className="px-5 py-3">Specification</th>
-                  <th className="px-5 py-3">Serial Number</th>
-                  <th className="px-5 py-3">Category Group</th>
-                  <th className="px-5 py-3">Company</th>
-                  <th className="px-5 py-3">HSN / SAC</th>
-                  <th className="px-5 py-3">In Stock</th>
-                  <th className="px-5 py-3">ECP Rate</th>
-                  <th className="px-5 py-3">DTP Rate</th>
+                  <SortTh label="Model Number" sortKey="model" sort={sort} onSort={toggleSort} className="px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400" />
+                  <SortTh label="Item Name" sortKey="name" sort={sort} onSort={toggleSort} className="px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400" />
+                  <SortTh label="Specification" sortKey="specification" sort={sort} onSort={toggleSort} className="px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400" />
+                  <SortTh label="Serial Number" sortKey="serial" sort={sort} onSort={toggleSort} className="px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400" />
+                  <SortTh label="Category Group" sortKey="category" sort={sort} onSort={toggleSort} className="px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400" />
+                  <SortTh label="Company" sortKey="company" sort={sort} onSort={toggleSort} className="px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400" />
+                  <SortTh label="HSN / SAC" sortKey="hsn" sort={sort} onSort={toggleSort} className="px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400" />
+                  <SortTh label="In Stock" sortKey="stock" sort={sort} onSort={toggleSort} className="px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400" />
+                  <SortTh label="ECP Rate" sortKey="rate" sort={sort} onSort={toggleSort} className="px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400" />
+                  <SortTh label="DTP Rate" sortKey="dtp" sort={sort} onSort={toggleSort} className="px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400" />
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>

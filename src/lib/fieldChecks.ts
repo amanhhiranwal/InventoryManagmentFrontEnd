@@ -153,3 +153,30 @@ export function pinError(
 
   return PIN.test(text) ? null : "A PIN code is six digits, not starting with 0.";
 }
+
+/**
+ * A web address, as people actually type one.
+ *
+ * The field is required on the opportunity form and nothing checked it,
+ * so "zdxfcgv" went through as a company's website. Accepted with or
+ * without a scheme and with or without www, because nobody types
+ * https:// into a form; what it insists on is a name with a dot and a
+ * plausible suffix after it.
+ */
+const WEBSITE =
+  /^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(:\d{2,5})?(\/[^\s]*)?$/i;
+
+export function websiteError(
+  value: string | null | undefined,
+  { required = false, field = "Website" } = {},
+): string | null {
+  const text = String(value ?? "").trim();
+
+  if (!text) return required ? `${field} is required.` : null;
+
+  if (/\s/.test(text)) return "A web address has no spaces in it.";
+
+  return WEBSITE.test(text)
+    ? null
+    : `“${text}” is not a web address. Try something like acme.com.`;
+}

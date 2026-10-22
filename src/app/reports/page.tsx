@@ -90,6 +90,17 @@ export default function ReportsPage() {
   /* The stages the distribution bars are drawn across. */
   const STAGES = ["lead", "opportunity", "quotation", "won", "lost"];
 
+  /* The stored value is still "quotation" - the column, the route and
+     the QT- reference are unchanged - but the document is a proposal
+     everywhere a person reads it, so the bar says so too. */
+  const STAGE_LABEL: Record<string, string> = {
+    lead: "Lead",
+    opportunity: "Opportunity",
+    quotation: "Proposal",
+    won: "Won",
+    lost: "Lost",
+  };
+
   const stageCount = (stage: string) =>
     leads.filter((l) => l.stage === stage || l.status === stage).length;
 
@@ -141,13 +152,15 @@ export default function ReportsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card title="Sales Stage Distribution">
               <div className="space-y-3 pt-2">
-                {["lead", "opportunity", "quotation", "won", "lost"].map((stg) => {
+                {STAGES.map((stg) => {
                   const cnt = leads.filter((l) => l.stage === stg || l.status === stg).length;
                   const pct = leads.length > 0 ? Math.round((cnt / leads.length) * 100) : 0;
                   return (
                     <div key={stg} className="space-y-1">
                       <div className="flex justify-between text-xs font-semibold">
-                        <span className="capitalize text-slate-700 dark:text-slate-300">{stg} Stage</span>
+                        <span className="text-slate-700 dark:text-slate-300">
+                          {STAGE_LABEL[stg] ?? stg} Stage
+                        </span>
                         <span className="text-slate-500">{cnt} leads ({pct}%)</span>
                       </div>
                       <div className="w-full bg-slate-100 dark:bg-[#071929] h-2 rounded-full overflow-hidden">
