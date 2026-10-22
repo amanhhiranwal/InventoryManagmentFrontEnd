@@ -79,6 +79,7 @@ function formatDate(value?: string | null) {
   if (Number.isNaN(date.getTime())) return "-";
 
   return date.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -103,6 +104,7 @@ function formatActivityStamp(value?: string) {
 
   if (dayDiff === 0) {
     return `Today, ${date.toLocaleTimeString("en-IN", {
+      timeZone: "Asia/Kolkata",
       hour: "numeric",
       minute: "2-digit",
       hour12: true,

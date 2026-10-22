@@ -389,6 +389,7 @@ function formatDate(value?: string) {
   }
 
   return date.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -406,6 +407,7 @@ function formatActivityStamp(value?: string) {
   if (Number.isNaN(date.getTime())) return "-";
 
   const time = date.toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata",
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -434,6 +436,7 @@ function formatActivityDateTime(value?: string) {
   if (Number.isNaN(date.getTime())) return "";
 
   return `${formatDate(value)} at ${date.toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata",
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -4671,21 +4674,43 @@ function OpportunityProductModal({
                 (item) => item.productId === product.id,
               );
 
+              /* Nothing to sell, or no price to sell it at. Both read
+                 as ordinary selectable rows before, so a line could go
+                 out at Rs 0.00 or against stock that is not there. An
+                 item already picked stays clickable so it can be taken
+                 off again. */
+              const unavailable =
+                !checked &&
+                (Number(product.available) <= 0 ||
+                  rateFor(product, priceBasis) <= 0);
+
               return (
                 <button
                   type="button"
                   key={product.id}
+                  disabled={unavailable}
+                  title={
+                    unavailable
+                      ? Number(product.available) <= 0
+                        ? "Out of stock"
+                        : "This product has no price set"
+                      : undefined
+                  }
                   onClick={() => onToggle(product)}
                   className={`w-full rounded-xl border p-3 text-left transition ${
-                    checked
-                      ? "border-slate-400 bg-slate-50 dark:bg-[#0b2034]"
-                      : "border-slate-200 bg-white hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929]"
+                    unavailable
+                      ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-60 dark:border-[#17304a] dark:bg-[#071929]/50"
+                      : checked
+                        ? "border-slate-400 bg-slate-50 dark:bg-[#0b2034]"
+                        : "border-slate-200 bg-white hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929]"
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <span
                       className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded border text-[9px] ${
-                        checked
+                        unavailable
+                          ? "border-slate-200 bg-slate-100 dark:border-[#17304a] dark:bg-[#0b2034]"
+                          : checked
                           ? "border-[#24395f] bg-[#24395f] text-white"
                           : "border-slate-300"
                       }`}
@@ -4929,7 +4954,7 @@ function OpportunityProductModal({
             className="flex h-9 items-center gap-1.5 rounded-lg bg-[#233353] px-5 text-xs font-bold text-white transition hover:bg-[#18243a]"
           >
             <FiPlus size={13} />
-            Add Product
+            Add & Proceed
           </button>
         </div>
       </div>

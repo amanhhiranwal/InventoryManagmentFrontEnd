@@ -88,7 +88,7 @@ export default function DetailSideDrawer({
     const newEntry = {
       id: Date.now().toString(),
       title: "Note Added",
-      date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
+      date: new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }),
       note: newLogNote.trim()
     };
     setActivitiesList([newEntry, ...activitiesList]);

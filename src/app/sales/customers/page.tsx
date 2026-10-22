@@ -153,6 +153,7 @@ function formatDate(value?: string) {
   if (!date) return value;
 
   return date.toLocaleDateString("en-GB", {
+    timeZone: "Asia/Kolkata",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",

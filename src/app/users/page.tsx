@@ -626,6 +626,7 @@ export default function UserListPage() {
                 {u.created_at ? (
                   <span title={new Date(u.created_at).toLocaleString("en-IN")}>
                     {new Date(u.created_at).toLocaleDateString("en-IN", {
+                      timeZone: "Asia/Kolkata",
                       day: "2-digit",
                       month: "short",
                       year: "numeric",

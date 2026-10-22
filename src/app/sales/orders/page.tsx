@@ -918,6 +918,7 @@ export default function OrdersListPage() {
     }
 
     return date.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -3533,10 +3534,29 @@ export default function OrdersListPage() {
                         (item) => item.id === product.id,
                       );
 
+                      /* Nothing to sell, or no price to sell it at.
+                         Both read as ordinary selectable rows before,
+                         so a line could go on an order at Rs 0.00 or
+                         against stock that is not there. An item
+                         already picked stays clickable so it can be
+                         taken off again. */
+                      const unavailable =
+                        !checked &&
+                        (Number(product.available) <= 0 ||
+                          rateFor(product, priceBasis) <= 0);
+
                       return (
                         <button
                           type="button"
                           key={product.id}
+                          disabled={unavailable}
+                          title={
+                            unavailable
+                              ? Number(product.available) <= 0
+                                ? "Out of stock"
+                                : "This product has no price set"
+                              : undefined
+                          }
                           onClick={() => toggleProduct(product)}
                           className={`
                             w-full
@@ -3546,9 +3566,11 @@ export default function OrdersListPage() {
                             p-3
                             transition-colors
                             ${
-                              checked
-                                ? "border-slate-400 bg-slate-50"
-                                : "border-slate-200 bg-white hover:bg-slate-50"
+                              unavailable
+                                ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-60"
+                                : checked
+                                  ? "border-slate-400 bg-slate-50"
+                                  : "border-slate-200 bg-white hover:bg-slate-50"
                             }
                           `}
                         >
@@ -3566,7 +3588,9 @@ export default function OrdersListPage() {
                                 ${
                                   checked
                                     ? "bg-[#24395f] border-[#24395f] text-white"
-                                    : "border-slate-300"
+                                    : unavailable
+                                      ? "border-slate-200 bg-slate-100"
+                                      : "border-slate-300"
                                 }
                               `}
                             >
@@ -3834,7 +3858,7 @@ export default function OrdersListPage() {
                   className="h-10 px-5 rounded-md bg-[#24395f] text-white text-xs font-semibold flex items-center gap-2"
                 >
                   <FiPlus size={15} />
-                  Add to Order
+                  Add & Proceed
                 </button>
               </div>
             </div>
