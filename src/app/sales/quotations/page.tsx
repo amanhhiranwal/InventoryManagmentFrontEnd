@@ -52,7 +52,10 @@ import {
   type WarrantyRatesBySku,
   type WarrantyTermOption,
 } from "@/features/pricing/warrantyTerms";
-import RichTextEditor, { textToHtml } from "@/components/crm/RichTextEditor";
+import RichTextEditor, {
+  htmlToText,
+  textToHtml,
+} from "@/components/crm/RichTextEditor";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import {
   getInventoryCompaniesApi,
@@ -87,6 +90,7 @@ import {
   getQuotationSenderApi,
   getQuotationsApi,
   getQuotationsPageApi,
+  saveQuotationEmailDraftApi,
   sendQuotationApi,
   downloadQuotationPdfApi,
   updateQuotationApi,
@@ -3694,17 +3698,38 @@ function SendQuotationModal({
   onError: (message: string) => void;
   onNotice: (message: string) => void;
 }) {
+  /* A message saved from this dialog and never sent. The server writes
+     the composed fields and leaves sent_at alone, so a subject with no
+     sent_at is a draft; once it has actually gone out, the dialog opens
+     fresh rather than on a copy of what the customer already has. */
+  const draft = !quotation.sent_at && quotation.sent_subject ? quotation : null;
+
+  const splitAddresses = (value?: string | null) =>
+    (value || "")
+      .split(",")
+      .map((address) => address.trim())
+      .filter(Boolean);
+
   const [to, setTo] = useState<string[]>(
-    quotation.email ? [quotation.email] : [],
+    draft
+      ? splitAddresses(draft.sent_to)
+      : quotation.email
+        ? [quotation.email]
+        : [],
   );
-  const [cc, setCc] = useState<string[]>([]);
-  const [bcc, setBcc] = useState<string[]>([]);
-  const [showBcc, setShowBcc] = useState(false);
+  const [cc, setCc] = useState<string[]>(
+    draft ? splitAddresses(draft.sent_cc) : [],
+  );
+  const [bcc, setBcc] = useState<string[]>(
+    draft ? splitAddresses(draft.sent_bcc) : [],
+  );
+  const [showBcc, setShowBcc] = useState(Boolean(draft?.sent_bcc));
 
   const [subject, setSubject] = useState(
-    `Commercial & Technical Proposal [${quotation.quote_number}] — ${
-      quotation.opportunity_name || quotation.organization_name || ""
-    }`.trim(),
+    draft?.sent_subject ||
+      `Commercial & Technical Proposal [${quotation.quote_number}] — ${
+        quotation.opportunity_name || quotation.organization_name || ""
+      }`.trim(),
   );
 
   const defaultBody = useMemo(() => {
@@ -3748,17 +3773,30 @@ function SendQuotationModal({
     return lines.join("\n");
   }, [quotation]);
 
-  const [body, setBody] = useState(defaultBody);
-  const [bodyHtml, setBodyHtml] = useState(() => textToHtml(defaultBody));
+  /* The saved body is the rich-text one, which is what the editor wants
+     back; the plain part is derived from it on send. */
+  const savedBody = draft?.sent_body || "";
 
-  const [options, setOptions] = useState<Record<SendOptionKey, boolean>>({
-    track_opens: true,
-    alert_on_download: false,
-    attach_gst_audit_trail: false,
-    notify_lead_owner: true,
+  const [body, setBody] = useState(
+    savedBody ? htmlToText(savedBody) : defaultBody,
+  );
+  const [bodyHtml, setBodyHtml] = useState(() =>
+    savedBody || textToHtml(defaultBody),
+  );
+
+  const [options, setOptions] = useState<Record<SendOptionKey, boolean>>(() => {
+    const saved = (draft?.send_options || {}) as Record<string, unknown>;
+
+    return {
+      track_opens: draft ? Boolean(saved.track_opens) : true,
+      alert_on_download: Boolean(saved.alert_on_download),
+      attach_gst_audit_trail: Boolean(saved.attach_gst_audit_trail),
+      notify_lead_owner: draft ? Boolean(saved.notify_lead_owner) : true,
+    };
   });
 
   const [sending, setSending] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
 
   const toRef = useRef<HTMLInputElement | null>(null);
 
@@ -3769,6 +3807,51 @@ function SendQuotationModal({
   const [extraFiles, setExtraFiles] = useState<AttachmentState[]>([]);
 
   const recipients = to;
+
+  /* The message as it stands, which both sending and saving need. */
+  const composed = () => ({
+    to: recipients.length ? recipients : [quotation.email || ""],
+    cc,
+    bcc,
+    /* What the sender left in the Attached Documents list. Dropping
+       one here now actually drops it from the message. */
+    attachment_keys: [...(quotation.attachments || []), ...extraFiles]
+      .filter((file) => !dropped.includes(file.name) && file.key)
+      .map((file) => file.key as string),
+    subject,
+    body,
+    body_html: bodyHtml,
+    ...options,
+  });
+
+  /* Save as Draft used to call the same handler as Cancel: it closed
+     the dialog and threw the message away, which looks exactly like a
+     save. It is kept on the proposal now, so reopening the dialog
+     brings back the recipients, the subject, the body, which annexures
+     were left attached and which clauses were ticked. The proposal's
+     status does not move - nothing has been sent. */
+  const saveDraft = async () => {
+    setSavingDraft(true);
+
+    try {
+      await saveQuotationEmailDraftApi(quotation.id, {
+        ...composed(),
+        test_only: false,
+      });
+
+      onNotice("Email draft saved. It will be here when you come back.");
+      onClose();
+    } catch (error) {
+      const detail =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "The draft could not be saved.";
+
+      console.error(error);
+      onError(detail);
+    } finally {
+      setSavingDraft(false);
+    }
+  };
 
   const send = async (testOnly: boolean) => {
     if (!testOnly && recipients.length === 0) {
@@ -3792,18 +3875,7 @@ function SendQuotationModal({
 
     try {
       await sendQuotationApi(quotation.id, {
-        to: recipients.length ? recipients : [quotation.email || ""],
-        cc,
-        bcc,
-        /* What the sender left in the Attached Documents list. Dropping
-           one here now actually drops it from the message. */
-        attachment_keys: [...(quotation.attachments || []), ...extraFiles]
-          .filter((file) => !dropped.includes(file.name) && file.key)
-          .map((file) => file.key as string),
-        subject,
-        body,
-        body_html: bodyHtml,
-        ...options,
+        ...composed(),
         test_only: testOnly,
       });
 
@@ -4118,11 +4190,16 @@ function SendQuotationModal({
 
             <button
               type="button"
-              onClick={onClose}
-              className="flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
+              onClick={saveDraft}
+              disabled={savingDraft || sending}
+              className="flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:text-slate-200"
             >
-              <FiBookmark size={13} />
-              Save as Draft
+              {savingDraft ? (
+                <CgSpinner className="animate-spin" size={13} />
+              ) : (
+                <FiBookmark size={13} />
+              )}
+              {savingDraft ? "Saving..." : "Save as Draft"}
             </button>
 
             <button
