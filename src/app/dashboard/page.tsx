@@ -398,7 +398,9 @@ type DashboardMenuProps = {
   menu: Exclude<MenuType, null>;
   openMenu: MenuType;
   setOpenMenu: Dispatch<SetStateAction<MenuType>>;
-  onExport: () => void;
+  /** Omit on a panel whose content is a chart rather than rows. */
+  onExport?: () => void;
+  /** Omit on a panel that has no chart to draw. */
   onDownloadChart?: () => void;
   /** White square trigger, as the page-level menu in the design. */
   boxed?: boolean;
@@ -433,17 +435,23 @@ function DashboardMenu({
 
       {isOpen && (
         <div className="absolute right-0 top-9 z-50 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-xl dark:border-[#0d2336] dark:bg-[#051422]">
-          <button
-            type="button"
-            onClick={() => {
-              setOpenMenu(null);
-              onExport();
-            }}
-            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#071929]"
-          >
-            <FiDownload size={14} />
-            Export Data
-          </button>
+          {/* Each panel offers the one thing you cannot get by looking
+              at it. A table offers its rows; a chart offers the picture.
+              Both on every menu meant Export Data on a panel that is a
+              chart, and a chart of four numbers already on the screen. */}
+          {onExport && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpenMenu(null);
+                onExport();
+              }}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#071929]"
+            >
+              <FiDownload size={14} />
+              Export Data
+            </button>
+          )}
 
           {onDownloadChart && (
             <button
@@ -1152,7 +1160,11 @@ export default function Dashboard() {
     );
   }, [exportRows, yearlyRevenue, pipeline, regionalPerformance]);
 
-  const exportProductData = useCallback(() => {
+  /* Kept with a leading underscore rather than deleted: each lost its
+     caller when the menus were given the one action that suits the
+     panel - rows export, charts draw - and restoring either is a single
+     prop. */
+  const _exportProductData = useCallback(() => {
     exportRows(
       `units-by-product-${new Date().toISOString().slice(0, 10)}.csv`,
       [
@@ -1167,7 +1179,7 @@ export default function Dashboard() {
     );
   }, [exportRows, productDistribution]);
 
-  const exportPipelineData = useCallback(() => {
+  const _exportPipelineData = useCallback(() => {
     exportRows(`sales-pipeline-${new Date().toISOString().slice(0, 10)}.csv`, [
       ["Stage", "Deals", "Revenue"],
 
@@ -1175,7 +1187,7 @@ export default function Dashboard() {
     ]);
   }, [exportRows, pipeline]);
 
-  const exportRegionalData = useCallback(() => {
+  const _exportRegionalData = useCallback(() => {
     exportRows(
       `regional-performance-${new Date().toISOString().slice(0, 10)}.csv`,
       [
@@ -1587,7 +1599,7 @@ export default function Dashboard() {
      SALES TEAM CHART DOWNLOAD
   ========================================================== */
 
-  const downloadOrdersChart = useCallback(() => {
+  const _downloadOrdersChart = useCallback(() => {
     const width = 1100;
 
     const rowHeight = 70;
@@ -1729,7 +1741,6 @@ export default function Dashboard() {
           openMenu={openMenu}
           setOpenMenu={setOpenMenu}
           onExport={exportDashboardData}
-          onDownloadChart={downloadRevenueChart}
         />
       </div>
 
@@ -1888,7 +1899,6 @@ export default function Dashboard() {
               menu="revenue"
               openMenu={openMenu}
               setOpenMenu={setOpenMenu}
-              onExport={exportDashboardData}
               onDownloadChart={downloadRevenueChart}
             />
           </div>
@@ -2044,7 +2054,6 @@ export default function Dashboard() {
               menu="product"
               openMenu={openMenu}
               setOpenMenu={setOpenMenu}
-              onExport={exportProductData}
               onDownloadChart={downloadProductChart}
             />
           </div>
@@ -2096,7 +2105,6 @@ export default function Dashboard() {
       menu="pipeline"
       openMenu={openMenu}
       setOpenMenu={setOpenMenu}
-      onExport={exportPipelineData}
       onDownloadChart={downloadPipelineChart}
     />
   </div>
@@ -2245,7 +2253,6 @@ export default function Dashboard() {
               menu="regional"
               openMenu={openMenu}
               setOpenMenu={setOpenMenu}
-              onExport={exportRegionalData}
               onDownloadChart={downloadRegionChart}
             />
           </div>
@@ -2314,7 +2321,6 @@ export default function Dashboard() {
               openMenu={openMenu}
               setOpenMenu={setOpenMenu}
               onExport={exportOrdersData}
-              onDownloadChart={downloadOrdersChart}
             />
           </div>
         </div>
