@@ -2859,6 +2859,16 @@ export default function QuotationPage() {
             addToast(message, "success");
             await fetchQuotations();
           }}
+          /* The same refresh a send does. Without it the list kept the
+             row as it was before the draft was written, so reopening
+             the dialog in the same session read that stale copy and
+             showed the defaults again - the draft was on the server the
+             whole time, but only a reload could see it. */
+          onSaved={async (message) => {
+            setSendTarget(null);
+            addToast(message, "success");
+            await fetchQuotations();
+          }}
           onError={(message) => addToast(message, "error")}
           onNotice={(message) => addToast(message, "info")}
         />
@@ -3726,6 +3736,7 @@ function SendQuotationModal({
   sender,
   onClose,
   onSent,
+  onSaved,
   onError,
   onNotice,
 }: {
@@ -3733,6 +3744,8 @@ function SendQuotationModal({
   sender: QuotationSender | null;
   onClose: () => void;
   onSent: (message: string) => void;
+  /** A draft was written: close, and reload the row it was written to. */
+  onSaved: (message: string) => void;
   onError: (message: string) => void;
   onNotice: (message: string) => void;
 }) {
@@ -3839,8 +3852,23 @@ function SendQuotationModal({
 
   const toRef = useRef<HTMLInputElement | null>(null);
 
-  /** Annexures the sender removed from this particular send. */
-  const [dropped, setDropped] = useState<string[]>([]);
+  /** Annexures the sender removed from this particular send.
+   *
+   *  A saved draft remembers which it kept, so the ones left out of
+   *  that list are the ones that had been removed - otherwise an
+   *  annexure dropped before saving came back attached. */
+  const [dropped, setDropped] = useState<string[]>(() => {
+    if (!draft) return [];
+
+    const kept = new Set(
+      ((draft.send_options as Record<string, unknown> | undefined)
+        ?.attachment_keys as string[] | undefined) || [],
+    );
+
+    return (quotation.attachments || [])
+      .filter((file) => file.key && !kept.has(file.key))
+      .map((file) => file.name);
+  });
 
   /** Files attached from the composer's paperclip, for this send only. */
   const [extraFiles, setExtraFiles] = useState<AttachmentState[]>([]);
@@ -3878,8 +3906,7 @@ function SendQuotationModal({
         test_only: false,
       });
 
-      onNotice("Email draft saved. It will be here when you come back.");
-      onClose();
+      onSaved("Email draft saved. It will be here when you come back.");
     } catch (error) {
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data
