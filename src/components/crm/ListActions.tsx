@@ -1,20 +1,25 @@
 "use client";
 
 import { ReactNode, useEffect, useRef, useState } from "react";
-import { FiDownload, FiGrid, FiMoreVertical } from "react-icons/fi";
+import { FiDownload, FiMoreVertical } from "react-icons/fi";
 
 import { useUIStore } from "@/lib/store/ui.store";
 
 /**
- * The overflow menu at the top right of a list screen: export the rows,
- * or download the numbers above them as a chart.
+ * The overflow menu at the top right of a list screen: export the rows.
  *
  * Six pages had grown their own copy of this, each with its own button
  * styling and its own CSV writer, and three screens - Inventory and the
  * two fulfilment desks - had a bare record count sitting where the menu
  * should be, which read as a stray number rather than as a control. This
- * is the one implementation; a page supplies what its rows and its chart
- * are made of and gets the same menu as everywhere else.
+ * is the one implementation.
+ *
+ * Download Chart stood beside Export Data and drew the figures along the
+ * top of the screen as a bar PNG. It is gone: a picture of four numbers
+ * that are already on screen is not something anybody needs a file of,
+ * and it made every one of these menus look like it did more than it
+ * does. Exporting the rows remains - that is the one you cannot get by
+ * looking.
  */
 
 export interface ExportColumn<Row> {
@@ -77,60 +82,6 @@ function slug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-/** The screen's headline numbers as a bar chart PNG. */
-export function downloadChart(title: string, bars: ChartBar[]): void {
-  const canvas = document.createElement("canvas");
-
-  canvas.width = 1200;
-  canvas.height = 600;
-
-  const ctx = canvas.getContext("2d");
-
-  if (!ctx) return;
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "bold 32px Arial";
-  ctx.fillText(title, 60, 70);
-
-  const drawn = bars.slice(0, 6);
-  const max = Math.max(...drawn.map((bar) => bar.value), 1);
-
-  const chartTop = 140;
-  const chartBottom = 500;
-  // The bars share the width between them, so four numbers and six read
-  // the same way rather than six being squeezed off the right edge.
-  const span = (canvas.width - 160) / Math.max(drawn.length, 1);
-  const barWidth = Math.min(150, span * 0.6);
-
-  drawn.forEach((bar, index) => {
-    const x = 80 + index * span + (span - barWidth) / 2;
-    const height = (bar.value / max) * (chartBottom - chartTop);
-
-    ctx.fillStyle = "#1d2b45";
-    ctx.fillRect(x, chartBottom - height, barWidth, height);
-
-    ctx.fillStyle = "#0f172a";
-    ctx.font = "bold 20px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText(
-      bar.value.toLocaleString("en-IN"),
-      x + barWidth / 2,
-      chartBottom - height - 15,
-    );
-
-    ctx.font = "16px Arial";
-    ctx.fillText(bar.label, x + barWidth / 2, chartBottom + 35);
-  });
-
-  const link = document.createElement("a");
-
-  link.download = `${slug(title)}-chart.png`;
-  link.href = canvas.toDataURL("image/png");
-  link.click();
-}
 
 export function DropdownMenu({ children }: { children: ReactNode }) {
   return (
@@ -168,14 +119,15 @@ export default function ListActionsMenu<Row>({
   name,
   columns,
   rows,
-  chart,
   extra,
 }: {
-  /** The screen, as it should read in the file name and chart title. */
+  /** The screen, as it should read in the exported file's name. */
   name: string;
   columns: ExportColumn<Row>[];
   rows: Row[];
-  /** The numbers along the top. Omit to hide the chart item. */
+  /** Accepted and ignored: the screens still pass the figures along the
+      top, and there is no longer a chart item to draw them in. Kept on
+      the signature so no call site has to change to stop sending it. */
   chart?: ChartBar[];
   /** Anything else this screen puts in the menu, above the two staples. */
   extra?: (close: () => void) => ReactNode;
@@ -228,19 +180,6 @@ export default function ListActionsMenu<Row>({
           >
             Export Data
           </DropdownButton>
-
-          {chart && chart.length > 0 && (
-            <DropdownButton
-              icon={<FiGrid size={14} />}
-              onClick={() => {
-                downloadChart(name, chart);
-                close();
-                addToast("Chart downloaded.", "success");
-              }}
-            >
-              Download Chart
-            </DropdownButton>
-          )}
         </DropdownMenu>
       )}
     </div>

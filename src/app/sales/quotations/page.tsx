@@ -2522,7 +2522,10 @@ export default function QuotationPage() {
         }
       />
 
-      <StatGrid cols={6}>
+      {/* Five since Accepted came off: Total, Gross Value, Drafts,
+          Sent, Expired. Left at six they sat in five-sixths of the row
+          with a gap on the end. */}
+      <StatGrid cols={5}>
         <StatCard
           compact
           label="Total Proposals"

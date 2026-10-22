@@ -106,17 +106,21 @@ export function StatGrid({
   cols = 4,
 }: {
   children: ReactNode;
-  /** Cards per row on wide screens: four, or six (Quotation), from 1100px. */
-  cols?: 4 | 6;
+  /** Cards per row on wide screens, from 1100px. Four is the usual
+      shape; Proposal and the desks carry more. */
+  cols?: 4 | 5 | 6;
 }) {
+  /* Written out rather than built from the number: Tailwind reads the
+     class names out of the source, so a string it never sees as a
+     literal produces no CSS at all. */
+  const wide = {
+    4: "min-[68.75rem]:grid-cols-4",
+    5: "lg:grid-cols-3 min-[68.75rem]:grid-cols-5",
+    6: "lg:grid-cols-3 min-[68.75rem]:grid-cols-6",
+  }[cols];
+
   return (
-    <div
-      className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${
-        cols === 6
-          ? "lg:grid-cols-3 min-[68.75rem]:grid-cols-6"
-          : "min-[68.75rem]:grid-cols-4"
-      }`}
-    >
+    <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${wide}`}>
       {children}
     </div>
   );
