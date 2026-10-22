@@ -522,9 +522,9 @@ function formatActivityDate(value: string) {
   const days = Math.round((startOf(today) - startOf(date)) / 86_400_000);
 
   if (days === 0) {
-    return `Today, ${date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}`;
+    return `Today, ${date.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}`;
   }
   if (days === 1) return "Yesterday";
 
-  return date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  return date.toLocaleDateString("en-US", { timeZone: "Asia/Kolkata", month: "short", day: "2-digit", year: "numeric" });
 }

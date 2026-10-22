@@ -467,6 +467,7 @@ function formatDate(value?: string) {
   }
 
   return date.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -484,6 +485,7 @@ function formatActivityStamp(value?: string) {
   if (Number.isNaN(date.getTime())) return "—";
 
   const time = date.toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata",
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -512,6 +514,7 @@ function formatActivityDateTime(value?: string) {
   if (Number.isNaN(date.getTime())) return "";
 
   return `${formatDate(value)} at ${date.toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata",
     hour: "numeric",
     minute: "2-digit",
     hour12: true,

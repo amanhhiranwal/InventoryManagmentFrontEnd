@@ -54,6 +54,7 @@ export function formatDate(value?: string | null) {
   if (Number.isNaN(date.getTime())) return "-";
 
   return date.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -1292,15 +1293,34 @@ export function ProductPickerModal({
             {products.map((product) => {
               const checked = selected.some((line) => line.id === product.id);
 
+              /* Nothing to sell, or no price to sell it at. Both read
+                 as ordinary selectable rows before, so a line could go
+                 on an invoice at Rs 0.00 or against stock that is not
+                 there. An item already picked stays clickable so it can
+                 be taken off again. */
+              const unavailable =
+                !checked &&
+                (Number(product.available) <= 0 || Number(product.price) <= 0);
+
               return (
                 <button
                   key={product.id}
                   type="button"
+                  disabled={unavailable}
+                  title={
+                    unavailable
+                      ? Number(product.available) <= 0
+                        ? "Out of stock"
+                        : "This product has no price set"
+                      : undefined
+                  }
                   onClick={() => toggle(product.id)}
                   className={`w-full rounded-xl border p-3 text-left transition-colors ${
-                    checked
-                      ? "border-slate-300 bg-slate-100 dark:border-[#17304a] dark:bg-[#0b2034]"
-                      : "border-slate-200 bg-white hover:bg-slate-50 dark:border-[#17304a] dark:bg-transparent"
+                    unavailable
+                      ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-60 dark:border-[#17304a] dark:bg-[#071929]/50"
+                      : checked
+                        ? "border-slate-300 bg-slate-100 dark:border-[#17304a] dark:bg-[#0b2034]"
+                        : "border-slate-200 bg-white hover:bg-slate-50 dark:border-[#17304a] dark:bg-transparent"
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -1308,7 +1328,9 @@ export function ProductPickerModal({
                       className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded border text-[9px] ${
                         checked
                           ? "border-[#233353] bg-[#233353] text-white"
-                          : "border-slate-300"
+                          : unavailable
+                            ? "border-slate-200 bg-slate-100 dark:border-[#17304a] dark:bg-[#0b2034]"
+                            : "border-slate-300"
                       }`}
                     >
                       {checked && "✓"}
@@ -1484,7 +1506,7 @@ export function ProductPickerModal({
             className="flex h-10 items-center gap-2 rounded-md bg-[#233353] px-5 text-xs font-semibold text-white"
           >
             <LuPlus size={15} />
-            Add Product
+            Add & Proceed
           </button>
         </div>
       </div>

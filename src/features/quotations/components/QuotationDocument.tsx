@@ -33,6 +33,7 @@ const money = (value?: number | null) =>
 const shownDate = (value?: string | null) =>
   value
     ? new Date(value).toLocaleDateString("en-IN", {
+        timeZone: "Asia/Kolkata",
         day: "2-digit",
         month: "short",
         year: "numeric",

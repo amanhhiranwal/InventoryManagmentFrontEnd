@@ -36,16 +36,23 @@ export const QUOTATION_STATUS_LABEL: Record<QuotationStatus, string> = {
   EXPIRED: "Expired",
 };
 
-/** Mirrors QUOTATION_TRANSITIONS on the backend. */
+/** Mirrors QUOTATION_TRANSITIONS on the backend.
+ *
+ *  A proposal has two states anybody sets by hand - draft, or sent -
+ *  and one that happens to it: it expires when its validity date goes
+ *  by, which the server does on its own.
+ *
+ *  Accepted and Rejected were offered from the row menu, which asked a
+ *  salesperson to keep a second record of something the system already
+ *  knows: what says a customer agreed is that a sales order exists.
+ *  Both stay in the vocabulary so proposals marked under the old flow
+ *  still read back; nothing moves to them now. */
 export const QUOTATION_TRANSITIONS: Record<QuotationStatus, QuotationStatus[]> =
   {
-    /* No approval on a proposal - the signature is on the sales order.
-       Accepted is reachable straight from a draft because a customer can
-       agree to a price that was handed over outside the CRM. */
-    DRAFT: ["SENT", "ACCEPTED", "EXPIRED"],
+    DRAFT: ["SENT", "EXPIRED"],
     PENDING_APPROVAL: ["SENT", "DRAFT", "EXPIRED"],
-    SENT: ["ACCEPTED", "REJECTED", "EXPIRED"],
-    ACCEPTED: [],
+    SENT: ["EXPIRED"],
+    ACCEPTED: ["EXPIRED"],
     REJECTED: [],
     EXPIRED: [],
   };

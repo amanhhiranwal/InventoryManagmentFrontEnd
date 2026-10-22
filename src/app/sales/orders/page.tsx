@@ -918,6 +918,7 @@ export default function OrdersListPage() {
     }
 
     return date.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -2159,6 +2160,9 @@ export default function OrdersListPage() {
                       <input
                         type="date"
                         value={newOrder.orderDate}
+                        /* The order cannot be raised before the PO it is
+                           raised against. */
+                        min={newOrder.poDate || undefined}
                         onChange={(e) =>
                           updateNewOrder("orderDate", e.target.value)
                         }
@@ -2192,6 +2196,13 @@ export default function OrdersListPage() {
                       <input
                         type="date"
                         value={newOrder.poDate}
+                        /* The customer's purchase order is what the sales
+                           order is raised against, so it cannot be dated
+                           after it. A PO dated the 18th on an order
+                           created on the 16th put "Customer PO Received"
+                           two days into the future on the order's own
+                           timeline. */
+                        max={newOrder.orderDate || undefined}
                         onChange={(e) =>
                           updateNewOrder("poDate", e.target.value)
                         }
@@ -2218,6 +2229,30 @@ export default function OrdersListPage() {
                 {/* Customer Details */}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-3">
+                  {/* Registration comes first because it decides what the
+                      rest of this block asks for. It used to sit under
+                      GST, PAN and COI, so an unregistered customer was
+                      asked for three numbers they do not have and the
+                      form was filled in with NA three times. */}
+
+                  <div className="flex items-center">
+                    <span className="w-[110px] text-[11px] text-[#777777]">
+                      Registration:
+                    </span>
+
+                    <select
+                      value={newOrder.registration}
+                      onChange={(e) =>
+                        updateNewOrder("registration", e.target.value)
+                      }
+                      className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none"
+                    >
+                      <option value="">Select</option>
+                      <option value="Registered">Registered</option>
+                      <option value="Unregistered">Unregistered</option>
+                    </select>
+                  </div>
+
                   {/* Customer Type */}
 
                   <div className="flex items-center">
@@ -2259,8 +2294,12 @@ export default function OrdersListPage() {
                     />
                   </div>
 
-                  {/* GST */}
-
+                  {/* An unregistered customer has no GSTIN, no PAN on
+                      the business and no certificate of incorporation, so
+                      the three fields are not shown rather than filled in
+                      with NA. */}
+                  {newOrder.registration !== "Unregistered" && (
+                    <>
                   <div className="flex items-center">
                     <span className="w-[110px] text-[11px] text-[#777777]">
                       GST:
@@ -2303,26 +2342,9 @@ export default function OrdersListPage() {
                       className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
                   </div>
+                    </>
+                  )}
 
-                  {/* Registration */}
-
-                  <div className="flex items-center">
-                    <span className="w-[110px] text-[11px] text-[#777777]">
-                      Registration:
-                    </span>
-
-                    <select
-                      value={newOrder.registration}
-                      onChange={(e) =>
-                        updateNewOrder("registration", e.target.value)
-                      }
-                      className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none"
-                    >
-                      <option value="">Select</option>
-                      <option value="Registered">Registered</option>
-                      <option value="Unregistered">Unregistered</option>
-                    </select>
-                  </div>
                 </div>
 
                 {/* =================================================
@@ -3533,10 +3555,29 @@ export default function OrdersListPage() {
                         (item) => item.id === product.id,
                       );
 
+                      /* Nothing to sell, or no price to sell it at.
+                         Both read as ordinary selectable rows before,
+                         so a line could go on an order at Rs 0.00 or
+                         against stock that is not there. An item
+                         already picked stays clickable so it can be
+                         taken off again. */
+                      const unavailable =
+                        !checked &&
+                        (Number(product.available) <= 0 ||
+                          rateFor(product, priceBasis) <= 0);
+
                       return (
                         <button
                           type="button"
                           key={product.id}
+                          disabled={unavailable}
+                          title={
+                            unavailable
+                              ? Number(product.available) <= 0
+                                ? "Out of stock"
+                                : "This product has no price set"
+                              : undefined
+                          }
                           onClick={() => toggleProduct(product)}
                           className={`
                             w-full
@@ -3546,9 +3587,11 @@ export default function OrdersListPage() {
                             p-3
                             transition-colors
                             ${
-                              checked
-                                ? "border-slate-400 bg-slate-50"
-                                : "border-slate-200 bg-white hover:bg-slate-50"
+                              unavailable
+                                ? "cursor-not-allowed border-slate-200 bg-slate-50 opacity-60"
+                                : checked
+                                  ? "border-slate-400 bg-slate-50"
+                                  : "border-slate-200 bg-white hover:bg-slate-50"
                             }
                           `}
                         >
@@ -3566,7 +3609,9 @@ export default function OrdersListPage() {
                                 ${
                                   checked
                                     ? "bg-[#24395f] border-[#24395f] text-white"
-                                    : "border-slate-300"
+                                    : unavailable
+                                      ? "border-slate-200 bg-slate-100"
+                                      : "border-slate-300"
                                 }
                               `}
                             >
@@ -3834,7 +3879,7 @@ export default function OrdersListPage() {
                   className="h-10 px-5 rounded-md bg-[#24395f] text-white text-xs font-semibold flex items-center gap-2"
                 >
                   <FiPlus size={15} />
-                  Add to Order
+                  Add & Proceed
                 </button>
               </div>
             </div>
