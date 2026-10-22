@@ -1330,7 +1330,7 @@ export default function InventoryPage() {
                       : "Serial Number"}
                   </span>
                   <span className="text-xs font-mono font-bold text-slate-800 dark:text-white uppercase tracking-wider bg-slate-100 dark:bg-[#0d2336] px-2 py-0.5 rounded inline-block mt-0.5">
-                    {selectedSerial || itemView.serial_number}
+                    {selectedSerial || itemView.serial_number || "—"}
                   </span>
                 </div>
                 <div className="mt-2">
