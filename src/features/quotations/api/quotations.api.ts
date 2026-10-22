@@ -174,7 +174,10 @@ export interface QuotationModel {
   sent_at?: string | null;
   sent_to?: string | null;
   sent_cc?: string | null;
+  sent_bcc?: string | null;
   sent_subject?: string | null;
+  /** The rich-text body, as the editor saved it. */
+  sent_body?: string | null;
   send_options?: Record<string, boolean> | null;
   rejected_reason?: string | null;
 
@@ -184,6 +187,8 @@ export interface QuotationModel {
 
   creator_id?: string | null;
   assigned_to_id?: string | null;
+  /** Who it is assigned to, by name, resolved by the server. */
+  assigned_to_name?: string | null;
 
   created_at?: string | null;
   updated_at?: string | null;
@@ -339,6 +344,22 @@ export const updateQuotationStatusApi = async (
     status,
     rejected_reason: rejectedReason,
   });
+  return data.data || data;
+};
+
+/** Keep a composed message without sending it.
+ *
+ *  Writes the same fields the send writes, minus the sent-at stamp that
+ *  says the customer has it, so reopening the dialog brings back what
+ *  was typed. */
+export const saveQuotationEmailDraftApi = async (
+  quotationId: number | string,
+  payload: SendQuotationPayload,
+): Promise<QuotationModel> => {
+  const { data } = await api.post(
+    `/api/v1/quotations/${quotationId}/email-draft`,
+    payload,
+  );
   return data.data || data;
 };
 

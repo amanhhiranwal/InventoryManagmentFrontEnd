@@ -704,12 +704,28 @@ export default function QuotationDetailPage() {
                   Assigned To:
                 </span>
 
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 dark:bg-[#0b2034] dark:text-slate-200">
-                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] dark:bg-[#17304a]">
-                    {(quotation.contact_name || "U").charAt(0).toUpperCase()}
-                  </span>
-                  {opportunity?.assigned_to_name || "Unassigned"}
-                </span>
+                {/* The proposal's own assignee. This read the
+                    opportunity's owner, so a proposal assigned to one
+                    person was shown under another's name - and the
+                    initial in the circle came from the client contact,
+                    who is not the assignee at all. The opportunity is
+                    only a fallback now, for a proposal with nobody on
+                    it. */}
+                {(() => {
+                  const assignee =
+                    quotation.assigned_to_name ||
+                    opportunity?.assigned_to_name ||
+                    "";
+
+                  return (
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 dark:bg-[#0b2034] dark:text-slate-200">
+                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-300 text-[8px] dark:bg-[#17304a]">
+                        {(assignee || "U").charAt(0).toUpperCase()}
+                      </span>
+                      {assignee || "Unassigned"}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
 
