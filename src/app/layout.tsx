@@ -1,4 +1,5 @@
 import "./globals.css";
+import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import AuthProvider from "@/providers/AuthProvider";
 import ToastContainer from "@/components/ui/ToastContainer";
@@ -8,6 +9,13 @@ const inter = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
 });
+
+/* The name on the browser tab and its hover card. Without a title the
+   browser falls back to the page's address, which put the full URL of
+   whatever screen was open on show. */
+export const metadata: Metadata = {
+  title: "Synergy Sync",
+};
 
 export default function RootLayout({
   children,
