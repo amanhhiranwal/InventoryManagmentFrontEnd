@@ -18,6 +18,8 @@ import {
   stageLabel,
 } from "@/features/fulfilment/api/fulfilment.api";
 import DeskBoard from "@/features/fulfilment/components/DeskBoard";
+import DownloadButton from "@/features/fulfilment/components/DownloadButton";
+import { downloadProformaInvoicePdfApi } from "@/features/proformaInvoices/api/proformaInvoices.api";
 
 export default function ProcurementDeskPage() {
   return (
@@ -36,8 +38,21 @@ function StockDetail({ order }: { order: DeskOrder }) {
   const lines = order.stock || [];
   const moved = order.stock_movements || [];
 
+  const invoice = order.proforma_invoice;
+
   return (
     <div className="space-y-3">
+      {/* The invoice the order was paid against, for procurement and
+          dispatch - they work from this desk, not the order's page. */}
+      {invoice && (
+        <div className="flex justify-end">
+          <DownloadButton
+            label={invoice.pi_number ? `Download PI (${invoice.pi_number})` : "Download PI"}
+            download={() => downloadProformaInvoicePdfApi(invoice.id, invoice.pi_number)}
+          />
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-[#17304a]">
         <table className="w-full text-left">
           <thead>

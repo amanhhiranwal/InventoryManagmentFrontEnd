@@ -15,6 +15,8 @@ import {
   money,
 } from "@/features/fulfilment/api/fulfilment.api";
 import DeskBoard from "@/features/fulfilment/components/DeskBoard";
+import DownloadButton from "@/features/fulfilment/components/DownloadButton";
+import { downloadSalesOrderPdfApi } from "@/features/salesOrders/api/salesOrders.api";
 
 export default function AccountsDeskPage() {
   return (
@@ -34,60 +36,70 @@ function PaymentDetail({ order }: { order: DeskOrder }) {
   const shortfall = Math.max(0, order.advance_expected - order.advance_received);
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <Panel title="The money">
-        <Line label="Order value" value={money(order.grand_total)} />
-        <Line
-          label={`Advance asked (${order.advance_percent}%)`}
-          value={money(order.advance_expected)}
+    <div className="space-y-4">
+      {/* The whole order, as approved, for collecting the advance against. */}
+      <div className="flex justify-end">
+        <DownloadButton
+          label="Download Sales Order"
+          download={() => downloadSalesOrderPdfApi(order.id, order.order_number)}
         />
-        <Line
-          label="Advance received"
-          value={money(order.advance_received)}
-          tone={order.advance_settled ? "good" : "warn"}
-        />
-        <Line
-          label={shortfall > 0 ? "Still to collect" : "Balance after advance"}
-          value={money(
-            shortfall > 0 ? shortfall : order.grand_total - order.advance_received,
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Panel title="The money">
+          <Line label="Order value" value={money(order.grand_total)} />
+          <Line
+            label={`Advance asked (${order.advance_percent}%)`}
+            value={money(order.advance_expected)}
+          />
+          <Line
+            label="Advance received"
+            value={money(order.advance_received)}
+            tone={order.advance_settled ? "good" : "warn"}
+          />
+          <Line
+            label={shortfall > 0 ? "Still to collect" : "Balance after advance"}
+            value={money(
+              shortfall > 0 ? shortfall : order.grand_total - order.advance_received,
+            )}
+          />
+        </Panel>
+
+        <Panel title="Proforma invoice">
+          {invoice ? (
+            <>
+              <Line label="Number" value={invoice.pi_number || `#${invoice.id}`} />
+              <Line label="Status" value={invoice.status} />
+              <Line label="Invoiced" value={money(invoice.grand_total)} />
+              <Line label="Paid" value={money(invoice.amount_paid)} />
+              <Line label="Balance due" value={money(invoice.balance_due)} />
+            </>
+          ) : (
+            <p className="text-[12px] text-slate-400">
+              No proforma invoice has been raised against this order yet, so
+              there is nothing for the payment to have come in against.
+            </p>
           )}
-        />
-      </Panel>
+        </Panel>
 
-      <Panel title="Proforma invoice">
-        {invoice ? (
-          <>
-            <Line label="Number" value={invoice.pi_number || `#${invoice.id}`} />
-            <Line label="Status" value={invoice.status} />
-            <Line label="Invoiced" value={money(invoice.grand_total)} />
-            <Line label="Paid" value={money(invoice.amount_paid)} />
-            <Line label="Balance due" value={money(invoice.balance_due)} />
-          </>
-        ) : (
-          <p className="text-[12px] text-slate-400">
-            No proforma invoice has been raised against this order yet, so
-            there is nothing for the payment to have come in against.
-          </p>
-        )}
-      </Panel>
+        <Panel title="What was ordered">
+          <ul className="space-y-1.5">
+            {(order.items || []).map((item, index) => (
+              <li key={index} className="text-[12px] text-slate-600 dark:text-slate-300">
+                {String(item.product || item.name || "Line")}
+                <span className="text-slate-400">
+                  {" "}
+                  × {String(item.qty ?? item.quantity ?? 1)}
+                </span>
+              </li>
+            ))}
 
-      <Panel title="What was ordered">
-        <ul className="space-y-1.5">
-          {(order.items || []).map((item, index) => (
-            <li key={index} className="text-[12px] text-slate-600 dark:text-slate-300">
-              {String(item.product || item.name || "Line")}
-              <span className="text-slate-400">
-                {" "}
-                × {String(item.qty ?? item.quantity ?? 1)}
-              </span>
-            </li>
-          ))}
-
-          {(order.items || []).length === 0 && (
-            <li className="text-[12px] text-slate-400">No lines on this order.</li>
-          )}
-        </ul>
-      </Panel>
+            {(order.items || []).length === 0 && (
+              <li className="text-[12px] text-slate-400">No lines on this order.</li>
+            )}
+          </ul>
+        </Panel>
+      </div>
     </div>
   );
 }

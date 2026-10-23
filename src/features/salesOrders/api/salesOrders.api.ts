@@ -1,4 +1,5 @@
 import api from "@/lib/axios";
+import { downloadFile } from "@/lib/downloadFile";
 
 /* =========================================================
    CANONICAL STATUSES
@@ -143,6 +144,9 @@ export interface SalesOrderItem {
 
 export interface SalesOrderModel {
   id: number;
+  /** Whether this reader may download the sales order PDF: the raiser's
+      AVP, the CEO, the Founder and Accounts. Only on the detail read. */
+  can_download_pdf?: boolean;
   /** Kept for compatibility with the existing table, which keys rows by _id. */
   _id: string;
 
@@ -410,3 +414,7 @@ export const getNextOrderNumberApi = async (): Promise<string> => {
   const { data } = await api.get("/api/v1/orders/next-number");
   return data?.data?.order_number || "";
 };
+
+/** The sales order as a PDF, for the people allowed to download it. */
+export const downloadSalesOrderPdfApi = (id: number | string, orderNumber?: string | null) =>
+  downloadFile(`/api/v1/orders/${id}/pdf`, `Sales_Order_${orderNumber || `SO-${id}`}.pdf`);

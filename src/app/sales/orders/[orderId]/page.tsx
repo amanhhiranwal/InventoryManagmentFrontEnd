@@ -44,6 +44,7 @@ import {
   nextSalesOrderStatuses,
   salesOrderStatusLabel,
   SALES_ORDER_STATUS_LABEL,
+  downloadSalesOrderPdfApi,
 } from "@/features/salesOrders/api/salesOrders.api";
 import {
   createProformaInvoiceApi,
@@ -243,6 +244,7 @@ export default function SalesOrderDetailPage() {
   const [activitiesLoading, setActivitiesLoading] = useState(false);
 
   const [sending, setSending] = useState(false);
+  const [downloadingOrder, setDownloadingOrder] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
 
   /* The most recent live proforma invoice raised against this order, which
@@ -694,6 +696,29 @@ export default function SalesOrderDetailPage() {
               <FiEdit2 size={13} />
               Edit Order
             </button>
+
+            {/* For the raiser's AVP, the CEO, the Founder and Accounts -
+                the server says who, and refuses anyone else. */}
+            {order.can_download_pdf && (
+              <button
+                type="button"
+                disabled={downloadingOrder}
+                onClick={async () => {
+                  setDownloadingOrder(true);
+                  try {
+                    await downloadSalesOrderPdfApi(order.id, order.order_number);
+                  } catch {
+                    addToast("The sales order could not be downloaded.", "error");
+                  } finally {
+                    setDownloadingOrder(false);
+                  }
+                }}
+                className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:opacity-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+              >
+                <FiDownload size={13} />
+                {downloadingOrder ? "Preparing..." : "Download Sales Order"}
+              </button>
+            )}
 
             {/* Only a draft can be sent for approval; past that the row menu
                 and the activity log drive the rest of the pipeline. */}
