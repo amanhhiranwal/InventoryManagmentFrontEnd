@@ -621,6 +621,11 @@ export default function QuotationPage() {
 
   /* ---- send dialog ---- */
   const [sendTarget, setSendTarget] = useState<QuotationModel | null>(null);
+
+  /* Set when the detail page's Send to Client opened the dialog, so
+     closing it goes back to that proposal rather than leaving the user
+     on the list. */
+  const [sendReturnId, setSendReturnId] = useState<number | null>(null);
   const [sender, setSender] = useState<QuotationSender | null>(null);
 
   const filterRef = useRef<HTMLDivElement | null>(null);
@@ -1180,15 +1185,31 @@ export default function QuotationPage() {
     router.replace("/sales/quotations");
   }, [editParam, openForEdit, router]);
 
+  const fromDetail = searchParams.get("from") === "detail";
+
   useEffect(() => {
-    if (!sendParam || !quotations.length) return;
+    if (!sendParam) return;
 
-    const target = quotations.find((q) => String(q.id) === sendParam);
-
-    if (target) setSendTarget(target);
+    /* Read from the server rather than the list in view: the list is one
+       page, and the proposal being sent need not be on it. */
+    getQuotationApi(sendParam)
+      .then((target) => {
+        setSendTarget(target);
+        setSendReturnId(fromDetail ? target.id : null);
+      })
+      .catch(() => addToast("This proposal could not be opened for sending.", "error"));
 
     router.replace("/sales/quotations");
-  }, [sendParam, quotations, router]);
+  }, [sendParam, fromDetail, router, addToast]);
+
+  const closeSend = () => {
+    setSendTarget(null);
+
+    if (sendReturnId) {
+      router.push(`/sales/quotations/${sendReturnId}`);
+      setSendReturnId(null);
+    }
+  };
 
   /** Prefills the form from the opportunity the quotation is raised against. */
   const applyOpportunity = (id: string) => {
@@ -2856,9 +2877,9 @@ export default function QuotationPage() {
         <SendQuotationModal
           quotation={sendTarget}
           sender={sender}
-          onClose={() => setSendTarget(null)}
+          onClose={closeSend}
           onSent={async (message) => {
-            setSendTarget(null);
+            closeSend();
             addToast(message, "success");
             await fetchQuotations();
           }}
@@ -2868,7 +2889,7 @@ export default function QuotationPage() {
              showed the defaults again - the draft was on the server the
              whole time, but only a reload could see it. */
           onSaved={async (message) => {
-            setSendTarget(null);
+            closeSend();
             addToast(message, "success");
             await fetchQuotations();
           }}

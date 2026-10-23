@@ -28,6 +28,7 @@ import {
   QUOTATION_STATUS,
   QUOTATION_STATUS_LABEL,
   QUOTATION_TRANSITIONS,
+  canTransitionQuotation,
   QuotationActivity,
   QuotationAddress,
   QuotationModel,
@@ -56,6 +57,7 @@ import {
   FiPackage,
   FiPlus,
   FiRepeat,
+  FiSend,
   FiShield,
   FiX,
 } from "react-icons/fi";
@@ -466,13 +468,15 @@ export default function QuotationDetailPage() {
     return (
       <div className="min-h-full space-y-4 pb-8">
         <div>
+          {/* Back to the proposal being previewed, not the list: the
+              preview is a view of this one record. */}
           <button
             type="button"
-            onClick={() => router.push("/sales/quotations")}
+            onClick={() => setPreviewing(false)}
             className="mb-2 flex items-center gap-1 text-[11px] font-medium text-slate-700 hover:text-[#233353] dark:text-slate-300 dark:hover:text-white"
           >
             <FiChevronLeft size={13} />
-            Back to all Proposal
+            Back to {quoteReference(quotation)}
           </button>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -616,6 +620,23 @@ export default function QuotationDetailPage() {
               <FiDownload size={13} />
               {downloading ? "Preparing..." : "Download"}
             </button>
+
+            {/* The same Send to Client the list's row menu offers, on the
+                same statuses. It opens the list's send dialog and comes
+                back here when that closes. */}
+            {quotation.status !== QUOTATION_STATUS.SENT &&
+              canTransitionQuotation(quotation.status, QUOTATION_STATUS.SENT) && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(`/sales/quotations?send=${quotation.id}&from=detail`)
+                  }
+                  className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                >
+                  <FiSend size={13} />
+                  Send to Client
+                </button>
+              )}
 
             {/* Carries the quotation's reference through, so the New Sales
                 Order form opens knowing what it is being raised against -
