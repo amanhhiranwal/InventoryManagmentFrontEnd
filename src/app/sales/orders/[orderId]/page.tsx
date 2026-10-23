@@ -1449,7 +1449,7 @@ export default function SalesOrderDetailPage() {
           }}
           className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm"
         >
-          <div className="mx-auto w-full max-w-[860px]">
+          <div className="mx-auto w-fit max-w-full">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-[13px] font-semibold text-white">
                 {invoice.pi_number || `PI-${invoice.id}`}

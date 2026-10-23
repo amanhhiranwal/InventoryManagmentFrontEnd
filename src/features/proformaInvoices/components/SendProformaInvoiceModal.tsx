@@ -266,6 +266,17 @@ export default function SendProformaInvoiceModal({
                 Attached Documents &amp; Annexures
               </p>
 
+              {/* The invoice itself, which the server draws and attaches to
+                  every send. Listed so the sender sees it goes, and not
+                  removable: a proforma email without the proforma is not
+                  something to offer. */}
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-rose-50 px-2.5 py-2">
+                <LuFileText size={14} className="shrink-0 text-rose-500" />
+                <span className="flex-1 truncate text-[10px] font-semibold text-slate-800">
+                  Proforma_Invoice_{reference}.pdf
+                </span>
+              </div>
+
               {files.length === 0 ? (
                 <p className="text-[10px] text-slate-400">
                   No annexures attached to this invoice.
@@ -395,7 +406,11 @@ function HeaderRow({
   );
 }
 
-/** Each address is a removable chip; the tail commits on Enter, comma or blur. */
+/**
+ * Each address is a removable chip; the tail commits on Enter, comma or blur.
+ * Only an email address becomes a chip - anything else stays in the box with
+ * a line saying why, as the proposal's send dialog does.
+ */
 function ChipInput({
   values,
   onChange,
@@ -409,15 +424,26 @@ function ChipInput({
 }) {
   const [draft, setDraft] = useState("");
 
+  /* What was typed that is not an address, kept in the box to be
+     corrected. "vikas" is not a recipient, and letting it become a chip
+     only moves the failure to the mail server. */
+  const [refused, setRefused] = useState<string[]>([]);
+
   const commit = () => {
     const entries = draft
       .split(/[,;\s]+/)
       .map((part) => part.trim())
-      .filter((part) => part && !values.includes(part));
+      .filter(Boolean);
 
-    if (entries.length) onChange([...values, ...entries]);
+    const addresses = entries.filter(
+      (part) => EMAIL_PATTERN.test(part) && !values.includes(part),
+    );
+    const rejected = entries.filter((part) => !EMAIL_PATTERN.test(part));
 
-    setDraft("");
+    if (addresses.length) onChange([...values, ...addresses]);
+
+    setRefused(rejected);
+    setDraft(rejected.join(", "));
   };
 
   return (
@@ -447,7 +473,10 @@ function ChipInput({
       <input
         ref={inputRef}
         value={draft}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          if (refused.length) setRefused([]);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === ",") {
             event.preventDefault();
@@ -460,6 +489,14 @@ function ChipInput({
         placeholder={values.length ? "" : placeholder}
         className="min-w-[120px] flex-1 bg-transparent py-1 text-[11px] text-slate-700 outline-none dark:text-slate-200"
       />
+
+      {refused.length > 0 && (
+        <p className="w-full text-[10px] font-medium text-rose-600">
+          {refused.length === 1
+            ? `"${refused[0]}" is not an email address.`
+            : `${refused.length} of those are not email addresses.`}
+        </p>
+      )}
     </div>
   );
 }
