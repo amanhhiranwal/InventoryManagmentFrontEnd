@@ -555,6 +555,11 @@ export default function OrdersListPage() {
     ...DEFAULT_COMMERCIAL_TERMS,
   ]);
 
+  /* Once an order has gone for approval its terms are what was approved,
+     so editing it opens them locked; Edit Terms unlocks them on purpose.
+     A new order and a draft are never locked. */
+  const [termsLocked, setTermsLocked] = useState(false);
+
   /* Share of the total expected up front; drives the Advance / Balance split
      the summary shows, which used to be a fixed 30/70 printed into the
      markup with nothing behind it. */
@@ -1050,6 +1055,7 @@ export default function OrdersListPage() {
 
     setShowCreateOrder(true);
     setShowFilters(false);
+    setTermsLocked(false);
     setSelectedProducts([]);
     setAttachments([]);
     setIsDraggingFiles(false);
@@ -1066,6 +1072,7 @@ export default function OrdersListPage() {
   const closeCreateOrder = () => {
     setShowCreateOrder(false);
     setEditingOrderId(null);
+    setTermsLocked(false);
     setShowProductModal(false);
     setSelectedProducts([]);
     setAttachments([]);
@@ -1191,6 +1198,9 @@ export default function OrdersListPage() {
           saved.commercial_terms?.length
             ? saved.commercial_terms
             : [...DEFAULT_COMMERCIAL_TERMS],
+        );
+        setTermsLocked(
+          String(saved.status || "").toUpperCase() !== SALES_ORDER_STATUS.DRAFT,
         );
 
         setEditingOrderId(saved.id);
@@ -3150,17 +3160,32 @@ export default function OrdersListPage() {
 
                     {/* Payment terms differ per order - a staged payment, a
                         retention, a different advance - so a condition can
-                        be added as well as reworded or dropped. */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setCommercialTerms((current) => [...current, ""])
-                      }
-                      className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
-                    >
-                      <FiPlus size={11} />
-                      Add Term
-                    </button>
+                        be added as well as reworded or dropped. Past draft
+                        the terms are locked until Edit Terms is pressed. */}
+                    <div className="flex items-center gap-1.5">
+                      {termsLocked && (
+                        <button
+                          type="button"
+                          onClick={() => setTermsLocked(false)}
+                          className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
+                        >
+                          <FiEdit2 size={11} />
+                          Edit Terms
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={termsLocked}
+                        onClick={() =>
+                          setCommercialTerms((current) => [...current, ""])
+                        }
+                        className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
+                      >
+                        <FiPlus size={11} />
+                        Add Term
+                      </button>
+                    </div>
                   </div>
 
                   {/* Plain bullets, as the design has them. Each is still
@@ -3176,6 +3201,7 @@ export default function OrdersListPage() {
                         <textarea
                           rows={1}
                           value={term}
+                          readOnly={termsLocked}
                           onChange={(e) => {
                             setCommercialTerms((current) =>
                               current.map((item, i) =>
@@ -3201,12 +3227,13 @@ export default function OrdersListPage() {
                         <button
                           type="button"
                           aria-label={`Remove condition ${index + 1}`}
+                          disabled={termsLocked}
                           onClick={() =>
                             setCommercialTerms((current) =>
                               current.filter((_, i) => i !== index),
                             )
                           }
-                          className="mt-0.5 shrink-0 rounded-md p-1 text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-500 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-rose-500/10"
+                          className="mt-0.5 shrink-0 rounded-md p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:hover:bg-rose-500/10"
                         >
                           <FiTrash2 size={12} />
                         </button>

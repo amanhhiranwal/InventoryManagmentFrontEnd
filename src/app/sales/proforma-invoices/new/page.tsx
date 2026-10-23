@@ -61,12 +61,6 @@ import {
 } from "@/features/proformaInvoices/components/ProformaParts";
 import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
 
-const DEFAULT_TERMS = [
-  "Payment Terms: 30% advance against Proforma Invoice; 70% balance upon delivery challan verification.",
-  "Delivery Lead Time: 15 to 20 working days from receipt of initial mobilization advance and confirmed delivery slot.",
-  "Warranty & Support: Standard 3-year comprehensive on-site OEM warranty on IFP panels and Core OPS compute modules.",
-];
-
 const INVOICEABLE = ["CONFIRMED", "RELEASED", "ON_HOLD", "COMPLETED"];
 
 /** The seed every field starts from - an order for a new invoice, or the
@@ -148,7 +142,7 @@ function GenerateProformaInvoice() {
   const [advancePercent, setAdvancePercent] = useState(30);
   const [paymentTerms, setPaymentTerms] = useState("");
 
-  const [terms, setTerms] = useState<string[]>(DEFAULT_TERMS);
+  const [terms, setTerms] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
 
   const editingId = editParam ? Number(editParam) : null;
@@ -184,7 +178,9 @@ function GenerateProformaInvoice() {
        order. The invoice asks for what was offered rather than for a
        default sentence that can quietly contradict it. */
     setPaymentTerms(order.payment_terms || "");
-    setTerms(order.commercial_terms?.length ? order.commercial_terms : DEFAULT_TERMS);
+    /* The terms written on the sales order, and only those: the invoice
+       prints what was agreed there rather than a stock set of its own. */
+    setTerms(order.commercial_terms || []);
     setNotes(order.technical_notes || "");
   };
 
@@ -254,7 +250,7 @@ function GenerateProformaInvoice() {
         setAmountPaid(invoice.amount_paid);
         setAdvancePercent(invoice.advance_percent);
         setPaymentTerms(invoice.payment_terms || "");
-        setTerms(invoice.commercial_terms?.length ? invoice.commercial_terms : DEFAULT_TERMS);
+        setTerms(invoice.commercial_terms || []);
         setNotes(invoice.technical_notes || "");
 
         return;

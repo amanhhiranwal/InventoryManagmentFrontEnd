@@ -266,6 +266,17 @@ export default function SendProformaInvoiceModal({
                 Attached Documents &amp; Annexures
               </p>
 
+              {/* The invoice itself, which the server draws and attaches to
+                  every send. Listed so the sender sees it goes, and not
+                  removable: a proforma email without the proforma is not
+                  something to offer. */}
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-rose-50 px-2.5 py-2">
+                <LuFileText size={14} className="shrink-0 text-rose-500" />
+                <span className="flex-1 truncate text-[10px] font-semibold text-slate-800">
+                  Proforma_Invoice_{reference}.pdf
+                </span>
+              </div>
+
               {files.length === 0 ? (
                 <p className="text-[10px] text-slate-400">
                   No annexures attached to this invoice.
