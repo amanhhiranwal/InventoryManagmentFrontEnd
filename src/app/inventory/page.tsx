@@ -79,7 +79,15 @@ function serialMismatch(quantity: number, serials: number): string | null {
 
   return quantity > serials
     ? `In-Stock is ${quantity} but only ${serials} serial number${plural(serials)} ${serials === 1 ? "is" : "are"} entered. Add ${difference} more serial number${plural(difference)}, or set In-Stock to ${serials}.`
-    : `In-Stock is ${quantity} but ${serials} serial numbers are entered. Remove ${difference} serial number${plural(difference)}, or set In-Stock to ${serials}.`;
+    : `In-Stock is ${quantity} but ${serials} serial number${plural(serials)} ${serials === 1 ? "is" : "are"} entered. Remove ${difference} serial number${plural(difference)}, or set In-Stock to ${serials}.`;
+}
+
+/** Serial numbers typed in one box, separated by / , or new lines. */
+function splitSerials(text: string): string[] {
+  return text
+    .split(/[/,\n]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 /** The catalogue as a spreadsheet: what a stock take is done against. */
@@ -741,10 +749,7 @@ export default function InventoryPage() {
     }
 
     /* Every unit carries its own serial: the count is how many were typed. */
-    const typedSerials = serialNumber
-      .split(/[/,\n]+/)
-      .map((part) => part.trim())
-      .filter(Boolean);
+    const typedSerials = splitSerials(serialNumber);
     const createMismatch = serialMismatch(instockVal, typedSerials.length);
     if (createMismatch) {
       addToast(createMismatch, "warning");
@@ -1645,7 +1650,11 @@ export default function InventoryPage() {
                   required
                   placeholder="e.g. SN-001 or several separated by / or comma"
                   value={serialNumber}
-                  onChange={(e) => setSerialNumber(e.target.value)}
+                  onChange={(e) => {
+                    setSerialNumber(e.target.value);
+                    /* One unit per serial: the count follows what is typed. */
+                    setInstock(String(splitSerials(e.target.value).length));
+                  }}
                 />
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Multiple serial numbers for this product can be separated by / or commas.
@@ -1972,14 +1981,12 @@ export default function InventoryPage() {
 
                 <SerialListEditor
                   serials={editSerials}
-                  onChange={(next, delta) => {
+                  onChange={(next) => {
                     setEditSerials(next);
-                    /* A serial is a unit: adding one puts it in stock and
-                       removing one takes it out. The count stays editable
-                       for stock held without serials. */
-                    setEditInstock((current) =>
-                      String(Math.max(0, (parseFloat(current) || 0) + delta)),
-                    );
+                    /* One unit per serial: the count is set to the list,
+                       not moved by one from whatever was typed - a count
+                       already off by one would otherwise stay off. */
+                    setEditInstock(String(next.length));
                   }}
                 />
 
@@ -2287,8 +2294,7 @@ function SerialListEditor({
   onChange,
 }: {
   serials: string[];
-  /** The new list, and how many units it added (or took away, negative). */
-  onChange: (next: string[], delta: number) => void;
+  onChange: (next: string[]) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState("");
@@ -2305,14 +2311,14 @@ function SerialListEditor({
     const fresh = typed.filter((serial, index) => !serials.includes(serial) && typed.indexOf(serial) === index);
     const repeated = typed.length - fresh.length;
 
-    if (fresh.length) onChange([...serials, ...fresh], fresh.length);
+    if (fresh.length) onChange([...serials, ...fresh]);
 
     setNotice(repeated ? `${repeated} already on this product, not added again.` : "");
     setDraft("");
   };
 
   const remove = (serial: string) => {
-    onChange(serials.filter((entry) => entry !== serial), -1);
+    onChange(serials.filter((entry) => entry !== serial));
     setNotice("");
   };
 
@@ -2380,8 +2386,8 @@ function SerialListEditor({
       </div>
 
       <p className="text-[10px] text-slate-400">
-        One unit per serial: adding or removing a serial changes In-Stock by one, and
-        In-Stock must match the number of serials to save.
+        One unit per serial: In-Stock is set to the number of serials whenever the list
+        changes, and must match it to save.
       </p>
 
       {notice && <p className="text-[10px] font-medium text-amber-600">{notice}</p>}
