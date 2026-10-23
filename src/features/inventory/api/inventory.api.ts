@@ -291,6 +291,8 @@ export const updateInventoryItemApi = async (itemId: string, payload: {
   /** Left out keeps the picture the product has; null clears it. */
   image_base64?: string | null;
   company_id?: string | null;
+  /** The product's whole serial list; left out keeps serial_number's meaning. */
+  serial_numbers?: string[];
 }): Promise<InventoryItem> => {
   const { data } = await api.put(`/api/v1/inventory/items/${itemId}`, payload);
   return data.data || data;
