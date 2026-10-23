@@ -64,6 +64,32 @@ import {
 } from "react-icons/fi";
 import { CgSpinner } from "react-icons/cg";
 
+/**
+ * Why a count and its serial numbers disagree, or null when they match.
+ *
+ * A serialised product holds one unit per serial, so a count above the
+ * list is stock nobody can name and a count below it is serials with
+ * nothing behind them. Said as what to do about it.
+ */
+function serialMismatch(quantity: number, serials: number): string | null {
+  if (quantity === serials) return null;
+
+  const difference = Math.abs(quantity - serials);
+  const plural = (n: number) => (n === 1 ? "" : "s");
+
+  return quantity > serials
+    ? `In-Stock is ${quantity} but only ${serials} serial number${plural(serials)} ${serials === 1 ? "is" : "are"} entered. Add ${difference} more serial number${plural(difference)}, or set In-Stock to ${serials}.`
+    : `In-Stock is ${quantity} but ${serials} serial number${plural(serials)} ${serials === 1 ? "is" : "are"} entered. Remove ${difference} serial number${plural(difference)}, or set In-Stock to ${serials}.`;
+}
+
+/** Serial numbers typed in one box, separated by / , or new lines. */
+function splitSerials(text: string): string[] {
+  return text
+    .split(/[/,\n]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 /** The catalogue as a spreadsheet: what a stock take is done against. */
 const INVENTORY_COLUMNS: ExportColumn<InventoryItem>[] = [
   { header: "Model Number", value: (item) => String(item.attributes?.model_number ?? "") },
@@ -317,7 +343,9 @@ export default function InventoryPage() {
   const [editName, setEditName] = useState("");
   const [editModelNumber, setEditModelNumber] = useState("");
   const [editSpecification, setEditSpecification] = useState("");
-  const [editSerialNumber, setEditSerialNumber] = useState("");
+  /* Every serial the product holds - the list row groups one record per
+     serial - so the form can add and remove them, not only rename one. */
+  const [editSerials, setEditSerials] = useState<string[]>([]);
   const [editSelectedTypeCode, setEditSelectedTypeCode] = useState("");
   const [editImageBase64, setEditImageBase64] = useState<string | null>(null);
 
@@ -633,7 +661,13 @@ export default function InventoryPage() {
     setEditName(item.name);
     setEditModelNumber(item.attributes?.model_number?.toString() || "");
     setEditSpecification(item.attributes?.specification?.toString() || "");
-    setEditSerialNumber(item.serial_number);
+    setEditSerials(
+      item.serial_numbers?.length
+        ? item.serial_numbers
+        : item.serial_number
+          ? [item.serial_number]
+          : [],
+    );
     setEditSelectedTypeCode(item.product_type_code);
     setEditImageBase64(item.image_base64 || null);
     setEditImageTouched(false);
@@ -713,6 +747,14 @@ export default function InventoryPage() {
       addToast("In-stock inventory count is required and must be 0 or greater.", "warning");
       return;
     }
+
+    /* Every unit carries its own serial: the count is how many were typed. */
+    const typedSerials = splitSerials(serialNumber);
+    const createMismatch = serialMismatch(instockVal, typedSerials.length);
+    if (createMismatch) {
+      addToast(createMismatch, "warning");
+      return;
+    }
     if (caseSize.trim() === "" || caseSizeVal < 1) {
       addToast("Wholesale case size is required and must be 1 or greater.", "warning");
       return;
@@ -778,8 +820,8 @@ export default function InventoryPage() {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemToEdit) return;
-    if (!editName.trim() || !editSerialNumber.trim()) {
-      addToast("Name and Serial Number are required.", "warning");
+    if (!editName.trim() || editSerials.length === 0) {
+      addToast("Name and at least one Serial Number are required.", "warning");
       return;
     }
 
@@ -802,6 +844,12 @@ export default function InventoryPage() {
     }
     if (editInstock.trim() === "" || instockVal < 0) {
       addToast("In-stock inventory count is required and must be 0 or greater.", "warning");
+      return;
+    }
+
+    const editMismatch = serialMismatch(instockVal, editSerials.length);
+    if (editMismatch) {
+      addToast(editMismatch, "warning");
       return;
     }
     if (editCaseSize.trim() === "" || caseSizeVal < 1) {
@@ -836,7 +884,10 @@ export default function InventoryPage() {
 
       await updateInventoryItemApi(itemToEdit._id, {
         name: editName.trim(),
-        serial_number: editSerialNumber.trim().toUpperCase(),
+        serial_number: editSerials[0] || "",
+        /* The whole list: serials left out are removed, new ones added.
+           In Stock above is the product's total across them. */
+        serial_numbers: editSerials,
         product_type_code: editSelectedTypeCode,
         category: typeDetails.category,
         attributes: mergedEditAttributes,
@@ -1599,7 +1650,11 @@ export default function InventoryPage() {
                   required
                   placeholder="e.g. SN-001 or several separated by / or comma"
                   value={serialNumber}
-                  onChange={(e) => setSerialNumber(e.target.value)}
+                  onChange={(e) => {
+                    setSerialNumber(e.target.value);
+                    /* One unit per serial: the count follows what is typed. */
+                    setInstock(String(splitSerials(e.target.value).length));
+                  }}
                 />
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Multiple serial numbers for this product can be separated by / or commas.
@@ -1883,7 +1938,7 @@ export default function InventoryPage() {
           }}
           title="Edit Inventory Product"
           size="xl"
-          hasUnsavedChanges={editName !== itemToEdit.name || editSerialNumber !== itemToEdit.serial_number || editImageBase64 !== (itemToEdit.image_base64 || null) || editSelectedTypeCode !== itemToEdit.product_type_code || editRate !== (itemToEdit.attributes?.rate?.toString() || "") || editUnit !== (itemToEdit.attributes?.unit || "") || editInstock !== ((itemToEdit.attributes?.instock ?? itemToEdit.attributes?.stock ?? "").toString()) || editCaseSize !== (itemToEdit.attributes?.case_size?.toString() || "") || JSON.stringify(editDynamicValues) !== JSON.stringify(itemToEdit.attributes || {})}
+          hasUnsavedChanges={editName !== itemToEdit.name || editSerials.join(",") !== (itemToEdit.serial_numbers?.length ? itemToEdit.serial_numbers : itemToEdit.serial_number ? [itemToEdit.serial_number] : []).join(",") || editImageBase64 !== (itemToEdit.image_base64 || null) || editSelectedTypeCode !== itemToEdit.product_type_code || editRate !== (itemToEdit.attributes?.rate?.toString() || "") || editUnit !== (itemToEdit.attributes?.unit || "") || editInstock !== ((itemToEdit.attributes?.instock ?? itemToEdit.attributes?.stock ?? "").toString()) || editCaseSize !== (itemToEdit.attributes?.case_size?.toString() || "") || JSON.stringify(editDynamicValues) !== JSON.stringify(itemToEdit.attributes || {})}
         >
           <form onSubmit={handleUpdate} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1924,12 +1979,15 @@ export default function InventoryPage() {
                   />
                 </div>
 
-                <Input
-                  label="Hardware Serial Number (Unique) *"
-                  required
-                  placeholder="e.g. FT-NPK-12903"
-                  value={editSerialNumber}
-                  onChange={(e) => setEditSerialNumber(e.target.value)}
+                <SerialListEditor
+                  serials={editSerials}
+                  onChange={(next) => {
+                    setEditSerials(next);
+                    /* One unit per serial: the count is set to the list,
+                       not moved by one from whatever was typed - a count
+                       already off by one would otherwise stay off. */
+                    setEditInstock(String(next.length));
+                  }}
                 />
 
                 {/* IMAGE UPLOAD FIELD (EDIT) */}
@@ -2222,5 +2280,117 @@ export default function InventoryPage() {
         </Modal>
       )}
     </ListPage>
+  );
+}
+
+/**
+ * The product's serial numbers on the Edit form: each one removable, with
+ * a box that adds one on Enter - or several pasted at once, separated by
+ * commas, slashes or new lines - and filters the list while typing, so one
+ * serial can be found among a hundred.
+ */
+function SerialListEditor({
+  serials,
+  onChange,
+}: {
+  serials: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const query = draft.trim().toUpperCase();
+  const shown = query ? serials.filter((serial) => serial.includes(query)) : serials;
+
+  const add = (text: string = draft) => {
+    const typed = text
+      .split(/[/,\n]+/)
+      .map((part) => part.trim().toUpperCase())
+      .filter(Boolean);
+
+    const fresh = typed.filter((serial, index) => !serials.includes(serial) && typed.indexOf(serial) === index);
+    const repeated = typed.length - fresh.length;
+
+    if (fresh.length) onChange([...serials, ...fresh]);
+
+    setNotice(repeated ? `${repeated} already on this product, not added again.` : "");
+    setDraft("");
+  };
+
+  const remove = (serial: string) => {
+    onChange(serials.filter((entry) => entry !== serial));
+    setNotice("");
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          Hardware Serial Numbers *
+        </label>
+        <span className="text-[10px] font-semibold text-slate-400">
+          {serials.length} serial{serials.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <input
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setNotice("");
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            add();
+          }
+        }}
+        onPaste={(event) => {
+          const text = event.clipboardData.getData("text");
+          if (/[,/\n]/.test(text)) {
+            event.preventDefault();
+            add(text);
+          }
+        }}
+        placeholder="Type a serial and press Enter, or paste several"
+        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-1 focus:ring-primary/10 dark:border-[#0d2336] dark:bg-[#071929]/50 dark:text-white"
+      />
+
+      <div className="max-h-32 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/60 p-2 dark:border-[#0d2336] dark:bg-[#071929]/40">
+        {serials.length === 0 ? (
+          <p className="py-1 text-[10px] italic text-slate-400">No serial numbers. Add at least one.</p>
+        ) : shown.length === 0 ? (
+          <p className="py-1 text-[10px] italic text-slate-400">
+            No serial matches &quot;{draft.trim()}&quot; - press Enter to add it.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {shown.map((serial) => (
+              <span
+                key={serial}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] font-semibold text-slate-700 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+              >
+                {serial}
+                <button
+                  type="button"
+                  aria-label={`Remove serial ${serial}`}
+                  onClick={() => remove(serial)}
+                  className="text-slate-400 transition hover:text-rose-500"
+                >
+                  <FiX size={10} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p className="text-[10px] text-slate-400">
+        One unit per serial: In-Stock is set to the number of serials whenever the list
+        changes, and must match it to save.
+      </p>
+
+      {notice && <p className="text-[10px] font-medium text-amber-600">{notice}</p>}
+    </div>
   );
 }
