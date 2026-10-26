@@ -48,17 +48,14 @@ import {
 } from "@/features/salesOrders/api/salesOrders.api";
 import {
   createProformaInvoiceApi,
+  downloadProformaInvoicePdfApi,
   getCompanyProfileApi,
   getProformaInvoicesApi,
   proformaInvoiceStatusLabel,
   type CompanyProfile,
   type ProformaInvoiceModel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
-import {
-  PrintableProformaInvoice,
-  ProformaInvoicePreviewCard,
-  usePrintProformaInvoice,
-} from "@/features/proformaInvoices/components/ProformaInvoiceDocument";
+import { ProformaInvoicePreviewCard } from "@/features/proformaInvoices/components/ProformaInvoiceDocument";
 import SendProformaInvoiceModal from "@/features/proformaInvoices/components/SendProformaInvoiceModal";
 import {
   FiChevronLeft,
@@ -257,7 +254,6 @@ export default function SalesOrderDetailPage() {
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(
     null,
   );
-  const printInvoice = usePrintProformaInvoice();
   const [processing, setProcessing] = useState(false);
 
   /* Editable copies of the addresses, held apart from the saved order so a
@@ -488,10 +484,14 @@ export default function SalesOrderDetailPage() {
      screen. The invoice belongs to this order; sending somebody away to
      a page about one document, to come back to the order they were
      working on, is a round trip for nothing. */
-  const downloadInvoice = () => {
+  const downloadInvoice = async () => {
     if (!invoice) return;
 
-    printInvoice(invoice.pi_number || `PI-${invoice.id}`);
+    try {
+      await downloadProformaInvoicePdfApi(invoice.id, invoice.pi_number);
+    } catch {
+      addToast("The proforma invoice could not be downloaded.", "error");
+    }
   };
 
   /* Hands the order to the desks: accounts see the advance and the
@@ -1460,10 +1460,6 @@ export default function SalesOrderDetailPage() {
             </div>
 
             {attachmentPreview.preview}
-
-      {/* Hidden on screen, and the only thing on the page when printed -
-          which is what makes Download PI work without leaving the order. */}
-      <PrintableProformaInvoice invoice={invoice} profile={companyProfile} />
 
       {showInvoicePreview && invoice && (
         <div

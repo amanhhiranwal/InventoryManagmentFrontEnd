@@ -8,15 +8,13 @@
  * the right, the goods with their tax lines, the HSN-wise summary, and the
  * bank details beside the terms and the declaration. One A4 page.
  *
- * One component serves the Preview and the PDF: Download PDF prints a copy of
- * exactly this, and the Preview shows it on an A4-width sheet with the PDF's
- * margins. The emailed copy is drawn by proforma_invoice_pdf_service.py to
- * the same layout. Its layout is fixed rather than responsive, because the
- * printed page is narrower than the screen breakpoints.
+ * This is the on-screen Preview, on an A4-width sheet with the PDF's
+ * margins. The PDF itself - downloaded and emailed alike - is drawn on the
+ * server by proforma_invoice_pdf_service.py to the same layout. Its layout
+ * is fixed rather than responsive, so the Preview reads as the page does.
  */
 
-import { ReactNode, useCallback, useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { ReactNode, useEffect } from "react";
 
 import type {
   CompanyProfile,
@@ -629,81 +627,5 @@ function useLightModeWhileMounted() {
     root.classList.remove("dark");
 
     return () => root.classList.add("dark");
-  }, []);
-}
-
-/* =========================================================
-   PRINTING
-========================================================= */
-
-const PRINT_CSS = `
-.pi-print-root { display: none; }
-@media print {
-  @page { size: A4; margin: 8mm; }
-  /* A white page, not the app's grey, wherever the invoice ends. */
-  html, body { background: #fff !important; }
-  body > *:not(.pi-print-root) { display: none !important; }
-  .pi-print-root { display: block !important; }
-  .pi-print-root .pi-no-print { display: none !important; }
-  .pi-print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  /* The form is one page; if a long order does run on, a section moves
-     to the next page whole rather than splitting. */
-  .pi-print-root .pi-keep { break-inside: avoid; page-break-inside: avoid; }
-  .pi-print-root tr { break-inside: avoid; page-break-inside: avoid; }
-}
-`;
-
-/**
- * Renders a copy of the invoice straight under <body>, hidden on screen and
- * the only thing on the page when printed. "Save as PDF" in the print dialog
- * is what produces the downloaded file.
- */
-export function PrintableProformaInvoice({
-  invoice,
-  profile,
-}: {
-  invoice: ProformaInvoiceModel | null;
-  profile: CompanyProfile | null;
-}) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
-
-  if (!mounted || !invoice) return null;
-
-  return createPortal(
-    <div className="pi-print-root">
-      <style>{PRINT_CSS}</style>
-      <ProformaInvoiceDocument invoice={invoice} profile={profile} />
-    </div>,
-    document.body,
-  );
-}
-
-/**
- * Opens the print dialog for the invoice rendered by PrintableProformaInvoice.
- *
- * Dark mode is lifted for the duration so the PDF is always the light
- * document, and the tab title becomes the file name the browser suggests.
- */
-export function usePrintProformaInvoice() {
-  return useCallback((reference: string) => {
-    const root = document.documentElement;
-    const wasDark = root.classList.contains("dark");
-    const previousTitle = document.title;
-
-    if (wasDark) root.classList.remove("dark");
-    document.title = `Proforma_Invoice_${reference}`;
-
-    const restore = () => {
-      if (wasDark) root.classList.add("dark");
-      document.title = previousTitle;
-      window.removeEventListener("afterprint", restore);
-    };
-
-    window.addEventListener("afterprint", restore);
-
-    /* One frame so the light styles apply before the print snapshot. */
-    requestAnimationFrame(() => window.print());
   }, []);
 }
