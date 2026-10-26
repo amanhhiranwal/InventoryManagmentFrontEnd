@@ -11,7 +11,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CgSpinner } from "react-icons/cg";
-import { FiAlertTriangle, FiCheck, FiClock, FiX } from "react-icons/fi";
+import {
+  FiAlertTriangle,
+  FiCheck,
+  FiCheckCircle,
+  FiClock,
+  FiMinusCircle,
+  FiX,
+  FiXCircle,
+} from "react-icons/fi";
 
 import { useUIStore } from "@/lib/store/ui.store";
 import {
@@ -177,10 +185,23 @@ export default function ApprovalPanel({
         ? "Not Approved"
         : "Approval Withdrawn";
 
+  /* The icon says how it ended, not only that there was something to do:
+     a warning belongs to a request still waiting, and on one that has
+     been approved it read as a problem. */
+  const icon = pending ? (
+    <FiAlertTriangle size={14} className="shrink-0 text-amber-500" />
+  ) : approval.status === "APPROVED" ? (
+    <FiCheckCircle size={15} className="shrink-0 text-emerald-600" />
+  ) : approval.status === "REJECTED" ? (
+    <FiXCircle size={15} className="shrink-0 text-rose-500" />
+  ) : (
+    <FiMinusCircle size={15} className="shrink-0 text-slate-400" />
+  );
+
   return (
     <div className={`rounded-xl border p-4 ${tone}`}>
       <div className="flex items-center gap-2">
-        <FiAlertTriangle size={14} className="shrink-0 text-amber-500" />
+        {icon}
         <p className="text-[13px] font-semibold text-slate-800 dark:text-white">
           {heading}
         </p>
