@@ -1,4 +1,5 @@
 import api from "@/lib/axios";
+import { downloadFile } from "@/lib/downloadFile";
 
 /* =========================================================
    CANONICAL STATUSES
@@ -405,3 +406,7 @@ export const logProformaInvoiceActivityApi = async (
 export const deleteProformaInvoiceApi = async (id: number | string) => {
   await api.delete(`${BASE}/${id}`);
 };
+
+/** The proforma invoice as the PDF the customer is sent - for the desks. */
+export const downloadProformaInvoicePdfApi = (id: number | string, piNumber?: string | null) =>
+  downloadFile(`${BASE}/${id}/pdf`, `Proforma_Invoice_${piNumber || `PI-${id}`}.pdf`);

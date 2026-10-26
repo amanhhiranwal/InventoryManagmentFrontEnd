@@ -54,11 +54,10 @@ import {
   PROFORMA_INVOICE_STATUS_TONE,
   PROFORMA_INVOICE_TRANSITIONS,
   deleteProformaInvoiceApi,
-  getCompanyProfileApi,
+  downloadProformaInvoicePdfApi,
   getProformaInvoicesApi,
   proformaInvoiceStatusLabel,
   updateProformaInvoiceStatusApi,
-  type CompanyProfile,
   type ProformaInvoiceModel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
 import {
@@ -66,10 +65,6 @@ import {
   formatDate,
   money,
 } from "@/features/proformaInvoices/components/ProformaParts";
-import {
-  PrintableProformaInvoice,
-  usePrintProformaInvoice,
-} from "@/features/proformaInvoices/components/ProformaInvoiceDocument";
 
 const PAGE_SIZE = 10;
 
@@ -162,7 +157,6 @@ const isOverdue = (
 export default function ProformaInvoiceListPage() {
   const router = useRouter();
   const { addToast } = useUIStore();
-  const printInvoice = usePrintProformaInvoice();
 
   const [invoices, setInvoices] = useState<ProformaInvoiceModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -192,9 +186,6 @@ export default function ProformaInvoiceListPage() {
   } | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  const [profile, setProfile] = useState<CompanyProfile | null>(null);
-  const [printTarget, setPrintTarget] = useState<ProformaInvoiceModel | null>(null);
-
   const reportError = useCallback(
     (message: string) => addToast(message, "error"),
     [addToast],
@@ -223,17 +214,7 @@ export default function ProformaInvoiceListPage() {
 
   useEffect(() => {
     load();
-    getCompanyProfileApi()
-      .then(setProfile)
-      .catch(() => setProfile(null));
   }, [load]);
-
-  /* Print once the portal copy of the chosen invoice has rendered. */
-  useEffect(() => {
-    if (!printTarget) return;
-
-    printInvoice(printTarget.pi_number || `PI-${printTarget.id}`);
-  }, [printTarget, printInvoice]);
 
   /* ---------------------------------------------------------------
      KPIs
@@ -753,7 +734,9 @@ export default function ProformaInvoiceListPage() {
                                 label="Download PDF"
                                 onClick={() => {
                                   setOpenMenu(null);
-                                  setPrintTarget({ ...invoice });
+                                  downloadProformaInvoicePdfApi(invoice.id, invoice.pi_number).catch(
+                                    () => addToast("The proforma invoice could not be downloaded.", "error"),
+                                  );
                                 }}
                               />
                               {invoice.status === "GENERATED" && (
@@ -832,7 +815,6 @@ export default function ProformaInvoiceListPage() {
         />
       )}
 
-      <PrintableProformaInvoice invoice={printTarget} profile={profile} />
     </div>
   );
 }

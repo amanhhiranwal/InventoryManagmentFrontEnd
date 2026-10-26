@@ -52,6 +52,7 @@ import {
   type ProformaAddress,
   type ProformaInvoiceActivity,
   type ProformaInvoiceModel,
+  downloadProformaInvoicePdfApi,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
 import {
   SALES_ORDER_PIPELINE,
@@ -79,9 +80,7 @@ import {
   money,
 } from "@/features/proformaInvoices/components/ProformaParts";
 import {
-  PrintableProformaInvoice,
   ProformaInvoicePreviewCard,
-  usePrintProformaInvoice,
 } from "@/features/proformaInvoices/components/ProformaInvoiceDocument";
 import SendProformaInvoiceModal from "@/features/proformaInvoices/components/SendProformaInvoiceModal";
 import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIcons";
@@ -107,7 +106,6 @@ function ProformaInvoiceDetail() {
   const search = useSearchParams();
   const router = useRouter();
   const { addToast } = useUIStore();
-  const printInvoice = usePrintProformaInvoice();
 
   const invoiceId = params?.invoiceId;
 
@@ -250,10 +248,14 @@ function ProformaInvoiceDetail() {
         )
       : Promise.resolve(false);
 
-  const download = () => {
+  const download = async () => {
     if (!invoice) return;
 
-    printInvoice(invoice.pi_number || `PI-${invoice.id}`);
+    try {
+      await downloadProformaInvoicePdfApi(invoice.id, invoice.pi_number);
+    } catch {
+      addToast("The proforma invoice could not be downloaded.", "error");
+    }
   };
 
   const openPreview = () => {
@@ -338,7 +340,6 @@ function ProformaInvoiceDetail() {
           />
         )}
 
-        <PrintableProformaInvoice invoice={invoice} profile={profile} />
     </>
   );
 
