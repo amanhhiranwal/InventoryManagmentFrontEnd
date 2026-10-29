@@ -569,7 +569,7 @@ export default function QuotationDetailPage() {
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* The way back to the form, and the only place a discount can
                 be sent up the chain from. Without it a draft could be read
                 here but never finished or approved. */}

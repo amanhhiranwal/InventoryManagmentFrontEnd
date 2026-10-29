@@ -683,7 +683,7 @@ export default function SalesOrderDetailPage() {
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Editing reopens the New Sales Order form, which is the only
                 place the order's fields can actually be changed. */}
             <button
