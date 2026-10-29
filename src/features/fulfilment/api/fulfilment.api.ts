@@ -1,11 +1,13 @@
 import api from "@/lib/axios";
+import { salesOrderStatusLabel } from "@/features/salesOrders/api/salesOrders.api";
 
 /* =========================================================
    FULFILMENT
 
-   Where an order goes once the discount chain has cleared it. Accounts
-   confirm the money arrived, and inventory confirm the stock is there and
-   send it out.
+   Where an order goes once the discount chain has cleared it. The
+   business coordinator checks the advance and processes the order,
+   accounts confirm the money arrived, production name the units and get
+   the order ready, and logistics send it out.
 
    A desk only ever sees the orders waiting on it, and only the desk
    holding an order can move it on - the backend enforces both. Where an
@@ -13,7 +15,38 @@ import api from "@/lib/axios";
    separate tracking board here.
 ========================================================= */
 
-export type DeskRole = "Accounts" | "Inventory";
+export type DeskRole =
+  "Business Coordinator" | "Accounts" | "Production Tech Head" | "Logistics";
+
+/** One line of an order, as production name a serial per unit against it. */
+export interface DeskLine {
+  index: number;
+  product: string;
+  sku?: string | null;
+  quantity: number;
+}
+
+/** One of the three documents logistics upload before dispatch. */
+export interface DispatchDocument {
+  kind: "invoice_copy" | "insurance_copy" | "docket_slip";
+  label: string;
+  uploaded: boolean;
+  key?: string;
+  name?: string;
+  size?: number;
+  type?: string;
+}
+
+/** What the shelf says about a serial production typed. */
+export interface SerialCheck {
+  serial: string;
+  found: boolean;
+  in_stock: boolean;
+  product?: string | null;
+  model_number?: string | null;
+  matches_line?: boolean;
+  message?: string | null;
+}
 
 /** One number across the top of a desk. The backend decides which ones
     matter, so a new KPI does not need a frontend release. */
@@ -77,6 +110,9 @@ export interface DeskOrder {
   waiting_days: number;
 
   items: Record<string, unknown>[];
+  payment_terms?: string | null;
+  lines?: DeskLine[];
+  documents?: DispatchDocument[];
 
   proforma_invoice?: {
     id: number;
@@ -87,7 +123,7 @@ export interface DeskOrder {
     balance_due: number;
   } | null;
 
-  /** Procurement desk only. */
+  /** Production and logistics desks only. */
   stock?: StockLine[];
   stock_short?: boolean;
   /** What this order has already moved. Empty until it is dispatched. */
@@ -112,20 +148,52 @@ export const getAccountsDeskApi = async (): Promise<DeskQueue> => {
   return data.data;
 };
 
-export const getProcurementDeskApi = async (): Promise<DeskQueue> => {
-  const { data } = await api.get("/api/v1/fulfilment/procurement");
+export const getProductionDeskApi = async (): Promise<DeskQueue> => {
+  const { data } = await api.get("/api/v1/fulfilment/production");
   return data.data;
 };
 
-/** The desk's call: send it on, or hold it with a reason. */
+export const getLogisticsDeskApi = async (): Promise<DeskQueue> => {
+  const { data } = await api.get("/api/v1/fulfilment/logistics");
+  return data.data;
+};
+
+/** The desk's call: send it on, or hold it with a reason. The coordinator
+    sends the advance with it, production the serials. */
 export const decideOrderApi = async (
   orderId: number,
   approve: boolean,
   remarks?: string,
+  extra?: Record<string, unknown>,
 ): Promise<void> => {
   await api.put(`/api/v1/fulfilment/orders/${orderId}/decide`, {
     approve,
     remarks,
+    ...(extra || {}),
+  });
+};
+
+export const checkSerialApi = async (
+  serial: string,
+  orderId?: number,
+  line?: number,
+): Promise<SerialCheck> => {
+  const { data } = await api.get("/api/v1/fulfilment/serials/check", {
+    params: { serial, order_id: orderId, line },
+    skipErrorToast: true,
+  });
+  return data.data;
+};
+
+/** Put an uploaded file on the order as one of the dispatch documents. */
+export const attachDispatchDocumentApi = async (
+  orderId: number,
+  kind: DispatchDocument["kind"],
+  file: { key?: string; name: string; size?: number; type?: string },
+): Promise<void> => {
+  await api.put(`/api/v1/fulfilment/orders/${orderId}/documents`, {
+    kind,
+    ...file,
   });
 };
 
@@ -143,10 +211,8 @@ export function formatKpi(kpi: Kpi): string {
   return Number(kpi.value).toLocaleString("en-IN");
 }
 
-/** A status as a person would say it: PAYMENT_VERIFIED -> Payment Verified. */
+/** A status as the rest of the app says it - PROCUREMENT reads "In
+    Production", as on its status pill. */
 export function stageLabel(status: string): string {
-  return String(status || "")
-    .split("_")
-    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
-    .join(" ");
+  return salesOrderStatusLabel(status);
 }

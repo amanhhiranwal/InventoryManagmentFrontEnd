@@ -13,6 +13,14 @@ import { formatRupees } from "@/lib/money";
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
+import {
+  addressErrors,
+  capMobile,
+  capPinFor,
+  emailError,
+  mobileError,
+  summariseProblems,
+} from "@/lib/fieldChecks";
 
 import {
   LIST_TABLE,
@@ -1401,13 +1409,31 @@ export default function QuotationPage() {
       return false;
     }
 
-    if (email.trim() && !EMAIL_PATTERN.test(email.trim())) {
-      addToast("Enter a valid email address.", "warning");
+    if (!items.length) {
+      addToast("Add at least one product before saving the proposal.", "warning");
       return false;
     }
 
-    if (!items.length) {
-      addToast("Add at least one product before saving the proposal.", "warning");
+    /* The contact's numbers for shape, and both addresses in full, as the
+       form's asterisks say - a proposal goes to the customer, and it
+       carries these addresses onto the sales order it may become. */
+    const problems = [
+      mobileError(mobileNumber, { field: "Mobile number" }),
+      emailError(email, { field: "Email" }),
+      ...addressErrors(
+        { ...billing, pin: billing.zipCode },
+        { label: "Billing address", required: true },
+      ),
+      ...(sameAsBilling
+        ? []
+        : addressErrors(
+            { ...shipping, pin: shipping.zipCode },
+            { label: "Shipping address", required: true },
+          )),
+    ].filter((problem): problem is string => Boolean(problem));
+
+    if (problems.length) {
+      addToast(summariseProblems(problems), "warning");
       return false;
     }
 
@@ -1842,7 +1868,8 @@ export default function QuotationPage() {
 
                     <input
                       value={mobileNumber}
-                      onChange={(event) => setMobileNumber(event.target.value)}
+                      inputMode="numeric"
+                      onChange={(event) => setMobileNumber(capMobile(event.target.value))}
                       placeholder="xxxxxxxxxxx"
                       className={INPUT}
                     />
@@ -3077,7 +3104,9 @@ function AddressFields({
           <input
             value={value.zipCode}
             disabled={disabled}
-            onChange={(event) => set({ zipCode: event.target.value })}
+            onChange={(event) =>
+              set({ zipCode: capPinFor(value.country, event.target.value) })
+            }
             placeholder="Pin Code"
             className={INPUT}
           />

@@ -7,7 +7,8 @@
  * same one: a queue of orders waiting on you, the numbers that say how
  * badly, and one decision per order - send it on, or hold it with a
  * reason. What differs is what each desk needs in front of it to decide,
- * which is what `detail` supplies.
+ * which is what `detail` supplies - and, through `setAction`, what the
+ * button says, what goes with it, and why it cannot be pressed yet.
  *
  * Laid out like the rest of the product's list screens - KPI row, search,
  * one table - rather than as cards, so a desk with two hundred orders
@@ -28,9 +29,7 @@ import {
   ListPageHeader,
   ListToolbar,
   StatGrid,
-  TableCard,
 } from "@/components/crm/ListPageShell";
-import QueueTabs from "@/components/crm/QueueTabs";
 import ListActionsMenu, {
   ExportColumn,
 } from "@/components/crm/ListActions";
@@ -43,6 +42,24 @@ import {
   money,
   stageLabel,
 } from "@/features/fulfilment/api/fulfilment.api";
+
+/** What a desk's panel can say about the approve button for one order. */
+export interface DeskAction {
+  /** What the button says. */
+  label?: string;
+  /** Why it cannot be pressed yet; the button is disabled and says so. */
+  blocked?: string | null;
+  /** Sent with the decision: the advance, the serials. */
+  extra?: Record<string, unknown>;
+  /** What approving does, under the buttons. */
+  note?: string;
+}
+
+export interface DeskDetailContext {
+  setAction: (action: DeskAction) => void;
+  /** Reload the queue after the panel changed the order (an upload). */
+  reload: () => Promise<void>;
+}
 
 /** Orders sitting this long at one desk are worth a second look. */
 const STALE_DAYS = 7;
@@ -72,14 +89,16 @@ export default function DeskBoard({
   load,
   detail,
   approveLabel = "Approve",
+  rejectLabel = "Reject",
   emptyNote,
 }: {
   title: string;
   description: string;
   load: () => Promise<DeskQueue>;
   /** What this desk needs in front of it before deciding. */
-  detail: (order: DeskOrder) => ReactNode;
-  approveLabel?: string;
+  detail: (order: DeskOrder, context: DeskDetailContext) => ReactNode;
+  approveLabel?: string | ((order: DeskOrder) => string);
+  rejectLabel?: string;
   emptyNote: string;
 }) {
   const { addToast } = useUIStore();
@@ -93,6 +112,7 @@ export default function DeskBoard({
   const [open, setOpen] = useState<number | null>(null);
   const [remarks, setRemarks] = useState("");
   const [deciding, setDeciding] = useState(false);
+  const [action, setAction] = useState<DeskAction>({});
 
   const refresh = useCallback(
     async (quiet = false) => {
@@ -151,7 +171,7 @@ export default function DeskBoard({
     setDeciding(true);
 
     try {
-      await decideOrderApi(order.id, approve, note);
+      await decideOrderApi(order.id, approve, note, approve ? action.extra : undefined);
 
       addToast(
         approve
@@ -240,33 +260,45 @@ export default function DeskBoard({
         placeholder={`Search ${title.toLowerCase()}`}
       />
 
-      <TableCard>
-        {/* Which part of the queue, on the table rather than beside the
-            search box: these are not actions. */}
-        <QueueTabs
-          tabs={[
-            { value: null, label: "All Orders", count: all.length },
-            ...(queue?.stages || []).map((option) => ({
-              value: option.status,
-              label: option.label,
-              count: option.count,
-            })),
-          ]}
-          active={stage}
-          onChange={setStage}
-        />
+      {/* Which part of the queue, as folder tabs on the table's top edge -
+          the Sales Order list's own tabs, so a desk reads like it. */}
+      <div>
+      <div className="flex items-end gap-1 overflow-x-auto px-5">
+        {[
+          { value: null as string | null, label: "All Orders", count: all.length },
+          ...(queue?.stages || []).map((option) => ({
+            value: option.status as string | null,
+            label: option.label,
+            count: option.count,
+          })),
+        ].map((tab) => (
+          <button
+            key={tab.label}
+            type="button"
+            onClick={() => setStage(tab.value)}
+            className={`whitespace-nowrap rounded-t-lg px-3.5 py-1.5 text-[11px] font-medium transition-colors ${
+              stage === tab.value
+                ? "bg-[#233353] text-white dark:bg-[#2b4470]"
+                : "bg-white text-[#474747] hover:bg-slate-50 dark:bg-[#071929] dark:text-slate-300 dark:hover:bg-[#0b2034]"
+            }`}
+          >
+            {tab.label} ({tab.count})
+          </button>
+        ))}
+      </div>
 
+      <div className="overflow-hidden rounded-xl bg-white dark:border dark:border-[#17304a] dark:bg-[#071929]">
         <div className="overflow-x-auto">
           <table className={`w-full min-w-[920px] text-left ${LIST_TABLE}`}>
             <thead>
               <tr>
-                <th className="px-4 py-3">Order</th>
-                <th className="px-4 py-3">Customer</th>
-                <th className="px-4 py-3 text-right">Order Value</th>
-                <th className="px-4 py-3 text-right">Advance</th>
-                <th className="px-4 py-3 text-right">Outstanding</th>
-                <th className="px-4 py-3">Waiting On</th>
-                <th className="px-4 py-3 text-right">Ageing</th>
+                <th className="px-4 py-3 text-[11px] font-medium text-slate-500">Order ID</th>
+                <th className="px-4 py-3 text-[11px] font-medium text-slate-500">Customer</th>
+                <th className="px-4 py-3 text-right text-[11px] font-medium text-slate-500">Order Value</th>
+                <th className="px-4 py-3 text-right text-[11px] font-medium text-slate-500">Advance</th>
+                <th className="px-4 py-3 text-right text-[11px] font-medium text-slate-500">Outstanding</th>
+                <th className="px-4 py-3 text-[11px] font-medium text-slate-500">Status</th>
+                <th className="px-4 py-3 text-right text-[11px] font-medium text-slate-500">Ageing</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -278,6 +310,7 @@ export default function DeskBoard({
                   onClick={() => {
                     setOpen(order.id);
                     setRemarks("");
+                    setAction({});
                   }}
                   className="cursor-pointer border-b border-slate-100 transition last:border-0 hover:bg-slate-50/70 dark:border-[#0f2942] dark:hover:bg-[#0b2034]"
                 >
@@ -385,13 +418,20 @@ export default function DeskBoard({
             {all.length === 1 ? "" : "s"} at this desk
           </div>
         )}
-      </TableCard>
+      </div>
+      </div>
 
       {selected && (
         <Drawer
           order={selected}
           detail={detail}
-          approveLabel={approveLabel}
+          context={{ setAction, reload: () => refresh(true) }}
+          action={action}
+          approveLabel={
+            action.label ||
+            (typeof approveLabel === "function" ? approveLabel(selected) : approveLabel)
+          }
+          rejectLabel={rejectLabel}
           remarks={remarks}
           onRemarks={setRemarks}
           deciding={deciding}
@@ -407,7 +447,10 @@ export default function DeskBoard({
 function Drawer({
   order,
   detail,
+  context,
+  action,
   approveLabel,
+  rejectLabel,
   remarks,
   onRemarks,
   deciding,
@@ -415,8 +458,11 @@ function Drawer({
   onDecide,
 }: {
   order: DeskOrder;
-  detail: (order: DeskOrder) => ReactNode;
+  detail: (order: DeskOrder, context: DeskDetailContext) => ReactNode;
+  context: DeskDetailContext;
+  action: DeskAction;
   approveLabel: string;
+  rejectLabel: string;
   remarks: string;
   onRemarks: (value: string) => void;
   deciding: boolean;
@@ -433,19 +479,20 @@ function Drawer({
       />
 
       <aside className="relative flex h-full w-full max-w-[720px] flex-col bg-white shadow-2xl dark:bg-[#051422]">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5 dark:border-[#17304a]">
+        {/* Headed the way the sales order page is: "#SO-… - Company"
+            with its status beside it. */}
+        <header className="flex items-start justify-between gap-4 border-b border-[#f3f3f3] px-6 py-5 dark:border-[#17304a]">
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-[16px] font-semibold text-slate-900 dark:text-white">
-                {order.customer_name}
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-[20px] font-medium tracking-tight text-[#141414] dark:text-white">
+                #{order.order_number}
+                {order.company_name ? ` - ${order.company_name}` : ""}
               </h2>
               <StatusPill status={order.status} />
             </div>
 
-            <p className="mt-1 text-[11px] text-slate-400">
-              {order.order_number}
-              {order.company_name ? ` · ${order.company_name}` : ""} ·{" "}
-              {order.waiting_days}d at this desk
+            <p className="mt-1 text-[11px] text-[#777777] dark:text-slate-400">
+              {order.customer_name} · {order.waiting_days}d at this desk
             </p>
           </div>
 
@@ -459,33 +506,41 @@ function Drawer({
           </button>
         </header>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
-          <p className="rounded-lg bg-slate-50 px-4 py-3 text-[12px] font-medium text-slate-700 dark:bg-[#0b2034] dark:text-slate-200">
+        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
+          <p className="rounded-lg bg-slate-50 px-4 py-3 text-[12px] text-[#474747] dark:bg-[#0b2034] dark:text-slate-200">
             {order.asks}
           </p>
 
-          {detail(order)}
+          {detail(order, context)}
         </div>
 
-        <footer className="space-y-3 border-t border-slate-200 px-6 py-4 dark:border-[#17304a]">
+        <footer className="space-y-3 border-t border-[#f3f3f3] px-6 py-4 dark:border-[#17304a]">
+          <label
+            htmlFor="desk-remarks"
+            className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400"
+          >
+            Remarks
+          </label>
           <input
+            id="desk-remarks"
             value={remarks}
             onChange={(event) => onRemarks(event.target.value)}
-            placeholder="Remarks — required to reject"
-            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3 text-[13px] text-slate-800 outline-none transition focus:border-[#233353] focus:bg-white dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+            placeholder={`Needed to ${rejectLabel.toLowerCase()} the order`}
+            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
           />
 
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              disabled={deciding}
+              disabled={deciding || !!action.blocked}
+              title={action.blocked || undefined}
               onClick={() => onDecide(order, true)}
-              className="flex h-10 items-center gap-2 rounded-xl bg-[#273756] px-5 text-xs font-bold text-white transition hover:bg-[#18243a] disabled:opacity-50"
+              className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {deciding ? (
-                <CgSpinner className="animate-spin" size={14} />
+                <CgSpinner className="animate-spin" size={13} />
               ) : (
-                <LuCheck size={14} />
+                <LuCheck size={13} />
               )}
               {approveLabel}
             </button>
@@ -494,15 +549,23 @@ function Drawer({
               type="button"
               disabled={deciding}
               onClick={() => onDecide(order, false)}
-              className="flex h-10 items-center gap-2 rounded-xl border border-rose-200 px-5 text-xs font-bold text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900/40 dark:hover:bg-rose-950/20"
+              className="flex h-[39px] items-center gap-2 rounded-lg border border-rose-200 bg-white px-4 text-[13px] font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900/40 dark:bg-[#071929] dark:hover:bg-rose-950/20"
             >
-              <LuX size={14} />
-              Reject
+              <LuX size={13} />
+              {rejectLabel}
             </button>
 
-            <span className="text-[11px] text-slate-400">
-              Approving moves it to {stageLabel(order.approves_to || "")};
-              rejecting puts it on hold with your remarks.
+            <span className="text-[11px] text-[#777777] dark:text-slate-400">
+              {action.blocked ? (
+                <span className="text-amber-600 dark:text-amber-400">
+                  {action.blocked}
+                </span>
+              ) : (
+                action.note ||
+                `Approving moves it to ${stageLabel(order.approves_to || "")}; ${
+                  rejectLabel === "Reject" ? "rejecting" : "holding"
+                } puts it on hold with your remarks.`
+              )}
             </span>
           </div>
         </footer>

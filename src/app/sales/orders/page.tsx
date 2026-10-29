@@ -4,6 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
+import {
+  addressErrors,
+  capCode,
+  capMobile,
+  capPinFor,
+  emailError,
+  mobileError,
+  organisationErrors,
+  summariseProblems,
+} from "@/lib/fieldChecks";
 
 import {
   PRODUCT_CATALOG,
@@ -104,6 +114,7 @@ import { OrderSummaryIcon, ProductItemsIcon } from "@/components/icons/SectionIc
 import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
 import { SortTh, useTableSort } from "@/components/crm/sort";
 import { RowMenu } from "@/components/crm/RowMenu";
+import { hasPermission } from "@/features/auth/utils/permissions";
 
 /** The columns the sales order list can be ordered by. */
 type OrderSortKey =
@@ -444,6 +455,12 @@ export default function OrdersListPage() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  /* The business coordinator reads every approved order here, to check
+     and track it, but raises and moves none - those are sales' and the
+     desks'. A super admin holds every permission, so is never read-only. */
+  const readOnly =
+    hasPermission("coordination_desk.read") && !hasPermission("order.write");
 
   /* =======================================================
      ORDERS LIST STATE
@@ -1700,6 +1717,52 @@ export default function OrdersListPage() {
       return;
     }
 
+    /* What was typed is checked for shape on every save. What the form
+       marks as required is asked for when the order is sent for approval:
+       a draft is work in progress, and saving one half-filled is the point
+       of it. An unregistered customer has no GST or PAN to check. */
+    const unregistered = newOrder.registration === "Unregistered";
+    const problems = [
+      ...organisationErrors(
+        {
+          registration: newOrder.registration,
+          gst: unregistered ? "" : newOrder.gst,
+          pan: unregistered ? "" : newOrder.pan,
+        },
+        { required: !asDraft },
+      ),
+      mobileError(newOrder.phone, { field: "Phone" }),
+      emailError(newOrder.email, { field: "Email" }),
+      ...addressErrors(
+        {
+          street: newOrder.billingStreet,
+          country: newOrder.billingCountry,
+          state: newOrder.billingState,
+          city: newOrder.billingCity,
+          pin: newOrder.billingPin,
+        },
+        { label: "Billing address", required: !asDraft },
+      ),
+      ...(newOrder.sameAsBilling
+        ? []
+        : addressErrors(
+            {
+              street: newOrder.shippingStreet,
+              country: newOrder.shippingCountry,
+              state: newOrder.shippingState,
+              city: newOrder.shippingCity,
+              pin: newOrder.shippingPin,
+            },
+            { label: "Shipping address", required: !asDraft },
+          )),
+    ].filter((problem): problem is string => Boolean(problem));
+
+    if (problems.length) {
+      addToast(summariseProblems(problems), "warning");
+
+      return;
+    }
+
     try {
       setCreatingOrder(true);
 
@@ -2317,7 +2380,9 @@ export default function OrdersListPage() {
 
                     <input
                       value={newOrder.gst}
-                      onChange={(e) => updateNewOrder("gst", e.target.value)}
+                      onChange={(e) =>
+                        updateNewOrder("gst", capCode(e.target.value, 15))
+                      }
                       placeholder="GST number"
                       className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
@@ -2332,8 +2397,14 @@ export default function OrdersListPage() {
 
                     <input
                       value={newOrder.pan}
-                      onChange={(e) => updateNewOrder("pan", e.target.value)}
-                      placeholder="PAN number"
+                      onChange={(e) =>
+                        updateNewOrder("pan", capCode(e.target.value, 10))
+                      }
+                      placeholder={
+                        newOrder.registration === "Registered"
+                          ? "PAN number (required)"
+                          : "PAN number"
+                      }
                       className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
                     />
                   </div>
@@ -2410,8 +2481,9 @@ export default function OrdersListPage() {
 
                       <input
                         value={newOrder.phone}
+                        inputMode="numeric"
                         onChange={(e) =>
-                          updateNewOrder("phone", e.target.value)
+                          updateNewOrder("phone", capMobile(e.target.value))
                         }
                         placeholder="+91"
                         className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 px-2 text-[11px] outline-none focus:border-slate-400"
@@ -2541,7 +2613,10 @@ export default function OrdersListPage() {
                         <input
                           value={newOrder.billingPin}
                           onChange={(e) =>
-                            updateNewOrder("billingPin", e.target.value)
+                            updateNewOrder(
+                              "billingPin",
+                              capPinFor(newOrder.billingCountry, e.target.value),
+                            )
                           }
                           placeholder="Pin Code"
                           className="w-full h-10 rounded-md border border-slate-200 px-3 text-xs outline-none"
@@ -2670,7 +2745,10 @@ export default function OrdersListPage() {
                         <input
                           value={newOrder.shippingPin}
                           onChange={(e) =>
-                            updateNewOrder("shippingPin", e.target.value)
+                            updateNewOrder(
+                              "shippingPin",
+                              capPinFor(newOrder.shippingCountry, e.target.value),
+                            )
                           }
                           placeholder="Pin Code"
                           className="w-full h-10 rounded-md border border-slate-200 px-3 text-xs outline-none"
@@ -3987,9 +4065,11 @@ export default function OrdersListPage() {
           activeFilterCount={activeFilterCount}
           onToggleFilters={() => setShowFilters((value) => !value)}
           trailing={
-            <PrimaryAction onClick={openCreateOrder} icon={<FiPlus size={15} />}>
-              Add New Order
-            </PrimaryAction>
+            readOnly ? undefined : (
+              <PrimaryAction onClick={openCreateOrder} icon={<FiPlus size={15} />}>
+                Add New Order
+              </PrimaryAction>
+            )
           }
         />
 
@@ -4361,11 +4441,11 @@ export default function OrdersListPage() {
                                 View Order
                               </Link>
 
-                              {quickStatuses(order.status).length > 0 && (
+                              {!readOnly && quickStatuses(order.status).length > 0 && (
                                 <div className="my-1 border-t border-slate-100 dark:border-[#17304a]" />
                               )}
 
-                              {quickStatuses(order.status).map(
+                              {!readOnly && quickStatuses(order.status).map(
                                 (next) => (
                                   <button
                                     key={next}
