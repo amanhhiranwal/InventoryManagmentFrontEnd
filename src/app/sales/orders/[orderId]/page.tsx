@@ -20,6 +20,8 @@ import {
   requestApprovalApi,
 } from "@/features/approvals/api/approvals.api";
 import ApprovalPanel from "@/features/approvals/components/ApprovalPanel";
+import OrderAdvancePanel from "@/features/fulfilment/components/OrderAdvancePanel";
+import { hasPermission } from "@/features/auth/utils/permissions";
 import {
   ATTACHMENT_ACCEPT,
   MAX_ATTACHMENT_BYTES,
@@ -165,8 +167,10 @@ function lineTotals(item: Record<string, any>) {
 ========================================================= */
 
 /* What happens to an order after it is approved, in the order it happens.
-   Payment is verified by accounts, inventory procures or picks the stock,
-   it goes out, arrives, is installed, and the deal is won. */
+   The business coordinator accepts the advance and processes it, accounts
+   verify the payment, production name the units and get it ready,
+   logistics send it out and see it delivered, it is installed, and the
+   deal is won. */
 const FULFILMENT_STEPS: {
   status: SalesOrderStatus;
   title: string;
@@ -175,17 +179,31 @@ const FULFILMENT_STEPS: {
   todo: string;
 }[] = [
   {
+    status: SALES_ORDER_STATUS.ADVANCE_ACCEPTED,
+    title: "Advance Accepted",
+    done: "Business coordinator accepted the advance",
+    doing: "Waiting to be processed",
+    todo: "Awaiting the business coordinator",
+  },
+  {
+    status: SALES_ORDER_STATUS.ORDER_PROCESSED,
+    title: "Order Processed",
+    done: "Sent to accounts",
+    doing: "With accounts",
+    todo: "Not processed",
+  },
+  {
     status: SALES_ORDER_STATUS.PAYMENT_VERIFIED,
     title: "Payment Verified",
     done: "Accounts have confirmed the advance",
-    doing: "With accounts",
+    doing: "With production",
     todo: "Awaiting accounts",
   },
   {
     status: SALES_ORDER_STATUS.PROCUREMENT,
-    title: "Procurement",
+    title: "In Production",
     done: "Stock secured",
-    doing: "With inventory",
+    doing: "With production",
     todo: "Not started",
   },
   {
@@ -201,6 +219,13 @@ const FULFILMENT_STEPS: {
     done: "Left the warehouse",
     doing: "In transit",
     todo: "Not dispatched",
+  },
+  {
+    status: SALES_ORDER_STATUS.OUT_FOR_DELIVERY,
+    title: "Out For Delivery",
+    done: "On the last leg",
+    doing: "Out for delivery",
+    todo: "Not out for delivery",
   },
   {
     status: SALES_ORDER_STATUS.DELIVERED,
@@ -452,6 +477,15 @@ export default function SalesOrderDetailPage() {
   /* Whether the chain has cleared. An invoice and the fulfilment desks
      both wait on it, so one answer serves both buttons. */
   const invoiceable = canRaiseInvoice(order?.status);
+  /* The advance check and Process Order are the business coordinator's,
+     and the super admin's, who holds every permission. The server refuses
+     anyone else. */
+  const isCoordinator = hasPermission("coordination_desk.read");
+  const processable =
+    isCoordinator && order?.status === SALES_ORDER_STATUS.ADVANCE_ACCEPTED;
+  /* The coordinator reads every approved order to check and track it,
+     but does not change one: no editing, no invoicing, no sending. */
+  const readOnly = isCoordinator && !hasPermission("order.write");
 
   /* The invoice is made from the order: the server fills its lines,
      addresses, terms and tax from the order it belongs to, so there is
@@ -494,9 +528,9 @@ export default function SalesOrderDetailPage() {
     }
   };
 
-  /* Hands the order to the desks: accounts see the advance and the
-     terms, procurement sees what has to be found. Until this is pressed
-     the order is approved but nobody downstream has been told. */
+  /* The business coordinator's button: once they have accepted the
+     advance, this moves the order to accounts. Nobody else can press it -
+     the server refuses them, and the button says why. */
   const processOrder = async () => {
     if (!order) return;
 
@@ -686,16 +720,18 @@ export default function SalesOrderDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             {/* Editing reopens the New Sales Order form, which is the only
                 place the order's fields can actually be changed. */}
-            <button
-              type="button"
-              onClick={() =>
-                router.push(`/sales/orders?edit=${order.id}`)
-              }
-              className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
-            >
-              <FiEdit2 size={13} />
-              Edit Order
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(`/sales/orders?edit=${order.id}`)
+                }
+                className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+              >
+                <FiEdit2 size={13} />
+                Edit Order
+              </button>
+            )}
 
             {/* For the raiser's AVP, the CEO, the Founder and Accounts -
                 the server says who, and refuses anyone else. */}
@@ -734,29 +770,32 @@ export default function SalesOrderDetailPage() {
               </button>
             )}
 
-            {/* Edit, Generate PI and Process Order are on the page from
-                the start, whatever state the order is in. A button that
-                appears only once it is usable leaves nobody any way to
-                find out it exists, so these are shown dark and say why.
-                The PI's own three join them once there is one. */}
+            {/* Edit and Generate PI are on the page from the start,
+                whatever state the order is in. A button that appears only
+                once it is usable leaves nobody any way to find out it
+                exists, so these are shown dark and say why. The PI's own
+                three join them once there is one. Process Order is the
+                business coordinator's alone, so only they see it. */}
             {!isDraft && (
               <>
-                <button
-                  type="button"
-                  onClick={generateInvoice}
-                  disabled={!invoiceable || !!invoice || generating}
-                  title={
-                    invoice
-                      ? `Already generated as ${invoice.pi_number || `#${invoice.id}`}`
-                      : invoiceable
-                        ? undefined
-                        : "The order has to be approved before it can be invoiced."
-                  }
-                  className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
-                >
-                  <FiFileText size={13} />
-                  {generating ? "Generating..." : "Generate PI"}
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={generateInvoice}
+                    disabled={!invoiceable || !!invoice || generating}
+                    title={
+                      invoice
+                        ? `Already generated as ${invoice.pi_number || `#${invoice.id}`}`
+                        : invoiceable
+                          ? undefined
+                          : "The order has to be approved before it can be invoiced."
+                    }
+                    className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                  >
+                    <FiFileText size={13} />
+                    {generating ? "Generating..." : "Generate PI"}
+                  </button>
+                )}
 
                 {invoice && (
                   <>
@@ -778,33 +817,37 @@ export default function SalesOrderDetailPage() {
                       Preview
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setShowSendInvoice(true)}
-                      className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
-                    >
-                      <FiSend size={13} />
-                      Send PI To Customer
-                    </button>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => setShowSendInvoice(true)}
+                        className="flex h-[39px] items-center gap-2 rounded-lg bg-white px-4 text-[13px] font-medium text-[#141414] transition hover:bg-slate-50 dark:border dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                      >
+                        <FiSend size={13} />
+                        Send PI To Customer
+                      </button>
+                    )}
                   </>
                 )}
 
-                <button
-                  type="button"
-                  onClick={processOrder}
-                  disabled={!invoiceable || !invoice || processing}
-                  title={
-                    !invoiceable
-                      ? "The order has to be approved first."
-                      : !invoice
-                        ? "Generate the proforma invoice first - it is what accounts collect against."
-                        : "Tell accounts the order is ready to be processed"
-                  }
-                  className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <FiPlayCircle size={13} />
-                  {processing ? "Sending..." : "Process Order"}
-                </button>
+                {isCoordinator && (
+                  <button
+                    type="button"
+                    onClick={processOrder}
+                    disabled={!processable || processing}
+                    title={
+                      order.status === SALES_ORDER_STATUS.CONFIRMED
+                        ? "Accept the advance below first."
+                        : order.status !== SALES_ORDER_STATUS.ADVANCE_ACCEPTED
+                          ? "This order is past processing."
+                          : "Send the order to accounts to verify the payment"
+                    }
+                    className="flex h-[39px] items-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white transition hover:bg-[#18243a] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FiPlayCircle size={13} />
+                    {processing ? "Sending..." : "Process Order"}
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -817,6 +860,23 @@ export default function SalesOrderDetailPage() {
         documentId={order.id}
         onChanged={loadOrder}
       />
+
+      {/* The coordinator's check, on an approved order: record the advance
+          against the terms, then Accept or Hold. Process Order above
+          comes on once it is accepted. */}
+      {isCoordinator && order.status === SALES_ORDER_STATUS.CONFIRMED && (
+        <OrderAdvancePanel
+          key={`${order.id}-${invoice?.id ?? "none"}`}
+          orderId={order.id}
+          grandTotal={Number(order.grand_total || 0)}
+          advancePercent={Number(order.advance_percent ?? 30)}
+          advanceExpected={Number(order.advance_expected || 0)}
+          advanceReceived={Number(order.advance_received || 0)}
+          paymentTerms={order.payment_terms}
+          invoice={invoice}
+          onDone={loadOrder}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1fr)_306px]">
         {/* =====================================================
@@ -877,7 +937,7 @@ export default function SalesOrderDetailPage() {
             icon={<FiInfo size={15} />}
             title="Billing & Shipping"
             action={
-              editingAddress ? (
+              readOnly ? undefined : editingAddress ? (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -1377,6 +1437,7 @@ export default function SalesOrderDetailPage() {
                a signed PO, a revised spec. They upload here now and land
                on the order straight away. */
             action={
+              readOnly ? undefined : (
               <label className="cursor-pointer whitespace-nowrap text-[10px] font-medium text-[#233353] hover:underline dark:text-sky-400">
                 {uploadingDocs ? "Uploading..." : "+ Upload Documents"}
                 <input
@@ -1392,6 +1453,7 @@ export default function SalesOrderDetailPage() {
                   }}
                 />
               </label>
+              )
             }
           >
             <div className="space-y-2.5">
@@ -1436,16 +1498,18 @@ export default function SalesOrderDetailPage() {
                         ? "Waiting on approval"
                         : "Not Generated"
                 }
-                /* Only once the order has been approved. An invoice asks a
-                   customer for money against a commitment the business has
-                   not made yet, so the link is not offered while the order
-                   is still climbing its chain - the server refuses it
-                   there too. */
-                href={
+                /* The invoice opens here, in its preview, rather than on a
+                   page of its own - it belongs to this order. With none
+                   yet, View generates it, but only once the order has been
+                   approved: an invoice asks a customer for money against a
+                   commitment the business has not made yet, and the server
+                   refuses it before then too. The coordinator does not
+                   raise invoices, so is offered only the preview. */
+                onView={
                   invoice
-                    ? `/sales/proforma-invoices/${invoice.id}`
-                    : canRaiseInvoice(order.status)
-                      ? `/sales/proforma-invoices/new?order=${order.id}`
+                    ? () => setShowInvoicePreview(true)
+                    : canRaiseInvoice(order.status) && !readOnly
+                      ? generateInvoice
                       : undefined
                 }
               />
@@ -1525,6 +1589,7 @@ export default function SalesOrderDetailPage() {
             icon={<FiClock size={15} />}
             title="Activity History"
             action={
+              readOnly ? undefined : (
               <button
                 type="button"
                 onClick={() => setShowActivityForm((value) => !value)}
@@ -1532,6 +1597,7 @@ export default function SalesOrderDetailPage() {
               >
                 {showActivityForm ? "Cancel" : "+ Log Activity"}
               </button>
+              )
             }
           >
             {showActivityForm && (
@@ -1932,10 +1998,13 @@ function LinkedDocument({
   title,
   subtitle,
   href,
+  onView,
 }: {
   title: string;
   subtitle: string;
   href?: string;
+  /** Opens the document on this page instead of navigating to one. */
+  onView?: () => void;
 }) {
   const router = useRouter();
 
@@ -1951,8 +2020,8 @@ function LinkedDocument({
 
       <button
         type="button"
-        disabled={!href}
-        onClick={() => href && router.push(href)}
+        disabled={!href && !onView}
+        onClick={() => (onView ? onView() : href && router.push(href))}
         className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-300"
       >
         View

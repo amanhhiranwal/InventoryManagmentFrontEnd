@@ -3,10 +3,12 @@
 /**
  * The accounts desk.
  *
- * Everything waiting on accounts: orders whose advance has to be confirmed
- * before fulfilment starts, and installed orders whose balance has to be
- * settled before they close. Approving an advance hands the order to
- * inventory; rejecting it puts the order on hold with the reason.
+ * Everything waiting on accounts: orders the business coordinator has
+ * processed, whose advance has to be confirmed before fulfilment starts,
+ * and installed orders whose balance has to be settled before they close.
+ * Approving an advance hands the order to production and keeps the
+ * balance on the order; rejecting it puts the order on hold with the
+ * reason.
  */
 
 import {
@@ -15,7 +17,15 @@ import {
   money,
 } from "@/features/fulfilment/api/fulfilment.api";
 import DeskBoard from "@/features/fulfilment/components/DeskBoard";
+import { FiCreditCard, FiFileText, FiPackage } from "react-icons/fi";
+
+import { Line, Panel } from "@/features/fulfilment/components/DeskPanels";
+import OrderedLines from "@/features/fulfilment/components/OrderedLines";
 import DownloadButton from "@/features/fulfilment/components/DownloadButton";
+import {
+  downloadProformaInvoicePdfApi,
+  proformaInvoiceStatusLabel,
+} from "@/features/proformaInvoices/api/proformaInvoices.api";
 import { downloadSalesOrderPdfApi } from "@/features/salesOrders/api/salesOrders.api";
 
 export default function AccountsDeskPage() {
@@ -25,7 +35,7 @@ export default function AccountsDeskPage() {
       description="Confirm the money before an order moves, and close it when the balance is settled."
       load={getAccountsDeskApi}
       approveLabel="Verify Payment"
-      emptyNote="Every approved order has had its payment confirmed. New ones arrive here the moment sales raise them."
+      emptyNote="Every processed order has had its payment confirmed. New ones arrive here once the business coordinator processes them."
       detail={(order) => <PaymentDetail order={order} />}
     />
   );
@@ -36,17 +46,27 @@ function PaymentDetail({ order }: { order: DeskOrder }) {
   const shortfall = Math.max(0, order.advance_expected - order.advance_received);
 
   return (
-    <div className="space-y-4">
-      {/* The whole order, as approved, for collecting the advance against. */}
-      <div className="flex justify-end">
+    <div className="space-y-6">
+      {/* The whole order, as approved, and the invoice it was paid
+          against, for collecting the advance. */}
+      <div className="flex flex-wrap gap-2">
         <DownloadButton
           label="Download Sales Order"
           download={() => downloadSalesOrderPdfApi(order.id, order.order_number)}
         />
+        {invoice && (
+          <DownloadButton
+            label={invoice.pi_number ? `Download PI (${invoice.pi_number})` : "Download PI"}
+            download={() => downloadProformaInvoicePdfApi(invoice.id, invoice.pi_number)}
+          />
+        )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Panel title="The money">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <Panel title="Payment" icon={<FiCreditCard size={14} />}>
+          {order.payment_terms && (
+            <Line label="Payment terms" value={order.payment_terms} />
+          )}
           <Line label="Order value" value={money(order.grand_total)} />
           <Line
             label={`Advance asked (${order.advance_percent}%)`}
@@ -57,89 +77,38 @@ function PaymentDetail({ order }: { order: DeskOrder }) {
             value={money(order.advance_received)}
             tone={order.advance_settled ? "good" : "warn"}
           />
+          {shortfall > 0 && (
+            <Line label="Short of the terms" value={money(shortfall)} tone="warn" />
+          )}
+          {/* Kept on the order once accounts verify, and shown on every
+              screen after this one. */}
           <Line
-            label={shortfall > 0 ? "Still to collect" : "Balance after advance"}
-            value={money(
-              shortfall > 0 ? shortfall : order.grand_total - order.advance_received,
-            )}
+            label="Balance after advance"
+            value={money(order.grand_total - order.advance_received)}
           />
         </Panel>
 
-        <Panel title="Proforma invoice">
+        <Panel title="Proforma Invoice" icon={<FiFileText size={14} />}>
           {invoice ? (
             <>
               <Line label="Number" value={invoice.pi_number || `#${invoice.id}`} />
-              <Line label="Status" value={invoice.status} />
+              <Line label="Status" value={proformaInvoiceStatusLabel(invoice.status)} />
               <Line label="Invoiced" value={money(invoice.grand_total)} />
               <Line label="Paid" value={money(invoice.amount_paid)} />
               <Line label="Balance due" value={money(invoice.balance_due)} />
             </>
           ) : (
-            <p className="text-[12px] text-slate-400">
-              No proforma invoice has been raised against this order yet, so
+            <p className="text-[11px] text-[#777777] dark:text-slate-400">
+              No proforma invoice has been raised against this order, so
               there is nothing for the payment to have come in against.
             </p>
           )}
         </Panel>
-
-        <Panel title="What was ordered">
-          <ul className="space-y-1.5">
-            {(order.items || []).map((item, index) => (
-              <li key={index} className="text-[12px] text-slate-600 dark:text-slate-300">
-                {String(item.product || item.name || "Line")}
-                <span className="text-slate-400">
-                  {" "}
-                  × {String(item.qty ?? item.quantity ?? 1)}
-                </span>
-              </li>
-            ))}
-
-            {(order.items || []).length === 0 && (
-              <li className="text-[12px] text-slate-400">No lines on this order.</li>
-            )}
-          </ul>
-        </Panel>
       </div>
-    </div>
-  );
-}
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-[#17304a] dark:bg-[#0b2034]">
-      <p className="mb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-        {title}
-      </p>
-      <div className="space-y-1.5">{children}</div>
-    </div>
-  );
-}
-
-function Line({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "good" | "warn";
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-[11px] text-slate-500 dark:text-slate-400">
-        {label}
-      </span>
-      <span
-        className={`text-[12px] font-semibold ${
-          tone === "good"
-            ? "text-emerald-600 dark:text-emerald-400"
-            : tone === "warn"
-              ? "text-amber-600 dark:text-amber-400"
-              : "text-slate-800 dark:text-slate-100"
-        }`}
-      >
-        {value}
-      </span>
+      <Panel title="Products & Order Items" icon={<FiPackage size={14} />}>
+        <OrderedLines order={order} />
+      </Panel>
     </div>
   );
 }

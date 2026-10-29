@@ -180,3 +180,94 @@ export function websiteError(
     ? null
     : `“${text}” is not a web address. Try something like acme.com.`;
 }
+
+/** An address as the forms hold it. */
+export interface AddressFields {
+  street?: string | null;
+  country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  pin?: string | null;
+}
+
+const isIndia = (country?: string | null) =>
+  !String(country ?? "").trim() || /^india$/i.test(String(country).trim());
+
+/**
+ * What is wrong with one address, worded for the person who typed it.
+ *
+ * ``required`` asks for every field, as the forms' asterisks say. Without
+ * it only the shape of what was typed is checked, which is how a draft is
+ * saved. A PIN is held to six digits only for India; a foreign postcode is
+ * whatever that country uses.
+ */
+export function addressErrors(
+  address: AddressFields,
+  { label, required = false }: { label: string; required?: boolean },
+): string[] {
+  const problems: string[] = [];
+  const text = (value?: string | null) => String(value ?? "").trim();
+
+  if (required) {
+    if (!text(address.street))
+      problems.push(`${label}: street address is required.`);
+    if (!text(address.country)) problems.push(`${label}: country is required.`);
+    if (!text(address.state)) problems.push(`${label}: state is required.`);
+    if (!text(address.city)) problems.push(`${label}: city is required.`);
+    if (!text(address.pin))
+      problems.push(`${label}: PIN / ZIP code is required.`);
+  }
+
+  if (text(address.pin) && isIndia(address.country)) {
+    const pinProblem = pinError(address.pin);
+    if (pinProblem) problems.push(`${label}: ${pinProblem}`);
+  }
+
+  return problems;
+}
+
+/** Whether a PIN field should be held to six digits as it is typed. */
+export function capPinFor(
+  country: string | null | undefined,
+  value: string,
+): string {
+  return isIndia(country) ? capPin(value) : value;
+}
+
+/**
+ * The organisation's registration numbers.
+ *
+ * A registered business has a PAN, so it is required once Registration
+ * says Registered - when ``required`` is on, which is everywhere but a
+ * draft. GSTIN and PAN are checked for shape whenever they are typed.
+ */
+export function organisationErrors(
+  {
+    registration,
+    gst,
+    pan,
+  }: { registration?: string | null; gst?: string | null; pan?: string | null },
+  { required = false }: { required?: boolean } = {},
+): string[] {
+  const problems: string[] = [];
+  const registered = String(registration ?? "").trim() === "Registered";
+
+  if (required && registered && !String(pan ?? "").trim()) {
+    problems.push("PAN is required for a registered organisation.");
+  }
+
+  const panProblem = panError(pan);
+  if (panProblem) problems.push(panProblem);
+
+  const gstProblem = gstinError(gst);
+  if (gstProblem) problems.push(`GST: ${gstProblem}`);
+
+  return problems;
+}
+
+/** One line for a toast: the first problem, and how many more there are. */
+export function summariseProblems(problems: string[]): string {
+  if (problems.length <= 1) return problems[0] || "";
+
+  return `${problems[0]} (${problems.length - 1} more to fix)`;
+}

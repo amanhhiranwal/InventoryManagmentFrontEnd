@@ -102,7 +102,17 @@ import {
 import { ProductItemsIcon } from "@/components/icons/SectionIcons";
 import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
 import { SortTh, useTableSort } from "@/components/crm/sort";
-import { websiteError } from "@/lib/fieldChecks";
+import {
+  addressErrors,
+  capCode,
+  capMobile,
+  capPinFor,
+  emailError,
+  mobileError,
+  organisationErrors,
+  summariseProblems,
+  websiteError,
+} from "@/lib/fieldChecks";
 import { RowMenu } from "@/components/crm/RowMenu";
 
 interface ProductItem {
@@ -3314,6 +3324,7 @@ function NewOpportunityPage({
   onSubmit: (payload: Record<string, any>) => Promise<void>;
 }) {
   const isEditing = Boolean(opportunity);
+  const { addToast } = useUIStore();
 
   /* The opportunity record and the lead carry the same field names, so one
      seed serves both; the record wins when editing an existing row. */
@@ -3627,12 +3638,43 @@ function NewOpportunityPage({
 
     if (websiteProblem) return;
 
-    if (
-      !organizationName.trim() ||
-      !contactName.trim() ||
-      !mobileNumber.trim() ||
-      !email.trim()
-    ) {
+    /* Every field the form stars, and the shape of every number typed.
+       The browser's own check catches an empty field; one holding only
+       spaces got past it and made Save do nothing, with no word of why.
+       Now the first problem is said, with how many more there are. */
+    const missing = [
+      [organizationName, "Organization name"],
+      [contactName, "Full name"],
+      [designation, "Designation"],
+    ]
+      .filter(([value]) => !String(value).trim())
+      .map(([, field]) => `${field} is required.`);
+
+    const problems = [
+      ...missing,
+      mobileError(mobileNumber, { required: true }),
+      emailError(email, { required: true }),
+      ...organisationErrors({ gst: gstNumber, pan: panNumber }),
+      ...addressErrors(
+        { street: officeAddress, country, state, city, pin: pinCode },
+        { label: "Billing address", required: true },
+      ),
+      ...(sameAsBilling
+        ? []
+        : addressErrors(
+            {
+              street: shippingAddress,
+              country: shippingCountry,
+              state: shippingState,
+              city: shippingCity,
+              pin: shippingPinCode,
+            },
+            { label: "Shipping address", required: true },
+          )),
+    ].filter((problem): problem is string => Boolean(problem));
+
+    if (problems.length) {
+      addToast(summariseProblems(problems), "warning");
       return;
     }
 
@@ -3866,7 +3908,7 @@ function NewOpportunityPage({
                         <FormInput
                           label="PIN / ZIP Code *"
                           value={pinCode}
-                          onChange={setPinCode}
+                          onChange={(value) => setPinCode(capPinFor(country, value))}
                           placeholder="Pin Code"
                         />
                       </div>
@@ -3907,7 +3949,9 @@ function NewOpportunityPage({
                         <FormInput
                           label="PIN / ZIP Code *"
                           value={shippingPinCode}
-                          onChange={setShippingPinCode}
+                          onChange={(value) =>
+                            setShippingPinCode(capPinFor(shippingCountry, value))
+                          }
                           placeholder="Pin Code"
                         />
                       </div>
@@ -3928,14 +3972,14 @@ function NewOpportunityPage({
                   <DocumentInput
                     label="GST Number"
                     value={gstNumber}
-                    onChange={setGstNumber}
+                    onChange={(value) => setGstNumber(capCode(value, 15))}
                     placeholder="Enter GSTIN"
                   />
 
                   <DocumentInput
                     label="PAN Number"
                     value={panNumber}
-                    onChange={setPanNumber}
+                    onChange={(value) => setPanNumber(capCode(value, 10))}
                     placeholder="Enter PAN"
                   />
 
@@ -3981,8 +4025,9 @@ function NewOpportunityPage({
                       <input
                         type="tel"
                         value={mobileNumber}
+                        inputMode="numeric"
                         onChange={(event) =>
-                          setMobileNumber(event.target.value)
+                          setMobileNumber(capMobile(event.target.value))
                         }
                         placeholder="9876543210"
                         className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[10px] outline-none placeholder:text-slate-400 focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
