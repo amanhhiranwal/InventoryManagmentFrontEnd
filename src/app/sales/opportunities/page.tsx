@@ -23,14 +23,16 @@ import {
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
 import {
-  PRODUCT_CATALOG,
-  PRODUCT_CATEGORIES,
   priceBasisFor,
   productSku,
   rateFor,
   type CatalogProduct,
   type PriceBasis,
 } from "@/features/catalog/productCatalog";
+import {
+  catalogNotice,
+  useInventoryCatalog,
+} from "@/features/catalog/useInventoryCatalog";
 import { Lead, getLeadsApi } from "@/features/workflows/api/workflows.api";
 import StatCard from "@/components/crm/StatCard";
 import { percentChange } from "@/components/crm/kpiChange";
@@ -3493,6 +3495,8 @@ function NewOpportunityPage({
   const [productCategory, setProductCategory] = useState("All");
   const [pickedProducts, setPickedProducts] = useState<OpportunityLineItem[]>([]);
 
+  const catalog = useInventoryCatalog(showProductModal);
+
   const [submitting, setSubmitting] = useState(false);
 
   /* Mirrors compute_product_totals in app/services/opportunity_service.py
@@ -3537,7 +3541,7 @@ function NewOpportunityPage({
     setTotalEstValue(productsTotal ? String(Math.round(productsTotal)) : "");
   }, [productsTotal]);
 
-  const filteredProducts = PRODUCT_CATALOG.filter((product) => {
+  const filteredProducts = catalog.products.filter((product) => {
     if (productCategory !== "All" && product.category !== productCategory) {
       return false;
     }
@@ -4546,6 +4550,9 @@ function NewOpportunityPage({
         <OpportunityProductModal
           warrantyTerms={warrantyTerms}
           products={filteredProducts}
+          categories={catalog.categories}
+          notice={catalogNotice(catalog, filteredProducts.length)}
+          noticeIsError={Boolean(catalog.error)}
           picked={pickedProducts}
           priceBasis={priceBasis}
           search={productSearch}
@@ -4626,6 +4633,9 @@ function LineNumberInput({
 function OpportunityProductModal({
   warrantyTerms,
   products,
+  categories,
+  notice,
+  noticeIsError,
   picked,
   priceBasis,
   search,
@@ -4641,6 +4651,11 @@ function OpportunityProductModal({
       the server, so only the choice is made here. */
   warrantyTerms: WarrantyTermOption[];
   products: CatalogProduct[];
+  /** The tabs, from what inventory holds. */
+  categories: string[];
+  /** Shown in place of the list while it loads, fails or is empty. */
+  notice: string | null;
+  noticeIsError: boolean;
   picked: OpportunityLineItem[];
   /** Which price list to show, so the figure in the picker is the one the
       line will actually take. */
@@ -4695,7 +4710,7 @@ function OpportunityProductModal({
 
         <div className="px-5 pt-3">
           <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 dark:border-[#17304a]">
-            {PRODUCT_CATEGORIES.map((entry) => (
+            {categories.map((entry) => (
               <button
                 key={entry}
                 type="button"
@@ -4714,6 +4729,17 @@ function OpportunityProductModal({
 
         <div className="grid flex-1 grid-cols-[300px_minmax(0,1fr)] gap-5 overflow-hidden px-5 py-4">
           <div className="space-y-2 overflow-y-auto pr-1">
+            {notice && (
+              <p
+                role={noticeIsError ? "alert" : "status"}
+                className={`px-1 py-2 text-[11px] ${
+                  noticeIsError ? "text-rose-600" : "text-slate-500"
+                }`}
+              >
+                {notice}
+              </p>
+            )}
+
             {products.map((product) => {
               const checked = picked.some(
                 (item) => item.productId === product.id,

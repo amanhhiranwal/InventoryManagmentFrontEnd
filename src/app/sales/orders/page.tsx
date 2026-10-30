@@ -17,12 +17,15 @@ import {
 
 import {
   PRODUCT_CATALOG,
-  PRODUCT_CATEGORIES,
   priceBasisFor,
   productSku,
   rateFor,
   type PriceBasis,
 } from "@/features/catalog/productCatalog";
+import {
+  catalogNotice,
+  useInventoryCatalog,
+} from "@/features/catalog/useInventoryCatalog";
 import AmountInput, {
   resolveAmount,
   type AmountMode,
@@ -521,6 +524,8 @@ export default function OrdersListPage() {
   const [productSearch, setProductSearch] = useState("");
 
   const [productCategory, setProductCategory] = useState("All");
+
+  const catalog = useInventoryCatalog(showProductModal);
 
   /* Summary charges. These inputs previously had defaultValue={0} and were
      bound to nothing, so anything entered was discarded and never reached
@@ -1545,7 +1550,7 @@ export default function OrdersListPage() {
             );
 
             return {
-              id: catalogued?.id || `line-${index}`,
+              id: catalogued?.id || item.sku || `line-${index}`,
               name: item.model || catalogued?.name || "Product",
               category: item.product || catalogued?.category || "",
               hsn: item.hsn || catalogued?.hsn || "",
@@ -1633,16 +1638,20 @@ export default function OrdersListPage() {
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
 
-    return PRODUCT_CATALOG.filter((product) => {
+    return catalog.products.filter((product) => {
       const matchesCategory =
         productCategory === "All" || product.category === productCategory;
 
       const matchesSearch =
-        !query || product.name.toLowerCase().includes(query);
+        !query ||
+        product.name.toLowerCase().includes(query) ||
+        product.id.toLowerCase().includes(query);
 
       return matchesCategory && matchesSearch;
     });
-  }, [productSearch, productCategory]);
+  }, [catalog.products, productSearch, productCategory]);
+
+  const pickerNotice = catalogNotice(catalog, filteredProducts.length);
 
   const toggleProduct = (product: Product) => {
     setSelectedProducts((current) => {
@@ -3624,7 +3633,7 @@ export default function OrdersListPage() {
 
               <div className="px-5 pt-3">
                 <div className="flex items-center gap-1 border-b border-slate-200 overflow-x-auto">
-                  {PRODUCT_CATEGORIES.map((category) => (
+                  {catalog.categories.map((category) => (
                     <button
                       key={category}
                       type="button"
@@ -3655,6 +3664,17 @@ export default function OrdersListPage() {
 
                 <div className="overflow-y-auto pr-1">
                   <div className="space-y-2">
+                    {pickerNotice && (
+                      <p
+                        role={catalog.error ? "alert" : "status"}
+                        className={`px-1 py-2 text-[11px] ${
+                          catalog.error ? "text-rose-600" : "text-slate-500"
+                        }`}
+                      >
+                        {pickerNotice}
+                      </p>
+                    )}
+
                     {filteredProducts.map((product) => {
                       const checked = selectedProducts.some(
                         (item) => item.id === product.id,

@@ -5,16 +5,16 @@
  *
  * Each serial is checked against the shelf as it is typed: on the shelf
  * and in stock, already issued to another order, or not in the catalogue
- * at all. A serial that belongs to a different product is allowed but
- * flagged, because the catalogue's names and the order's were typed by
- * different people. Mark Ready stays disabled until every unit has a
+ * at all - and it has to be a unit of the product the line asks for: a
+ * serial of a different product is refused and says which product it is.
+ * Mark Ready stays disabled until every unit has a
  * serial that is in stock and none is entered twice; the server checks
  * all of it again.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CgSpinner } from "react-icons/cg";
-import { LuCheck, LuTriangleAlert, LuX } from "react-icons/lu";
+import { LuCheck, LuX } from "react-icons/lu";
 
 import {
   DeskOrder,
@@ -131,6 +131,7 @@ export default function SerialEntry({
         check !== "checking" &&
         check.found &&
         check.in_stock &&
+        check.matches_line !== false &&
         !duplicates.has((typed[slotKey(slot)] || "").trim().toUpperCase())
       );
     });
@@ -145,7 +146,7 @@ export default function SerialEntry({
             : Object.values(checks).includes("checking")
               ? "Checking the serials against stock..."
               : good.length < slots.length
-                ? "Every serial has to be in stock."
+                ? "Every serial has to be an in-stock unit of its line's product."
                 : null;
 
     setAction({
@@ -237,12 +238,7 @@ function SerialStatus({
   }
 
   if (check.matches_line === false) {
-    return (
-      <Status
-        tone="warn"
-        text={check.message || "In stock, but a different product."}
-      />
-    );
+    return <Status tone="bad" text={check.message || "A different product."} />;
   }
 
   return (
@@ -250,21 +246,13 @@ function SerialStatus({
   );
 }
 
-function Status({
-  tone,
-  text,
-}: {
-  tone: "good" | "warn" | "bad";
-  text: string;
-}) {
+function Status({ tone, text }: { tone: "good" | "bad"; text: string }) {
   const style = {
     good: "text-emerald-600 dark:text-emerald-400",
-    warn: "text-amber-600 dark:text-amber-400",
     bad: "text-rose-600 dark:text-rose-400",
   }[tone];
 
-  const Icon =
-    tone === "good" ? LuCheck : tone === "warn" ? LuTriangleAlert : LuX;
+  const Icon = tone === "good" ? LuCheck : LuX;
 
   return (
     <p className={`mt-1 flex items-center gap-1 text-[10px] ${style}`}>
