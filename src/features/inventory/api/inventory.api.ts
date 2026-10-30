@@ -308,3 +308,55 @@ export const updateProductTypeApi = async (id: string, payload: {
   const { data } = await api.put(`/api/v1/product-types/${id}`, payload);
   return data.data || data;
 };
+
+/** One unit issued from inventory to an order, as the movement record holds it. */
+export interface StockOutRow {
+  id: string;
+  serial_number: string | null;
+  product: string | null;
+  model_number: string | null;
+  line_product: string | null;
+  quantity: number;
+  /** Named by serial at the production desk, or counted down by quantity. */
+  by_serial: boolean;
+  order_id: number | null;
+  order_number: string | null;
+  customer_name: string | null;
+  place: string | null;
+  state: string | null;
+  actor: string | null;
+  stock_before: number | null;
+  stock_after: number | null;
+  created_at: string | null;
+  /** Put back because the order was held or cancelled afterwards. */
+  returned: boolean;
+  returned_at: string | null;
+}
+
+export interface StockOutPage {
+  rows: StockOutRow[];
+  total: number;
+  summary: {
+    units_out: number;
+    orders: number;
+    last_30_days: number;
+    returned: number;
+  };
+  counts: { all: number; out: number; returned: number };
+}
+
+export const getStockOutApi = async (params: {
+  search?: string;
+  view?: "out" | "returned";
+  page: number;
+  size: number;
+}): Promise<StockOutPage> => {
+  const { data } = await api.get("/api/v1/inventory/stock-out", { params });
+
+  return {
+    rows: data.data || [],
+    total: Number(data.total || 0),
+    summary: data.summary,
+    counts: data.counts,
+  };
+};
