@@ -2533,7 +2533,7 @@ export default function QuotationPage() {
           <ProductPickerModal
             products={filteredProducts}
             categories={catalog.categories}
-            notice={catalogNotice(catalog, filteredProducts.length)}
+            notice={catalogNotice(catalog)}
             noticeIsError={Boolean(catalog.error)}
             picked={picked}
             priceBasis={priceBasis}

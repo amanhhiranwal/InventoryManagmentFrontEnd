@@ -9,8 +9,9 @@
  * means only what inventory holds can be put on an opportunity, proposal,
  * sales order or proforma invoice, at the stock and rates it holds.
  *
- * Inventory keeps one record per serial, so units of the same model are
- * one product here. The model number is the line's SKU: it is what the
+ * Inventory keeps one record per serial; the server hands back one row
+ * per model, across every company, since a salesperson quotes whatever
+ * the business holds. The model number is the line's SKU: it is what the
  * production desk matches serials against and what the server prices by.
  */
 
@@ -18,8 +19,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { CatalogProduct } from "@/features/catalog/productCatalog";
 import {
-  getInventoryItemsApi,
-  type InventoryItem,
+  getPickerCatalogueApi,
+  type PickerProduct,
 } from "@/features/inventory/api/inventory.api";
 
 /** The picker's tabs for inventory's product types. */
@@ -49,45 +50,22 @@ const displayName = (name: string, model: string) => {
   return extra ? `${name} (${extra})` : name;
 };
 
-const toProduct = (item: InventoryItem): CatalogProduct => {
-  const attributes = item.attributes || {};
-  const model = String(attributes.model_number || "").trim();
+const toProduct = (item: PickerProduct): CatalogProduct => {
+  const model = String(item.model_number || "").trim();
   const name = String(item.name || "").trim();
 
   return {
-    id: model || name || item.serial_number,
+    id: model || name,
     name: displayName(name, model),
     category:
       CATEGORY_FOR_TYPE[String(item.product_type_code || "").toUpperCase()] ||
       item.category ||
       "Other",
-    price: number(attributes.rate ?? attributes.rate_per_unit),
-    dtp: number(attributes.dtp_rate),
-    available: number(attributes.instock ?? attributes.stock),
-    hsn: String(attributes.hsn_code || "").trim(),
+    price: number(item.rate),
+    dtp: number(item.dtp_rate),
+    available: number(item.instock),
+    hsn: String(item.hsn_code || "").trim(),
   };
-};
-
-/** One row per model: the same model filed under two companies is one product. */
-const toCatalog = (items: InventoryItem[]): CatalogProduct[] => {
-  const byId = new Map<string, CatalogProduct>();
-
-  items.forEach((item) => {
-    const product = toProduct(item);
-    const key = product.id.toUpperCase();
-    const seen = byId.get(key);
-
-    if (seen) {
-      seen.available += product.available;
-      seen.price = seen.price || product.price;
-      seen.dtp = seen.dtp || product.dtp;
-      seen.hsn = seen.hsn || product.hsn;
-    } else {
-      byId.set(key, product);
-    }
-  });
-
-  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 };
 
 /**
@@ -107,9 +85,9 @@ export function useInventoryCatalog(open: boolean) {
 
     let live = true;
 
-    getInventoryItemsApi()
-      .then((page) => {
-        if (live) setProducts(toCatalog(page.items));
+    getPickerCatalogueApi()
+      .then((items) => {
+        if (live) setProducts(items.map(toProduct));
       })
       .catch((failure) => {
         console.error(failure);
@@ -140,15 +118,14 @@ export function useInventoryCatalog(open: boolean) {
   return { products, categories, loading, error };
 }
 
-/** What the picker says in place of the list while there is none to show. */
-export const catalogNotice = (
-  catalog: { loading: boolean; error: string | null },
-  shown: number,
-): string | null =>
+/** What the picker says while the list loads or fails to. An empty list
+    is the picker's own empty state. */
+export const catalogNotice = (catalog: {
+  loading: boolean;
+  error: string | null;
+}): string | null =>
   catalog.error
     ? catalog.error
     : catalog.loading
       ? "Loading products from inventory..."
-      : shown === 0
-        ? "No products in inventory match."
-        : null;
+      : null;
