@@ -82,8 +82,6 @@ import FormPageHeader, {
 
 import {
   PRICE_BASIS,
-  PRODUCT_CATALOG,
-  PRODUCT_CATEGORIES,
   missingDtp,
   priceBasisFor,
   productSku,
@@ -91,6 +89,10 @@ import {
   type CatalogProduct,
   type PriceBasis,
 } from "@/features/catalog/productCatalog";
+import {
+  catalogNotice,
+  useInventoryCatalog,
+} from "@/features/catalog/useInventoryCatalog";
 
 import {
   createQuotationApi,
@@ -616,6 +618,8 @@ export default function QuotationPage() {
   const [showProductModal, setShowProductModal] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [productCategory, setProductCategory] = useState("All");
+
+  const catalog = useInventoryCatalog(showProductModal);
   const [picked, setPicked] = useState<LineItem[]>([]);
 
   /* Offered against each line. Only the choice travels with the document;
@@ -1576,7 +1580,7 @@ export default function QuotationPage() {
   const filteredProducts = useMemo(() => {
     const term = productSearch.trim().toLowerCase();
 
-    return PRODUCT_CATALOG.filter((product) => {
+    return catalog.products.filter((product) => {
       if (productCategory !== "All" && product.category !== productCategory) {
         return false;
       }
@@ -1589,7 +1593,7 @@ export default function QuotationPage() {
         productSku(product.id).toLowerCase().includes(term)
       );
     });
-  }, [productSearch, productCategory]);
+  }, [catalog.products, productSearch, productCategory]);
 
   const openProductModal = () => {
     setPicked([]);
@@ -2528,6 +2532,9 @@ export default function QuotationPage() {
         {showProductModal && (
           <ProductPickerModal
             products={filteredProducts}
+            categories={catalog.categories}
+            notice={catalogNotice(catalog, filteredProducts.length)}
+            noticeIsError={Boolean(catalog.error)}
             picked={picked}
             priceBasis={priceBasis}
             search={productSearch}
@@ -3394,6 +3401,9 @@ function FilterPopover({
 
 function ProductPickerModal({
   products,
+  categories,
+  notice,
+  noticeIsError,
   picked,
   priceBasis,
   search,
@@ -3407,6 +3417,11 @@ function ProductPickerModal({
   warrantyTerms,
 }: {
   products: CatalogProduct[];
+  /** The tabs, from what inventory holds. */
+  categories: string[];
+  /** Shown in place of the list while it loads, fails or is empty. */
+  notice: string | null;
+  noticeIsError: boolean;
   picked: LineItem[];
   /** Offered against each picked line. What a term costs is settled on
       the server, so only the choice is made here. */
@@ -3464,7 +3479,7 @@ function ProductPickerModal({
 
         <div className="px-5 pt-3">
           <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 dark:border-[#17304a]">
-            {PRODUCT_CATEGORIES.map((entry) => (
+            {categories.map((entry) => (
               <button
                 key={entry}
                 type="button"
@@ -3483,6 +3498,17 @@ function ProductPickerModal({
 
         <div className="grid flex-1 grid-cols-[300px_minmax(0,1fr)] gap-5 overflow-hidden px-5 py-4">
           <div className="space-y-2 overflow-y-auto pr-1">
+            {notice && (
+              <p
+                role={noticeIsError ? "alert" : "status"}
+                className={`px-1 py-2 text-[11px] ${
+                  noticeIsError ? "text-rose-600" : "text-slate-500"
+                }`}
+              >
+                {notice}
+              </p>
+            )}
+
             {products.map((product) => {
               const checked = picked.some((item) => item.productId === product.id);
 
