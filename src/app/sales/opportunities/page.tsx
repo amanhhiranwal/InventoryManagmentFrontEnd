@@ -4551,7 +4551,7 @@ function NewOpportunityPage({
           warrantyTerms={warrantyTerms}
           products={filteredProducts}
           categories={catalog.categories}
-          notice={catalogNotice(catalog, filteredProducts.length)}
+          notice={catalogNotice(catalog)}
           noticeIsError={Boolean(catalog.error)}
           picked={pickedProducts}
           priceBasis={priceBasis}

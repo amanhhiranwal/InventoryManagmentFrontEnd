@@ -1651,7 +1651,7 @@ export default function OrdersListPage() {
     });
   }, [catalog.products, productSearch, productCategory]);
 
-  const pickerNotice = catalogNotice(catalog, filteredProducts.length);
+  const pickerNotice = catalogNotice(catalog);
 
   const toggleProduct = (product: Product) => {
     setSelectedProducts((current) => {

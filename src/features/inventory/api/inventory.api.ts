@@ -360,3 +360,22 @@ export const getStockOutApi = async (params: {
     counts: data.counts,
   };
 };
+
+/** One model on the shelf, as the Add Product pickers offer it. */
+export interface PickerProduct {
+  name: string;
+  model_number: string;
+  product_type_code: string;
+  category: string;
+  rate: number;
+  dtp_rate: number;
+  hsn_code: string;
+  instock: number;
+}
+
+/** Every company's products, one row per model - not narrowed to the
+    caller's companies, unlike the Inventory page. */
+export const getPickerCatalogueApi = async (): Promise<PickerProduct[]> => {
+  const { data } = await api.get("/api/v1/inventory/catalogue");
+  return data.data || [];
+};
