@@ -28,10 +28,14 @@ import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
 import {
   CompanyProfile,
+  companyCoverImageUrl,
+  companyCoverLogoUrl,
   getCompanyProfileApi,
   removeCompanyCoverApi,
+  removeCompanyCoverLogoApi,
   saveCompanyProfileApi,
   uploadCompanyCoverApi,
+  uploadCompanyCoverLogoApi,
   uploadCompanyLogoApi,
 } from "@/features/settings/api/companyProfile.api";
 
@@ -51,6 +55,7 @@ export default function CompanyProfilePage() {
   const [saving, setSaving] = useState(false);
   const logoInput = useRef<HTMLInputElement | null>(null);
   const coverInput = useRef<HTMLInputElement | null>(null);
+  const coverLogoInput = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -86,11 +91,12 @@ export default function CompanyProfilePage() {
         company_phone: profile.company_phone,
         company_about: profile.company_about,
         company_offerings: profile.company_offerings,
+        company_brand_name: profile.company_brand_name,
+        company_tagline: profile.company_tagline,
+        company_services_line: profile.company_services_line,
         signatory_name: profile.signatory_name,
         signatory_title: profile.signatory_title,
         app_base_url: profile.app_base_url,
-
-
       });
 
       setProfile(saved);
@@ -124,10 +130,20 @@ export default function CompanyProfilePage() {
   const clearCover = async () => {
     try {
       setProfile(await removeCompanyCoverApi());
-      addToast("Cover image removed.", "info");
+      addToast("Cover photo reset to the default.", "info");
     } catch (error) {
       console.error(error);
-      addToast("The cover image could not be removed.", "error");
+      addToast("The cover photo could not be reset.", "error");
+    }
+  };
+
+  const clearCoverLogo = async () => {
+    try {
+      setProfile(await removeCompanyCoverLogoApi());
+      addToast("Cover logo reset to the default.", "info");
+    } catch (error) {
+      console.error(error);
+      addToast("The cover logo could not be reset.", "error");
     }
   };
 
@@ -185,11 +201,35 @@ export default function CompanyProfilePage() {
                 />
               </Field>
 
-              <Field label="Website" hint="Shown in the footer bar of every page.">
+              <Field
+                label="Brand Name"
+                hint={'The short name in the cover\'s "About" heading.'}
+              >
+                <input
+                  value={profile.company_brand_name}
+                  onChange={(event) => set("company_brand_name", event.target.value)}
+                  placeholder="Synergy"
+                  className={INPUT}
+                />
+              </Field>
+
+              <Field label="Website" hint="Shown at the foot of every page with the phone and email.">
                 <input
                   value={profile.company_website}
                   onChange={(event) => set("company_website", event.target.value)}
                   placeholder="www.qonevo.in"
+                  className={INPUT}
+                />
+              </Field>
+
+              <Field
+                label="Services Line"
+                hint="Under the company name at the top of each page. Separate with |."
+              >
+                <input
+                  value={profile.company_services_line}
+                  onChange={(event) => set("company_services_line", event.target.value)}
+                  placeholder="Interactive Display | Education Technology | AV Solutions"
                   className={INPUT}
                 />
               </Field>
@@ -236,7 +276,7 @@ export default function CompanyProfilePage() {
           <Section icon={<LuFileText size={16} />} title="About &amp; Range">
             <Field
               label="About"
-              hint="One paragraph per row. Two or more set themselves in the proposal's two columns."
+              hint="One paragraph per row. Printed on the proposal cover under the About heading."
             >
               <textarea
                 rows={6}
@@ -247,7 +287,19 @@ export default function CompanyProfilePage() {
               />
             </Field>
 
-            <Field label="What you sell" hint="One per row. Listed under the About panel.">
+            <Field label="Tagline" hint="The bold line under the About text on the cover.">
+              <input
+                value={profile.company_tagline}
+                onChange={(event) => set("company_tagline", event.target.value)}
+                placeholder="Smarter Displays. Better Decisions."
+                className={INPUT}
+              />
+            </Field>
+
+            <Field
+              label="What you sell"
+              hint="One per row. Kept on the profile; the current proposal layout does not print it."
+            >
               <textarea
                 rows={5}
                 value={profile.company_offerings.replace(/\|/g, "\n")}
@@ -341,7 +393,8 @@ export default function CompanyProfilePage() {
                 </button>
 
                 <p className="mt-1.5 text-[10px] text-slate-400">
-                  PNG, JPG or WEBP. Appears on every page of the proposal.
+                  PNG, JPG or WEBP. Top-left of every proposal page after
+                  the cover.
                 </p>
 
                 <input
@@ -361,22 +414,72 @@ export default function CompanyProfilePage() {
             </div>
           </Section>
 
-          <Section icon={<LuImage size={16} />} title="Cover Image">
-            <div className="flex flex-wrap items-start gap-5">
-              {profile.company_cover_image ? (
-                <img
-                  src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/company-profile/cover/image?v=${encodeURIComponent(profile.company_cover_image)}`}
-                  alt="Proposal cover"
-                  className="h-28 w-auto rounded-lg border border-slate-200 object-cover dark:border-[#17304a]"
-                  onError={(event) => {
-                    (event.target as HTMLImageElement).style.display = "none";
+          <Section icon={<LuImage size={16} />} title="Cover Logo">
+            <div className="flex flex-wrap items-center gap-5">
+              {/* White artwork, so it is previewed on the cover's navy. */}
+              <img
+                src={companyCoverLogoUrl(profile.company_cover_logo)}
+                alt="Cover logo"
+                className="h-14 w-auto max-w-[220px] rounded-lg bg-[#233353] object-contain p-2"
+                onError={(event) => {
+                  (event.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+
+              <div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => coverLogoInput.current?.click()}
+                    className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
+                  >
+                    <LuImage size={13} />
+                    Replace Cover Logo
+                  </button>
+
+                  {profile.company_cover_logo && (
+                    <button
+                      type="button"
+                      onClick={clearCoverLogo}
+                      className="h-9 rounded-lg border border-rose-200 px-4 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900/40"
+                    >
+                      Use Default
+                    </button>
+                  )}
+                </div>
+
+                <p className="mt-1.5 max-w-sm text-[10px] leading-relaxed text-slate-400">
+                  A white PNG with a transparent background, printed over
+                  the top of the cover photo.
+                </p>
+
+                <input
+                  ref={coverLogoInput}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      void sendImage(file, uploadCompanyCoverLogoApi, "Cover logo uploaded.");
+                    }
+                    event.target.value = "";
                   }}
                 />
-              ) : (
-                <div className="flex h-28 w-44 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400 dark:border-[#17304a]">
-                  No cover image
-                </div>
-              )}
+              </div>
+            </div>
+          </Section>
+
+          <Section icon={<LuImage size={16} />} title="Cover Photo">
+            <div className="flex flex-wrap items-start gap-5">
+              <img
+                src={companyCoverImageUrl(profile.company_cover_image)}
+                alt="Proposal cover"
+                className="h-28 w-auto rounded-lg border border-slate-200 object-cover dark:border-[#17304a]"
+                onError={(event) => {
+                  (event.target as HTMLImageElement).style.display = "none";
+                }}
+              />
 
               <div>
                 <div className="flex flex-wrap gap-2">
@@ -386,7 +489,7 @@ export default function CompanyProfilePage() {
                     className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
                   >
                     <LuImage size={13} />
-                    {profile.company_cover_image ? "Replace Cover" : "Upload Cover"}
+                    Replace Cover Photo
                   </button>
 
                   {profile.company_cover_image && (
@@ -395,15 +498,15 @@ export default function CompanyProfilePage() {
                       onClick={clearCover}
                       className="h-9 rounded-lg border border-rose-200 px-4 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900/40"
                     >
-                      Remove
+                      Use Default
                     </button>
                   )}
                 </div>
 
                 <p className="mt-1.5 max-w-sm text-[10px] leading-relaxed text-slate-400">
-                  Sits on the proposal cover under the addresses — a product
-                  photo, as the printed proposal has. Without one the cover
-                  simply runs without a picture.
+                  Across the top of the proposal cover, fading into the page
+                  under PROPOSAL. Best around 1200 × 1000 px with a dark top
+                  for the cover logo to sit on.
                 </p>
 
                 <input

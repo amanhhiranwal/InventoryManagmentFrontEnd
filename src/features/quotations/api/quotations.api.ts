@@ -395,6 +395,11 @@ export interface QuotationBrand {
   about: string[];
   email?: string | null;
   phone?: string | null;
+  /** "About {brand_name}" on the cover, the bold line under the About text,
+      and the line under the company name on each page. */
+  brand_name?: string | null;
+  tagline?: string | null;
+  services_line?: string | null;
   /** Who is sending this quotation - named on the cover and the signature. */
   sender?: {
     name: string;
