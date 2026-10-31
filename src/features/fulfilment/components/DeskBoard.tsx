@@ -91,6 +91,7 @@ export default function DeskBoard({
   approveLabel = "Approve",
   rejectLabel = "Reject",
   emptyNote,
+  askReceivedDate = false,
 }: {
   title: string;
   description: string;
@@ -100,6 +101,8 @@ export default function DeskBoard({
   approveLabel?: string | ((order: DeskOrder) => string);
   rejectLabel?: string;
   emptyNote: string;
+  /** Accounts: the day the money arrived, needed to approve. */
+  askReceivedDate?: boolean;
 }) {
   const { addToast } = useUIStore();
 
@@ -111,6 +114,7 @@ export default function DeskBoard({
   const [stage, setStage] = useState<string | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const [remarks, setRemarks] = useState("");
+  const [receivedDate, setReceivedDate] = useState("");
   const [deciding, setDeciding] = useState(false);
   const [action, setAction] = useState<DeskAction>({});
 
@@ -168,10 +172,25 @@ export default function DeskBoard({
       return;
     }
 
+    if (approve && askReceivedDate && !receivedDate) {
+      addToast("Enter the date the payment was received.", "error");
+      return;
+    }
+
     setDeciding(true);
 
     try {
-      await decideOrderApi(order.id, approve, note, approve ? action.extra : undefined);
+      await decideOrderApi(
+        order.id,
+        approve,
+        note,
+        approve
+          ? {
+              ...action.extra,
+              ...(askReceivedDate ? { received_date: receivedDate } : {}),
+            }
+          : undefined,
+      );
 
       addToast(
         approve
@@ -181,6 +200,7 @@ export default function DeskBoard({
       );
 
       setRemarks("");
+      setReceivedDate("");
       setOpen(null);
       await refresh(true);
     } catch (error) {
@@ -310,6 +330,7 @@ export default function DeskBoard({
                   onClick={() => {
                     setOpen(order.id);
                     setRemarks("");
+                    setReceivedDate("");
                     setAction({});
                   }}
                   className="cursor-pointer border-b border-slate-100 transition last:border-0 hover:bg-slate-50/70 dark:border-[#0f2942] dark:hover:bg-[#0b2034]"
@@ -434,6 +455,8 @@ export default function DeskBoard({
           rejectLabel={rejectLabel}
           remarks={remarks}
           onRemarks={setRemarks}
+          receivedDate={askReceivedDate ? receivedDate : null}
+          onReceivedDate={setReceivedDate}
           deciding={deciding}
           onClose={() => setOpen(null)}
           onDecide={decide}
@@ -453,6 +476,8 @@ function Drawer({
   rejectLabel,
   remarks,
   onRemarks,
+  receivedDate,
+  onReceivedDate,
   deciding,
   onClose,
   onDecide,
@@ -465,6 +490,9 @@ function Drawer({
   rejectLabel: string;
   remarks: string;
   onRemarks: (value: string) => void;
+  /** null where the desk does not ask for one. */
+  receivedDate: string | null;
+  onReceivedDate: (value: string) => void;
   deciding: boolean;
   onClose: () => void;
   onDecide: (order: DeskOrder, approve: boolean) => void;
@@ -515,19 +543,49 @@ function Drawer({
         </div>
 
         <footer className="space-y-3 border-t border-[#f3f3f3] px-6 py-4 dark:border-[#17304a]">
-          <label
-            htmlFor="desk-remarks"
-            className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400"
+          <div
+            className={
+              receivedDate === null
+                ? "space-y-3"
+                : "grid grid-cols-1 gap-3 sm:grid-cols-[1fr_180px]"
+            }
           >
-            Remarks
-          </label>
-          <input
-            id="desk-remarks"
-            value={remarks}
-            onChange={(event) => onRemarks(event.target.value)}
-            placeholder={`Needed to ${rejectLabel.toLowerCase()} the order`}
-            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
-          />
+            <div className="space-y-3">
+              <label
+                htmlFor="desk-remarks"
+                className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400"
+              >
+                Remarks
+              </label>
+              <input
+                id="desk-remarks"
+                value={remarks}
+                onChange={(event) => onRemarks(event.target.value)}
+                placeholder={`Needed to ${rejectLabel.toLowerCase()} the order`}
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+              />
+            </div>
+
+            {receivedDate !== null && (
+              <div className="space-y-3">
+                <label
+                  htmlFor="desk-received-date"
+                  className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400"
+                >
+                  Received Date <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  id="desk-received-date"
+                  type="date"
+                  required
+                  value={receivedDate}
+                  max={new Date().toLocaleDateString("en-CA")}
+                  onChange={(event) => onReceivedDate(event.target.value)}
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white dark:[color-scheme:dark]"
+                />
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <button

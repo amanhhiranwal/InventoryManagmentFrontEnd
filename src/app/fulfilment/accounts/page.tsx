@@ -35,6 +35,7 @@ export default function AccountsDeskPage() {
       description="Confirm the money before an order moves, and close it when the balance is settled."
       load={getAccountsDeskApi}
       approveLabel="Verify Payment"
+      askReceivedDate
       emptyNote="Every processed order has had its payment confirmed. New ones arrive here once the business coordinator processes them."
       detail={(order) => <PaymentDetail order={order} />}
     />
