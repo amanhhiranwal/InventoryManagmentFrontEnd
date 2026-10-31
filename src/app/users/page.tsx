@@ -20,6 +20,7 @@ import {
   FiEye,
   FiEyeOff,
   FiKey,
+  FiSend,
 } from "react-icons/fi";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -140,6 +141,9 @@ export default function UserListPage() {
   /* Who we are about to email a new temporary password to. */
   const [toReset, setToReset] = useState<User | null>(null);
   const [resetting, setResetting] = useState(false);
+  /* Who the super admin is about to send the one-time welcome email to. */
+  const [toWelcome, setToWelcome] = useState<User | null>(null);
+  const [welcoming, setWelcoming] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formData, setFormData] = useState({
     first_name: "",
@@ -343,6 +347,37 @@ export default function UserListPage() {
       addToast(detail, "error");
     } finally {
       setResetting(false);
+    }
+  };
+
+  const confirmWelcome = async () => {
+    if (!toWelcome) return;
+
+    setWelcoming(true);
+
+    try {
+      const { data } = await api.post(`/api/v1/users/${toWelcome.id}/welcome-email`);
+
+      addToast(data?.message || `Welcome email sent to ${toWelcome.email}.`, "success");
+
+      // The button is spent: the row takes the server's record of it.
+      const sent: User | undefined = data?.data;
+      setUsers((rows) =>
+        rows.map((row) =>
+          row.id === toWelcome.id
+            ? { ...row, welcome_email_sent_at: sent?.welcome_email_sent_at ?? new Date().toISOString() }
+            : row,
+        ),
+      );
+      setToWelcome(null);
+    } catch (error) {
+      const detail =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "The welcome email could not be sent.";
+
+      addToast(detail, "error");
+    } finally {
+      setWelcoming(false);
     }
   };
 
@@ -699,6 +734,29 @@ export default function UserListPage() {
                         <FiKey className="text-sm" />
                       </button>
 
+                      {/* Super admin only, and once per person: the
+                          server refuses a second send, and the button
+                          stays disabled once it has gone. */}
+                      {superAdmin && (
+                        <button
+                          onClick={() => setToWelcome(u)}
+                          disabled={!!u.welcome_email_sent_at}
+                          title={
+                            u.welcome_email_sent_at
+                              ? `Welcome email sent on ${new Date(u.welcome_email_sent_at).toLocaleString("en-IN")}`
+                              : `Send ${u.first_name} the welcome email`
+                          }
+                          aria-label={
+                            u.welcome_email_sent_at
+                              ? `Welcome email already sent to ${u.first_name}`
+                              : `Send ${u.first_name} the welcome email`
+                          }
+                          className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:hover:bg-[#0d2336]"
+                        >
+                          <FiSend className="text-sm" />
+                        </button>
+                      )}
+
                       <button
                         onClick={() => handleOpenDeleteModal(u)}
                         title={`Delete ${u.first_name}`}
@@ -1028,6 +1086,44 @@ export default function UserListPage() {
               </Button>
               <Button onClick={confirmReset} loading={resetting}>
                 Send Temporary Password
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Welcome Email Confirmation */}
+      {toWelcome && (
+        <Modal
+          isOpen
+          onClose={() => setToWelcome(null)}
+          title="Send Welcome Email"
+        >
+          <div className="space-y-4">
+            <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+              Send{" "}
+              <span className="font-bold text-slate-800 dark:text-white">
+                {toWelcome.first_name} {toWelcome.last_name}
+              </span>{" "}
+              the welcome email with a temporary password at{" "}
+              <span className="font-medium text-slate-700 dark:text-slate-200">
+                {toWelcome.email}
+              </span>
+              ?
+            </p>
+
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              Their current password stops working and they are signed out
+              everywhere; they sign in with the emailed password and choose
+              their own. This can be sent only once per person.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-3 dark:border-[#0d2336]">
+              <Button variant="outline" onClick={() => setToWelcome(null)}>
+                Cancel
+              </Button>
+              <Button onClick={confirmWelcome} loading={welcoming}>
+                Send Welcome Email
               </Button>
             </div>
           </div>

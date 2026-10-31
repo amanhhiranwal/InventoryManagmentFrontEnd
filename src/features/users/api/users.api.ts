@@ -22,6 +22,8 @@ export interface User {
   is_active?: boolean;
   /** When the account was opened, ISO-8601. */
   created_at?: string | null;
+  /** When the super admin sent the one-time welcome email; null until then. */
+  welcome_email_sent_at?: string | null;
 }
 
 export interface CreateUserPayload {
