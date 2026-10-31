@@ -102,6 +102,9 @@ export interface DeskOrder {
   advance_expected: number;
   advance_received: number;
   outstanding_balance: number;
+  /** The day accounts said the advance, and later the balance, came in. */
+  advance_received_date?: string | null;
+  balance_received_date?: string | null;
   /** Whether the advance on the invoice covers what was asked for. */
   advance_settled: boolean;
 
