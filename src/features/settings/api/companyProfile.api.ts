@@ -109,6 +109,30 @@ export const removeCompanyCoverLogoApi = async (): Promise<CompanyProfile> => {
 export const companyCoverImageUrl = (version?: string) =>
   `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/company-profile/cover/image?v=${encodeURIComponent(version || "default")}`;
 
+/** The page logo as the proposal prints it (the Company Profile logo). */
+export const companyLogoUrl = (version?: string) =>
+  `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/quotations/brand/logo?v=${encodeURIComponent(version || "default")}`;
+
+/** Save one of those images as a file - to upload the same one on another
+    installation. Fetched as a blob because the API is on another origin,
+    where a plain download link only opens the image. */
+export const downloadProfileImage = async (url: string, name: string) => {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`The image could not be downloaded (${response.status}).`);
+  }
+
+  const blob = await response.blob();
+  const extension = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+  const link = document.createElement("a");
+
+  link.href = URL.createObjectURL(blob);
+  link.download = `${name}.${extension}`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+};
+
 export const companyCoverLogoUrl = (version?: string) =>
   `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/company-profile/cover-logo/image?v=${encodeURIComponent(version || "default")}`;
 

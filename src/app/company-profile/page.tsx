@@ -18,6 +18,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { ListPage, PrimaryAction } from "@/components/crm/ListPageShell";
 import {
   LuBuilding2,
+  LuDownload,
   LuFileText,
   LuImage,
   LuPenLine,
@@ -30,6 +31,8 @@ import {
   CompanyProfile,
   companyCoverImageUrl,
   companyCoverLogoUrl,
+  companyLogoUrl,
+  downloadProfileImage,
   getCompanyProfileApi,
   removeCompanyCoverApi,
   removeCompanyCoverLogoApi,
@@ -134,6 +137,17 @@ export default function CompanyProfilePage() {
     } catch (error) {
       console.error(error);
       addToast("The cover photo could not be reset.", "error");
+    }
+  };
+
+  /* The image the proposal prints, saved as a file to upload the same one
+     on another installation. */
+  const saveImage = async (url: string, name: string) => {
+    try {
+      await downloadProfileImage(url, name);
+    } catch (error) {
+      console.error(error);
+      addToast("That image could not be downloaded.", "error");
     }
   };
 
@@ -374,7 +388,7 @@ export default function CompanyProfilePage() {
           <Section icon={<LuImage size={16} />} title="Logo">
             <div className="flex flex-wrap items-center gap-5">
               <img
-                src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/quotations/brand/logo?v=${profile.company_logo_path}`}
+                src={companyLogoUrl(profile.company_logo_path)}
                 alt="Brand logo"
                 className="h-14 w-auto rounded-lg border border-slate-200 bg-white p-2 dark:border-[#17304a]"
                 onError={(event) => {
@@ -383,14 +397,20 @@ export default function CompanyProfilePage() {
               />
 
               <div>
-                <button
-                  type="button"
-                  onClick={() => logoInput.current?.click()}
-                  className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
-                >
-                  <LuImage size={13} />
-                  Replace Logo
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => logoInput.current?.click()}
+                    className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
+                  >
+                    <LuImage size={13} />
+                    Replace Logo
+                  </button>
+
+                  <DownloadButton
+                    onClick={() => saveImage(companyLogoUrl(profile.company_logo_path), "proposal-logo")}
+                  />
+                </div>
 
                 <p className="mt-1.5 text-[10px] text-slate-400">
                   PNG, JPG or WEBP. Top-left of every proposal page after
@@ -436,6 +456,12 @@ export default function CompanyProfilePage() {
                     <LuImage size={13} />
                     Replace Cover Logo
                   </button>
+
+                  <DownloadButton
+                    onClick={() =>
+                      saveImage(companyCoverLogoUrl(profile.company_cover_logo), "proposal-cover-logo")
+                    }
+                  />
 
                   {profile.company_cover_logo && (
                     <button
@@ -492,6 +518,12 @@ export default function CompanyProfilePage() {
                     Replace Cover Photo
                   </button>
 
+                  <DownloadButton
+                    onClick={() =>
+                      saveImage(companyCoverImageUrl(profile.company_cover_image), "proposal-cover-photo")
+                    }
+                  />
+
                   {profile.company_cover_image && (
                     <button
                       type="button"
@@ -532,6 +564,19 @@ export default function CompanyProfilePage() {
         </div>
       </div>
     </ListPage>
+  );
+}
+
+function DownloadButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-4 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-[#17304a] dark:text-slate-200"
+    >
+      <LuDownload size={13} />
+      Download
+    </button>
   );
 }
 

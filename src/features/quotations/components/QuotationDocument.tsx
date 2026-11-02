@@ -113,7 +113,11 @@ export default function QuotationDocument({
 
   const company = brand?.name || "Synergy Group";
   const brandName = brand?.brand_name || company.split(" ")[0];
-  const logo = quotationBrandLogoUrl(quotation.id, quotation.company_id);
+  /* Each image is asked for with the Masters path it comes from, so a
+     replaced logo or photo shows at once rather than a cached old one. */
+  const logo = `${quotationBrandLogoUrl(quotation.id, quotation.company_id)}${
+    quotation.id || quotation.company_id ? "&" : "?"
+  }v=${encodeURIComponent(brand?.logo_path || "default")}`;
   const items = quotation.items || [];
   const gstPercent = Number(quotation.gst_percent || 0);
 
@@ -168,9 +172,10 @@ export default function QuotationDocument({
     Number(quotation.freight_charges) > 0 ||
     Number(quotation.installation_lumpsum) > 0;
 
+  /* The proposal's own validity date, then exactly the clauses ticked on
+     it - as the PDF prints them. */
   const terms = [
     `Offer valid through ${shownDate(quotation.validation_date)}; reconfirm thereafter.`,
-    `Taxes shown at ${gstPercent}%; final tax will be charged at the rate applicable on the tax invoice date.`,
     ...(quotation.terms || [])
       .filter((term) => term?.checked && term?.label)
       .map((term) => String(term.label)),
@@ -194,7 +199,7 @@ export default function QuotationDocument({
       <section className="relative h-[1123px] overflow-hidden bg-white">
         <div className="absolute inset-x-0 top-0">
           <img
-            src={companyCoverImageUrl()}
+            src={companyCoverImageUrl(brand?.cover_image || undefined)}
             alt=""
             className="block w-full"
             onError={(event) => {
@@ -210,7 +215,7 @@ export default function QuotationDocument({
         </div>
 
         <img
-          src={companyCoverLogoUrl()}
+          src={companyCoverLogoUrl(brand?.cover_logo || undefined)}
           alt=""
           className="absolute left-1/2 top-[60px] max-h-[60px] max-w-[295px] -translate-x-1/2 object-contain"
           onError={(event) => {
@@ -241,7 +246,9 @@ export default function QuotationDocument({
         </svg>
 
         <div ref={coverText} className="absolute inset-x-[38px] top-[643px]">
-          <h2 className="text-[21px] font-bold leading-[27px]">About {brandName}</h2>
+          {(brand?.about || []).length > 0 && (
+            <h2 className="text-[21px] font-bold leading-[27px]">About {brandName}</h2>
+          )}
 
           {(brand?.about || []).map((paragraph, index) => (
             <p
@@ -476,7 +483,7 @@ export default function QuotationDocument({
         </h3>
 
         <div
-          className="mt-[7px] grid grid-cols-2 border"
+          className={`mt-[7px] grid border ${terms.length ? "grid-cols-2" : "grid-cols-1"}`}
           style={{ background: PANEL, borderColor: RULE }}
         >
           <div className="flex flex-col justify-center px-[14px] py-[11px] text-[10.9px] leading-[14.7px]">
@@ -491,19 +498,21 @@ export default function QuotationDocument({
             </p>
           </div>
 
-          <div
-            className="border-l px-[14px] py-[11px] text-[9.7px] leading-[12.5px]"
-            style={{ borderColor: RULE }}
-          >
-            <p className="mb-[3px] text-[9.9px] font-bold" style={{ color: TEAL }}>
-              TERMS &amp; CONDITIONS
-            </p>
-            {terms.map((term) => (
-              <p key={term} className="pl-[9px] -indent-[9px]">
-                •&nbsp; {term}
+          {terms.length > 0 && (
+            <div
+              className="border-l px-[14px] py-[11px] text-[9.7px] leading-[12.5px]"
+              style={{ borderColor: RULE }}
+            >
+              <p className="mb-[3px] text-[9.9px] font-bold" style={{ color: TEAL }}>
+                TERMS &amp; CONDITIONS
               </p>
-            ))}
-          </div>
+              {terms.map((term) => (
+                <p key={term} className="pl-[9px] -indent-[9px]">
+                  •&nbsp; {term}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
 
         {quotation.remarks && (
