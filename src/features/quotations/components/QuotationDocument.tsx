@@ -16,6 +16,8 @@
  * layout previewed differently from how it printed.
  */
 
+import { useLayoutEffect, useRef, useState } from "react";
+
 import {
   QuotationModel,
   quotationBrandLogoUrl,
@@ -36,6 +38,13 @@ const TINT = "#eff4f8";
 const BOX = "#eef3f7";
 const PANEL = "#f6f9fb";
 const RULE = "#dde4ea";
+
+/** The About text's sizes, largest first, as the PDF tries them: 10.3pt
+    down to 7.6pt at 794px to the A4 page. */
+const ABOUT_SIZES = [13.7, 13.1, 12.4, 11.7, 11.2, 10.7, 10.1];
+
+/** Where the cover's text has to end: the page less the 9mm foot. */
+const COVER_TEXT_ROOM = 1123 - 643 - 34;
 
 /** Indian grouping, as the printed proposal uses: 1,23,456.00 */
 const money = (value?: number | null) =>
@@ -76,6 +85,32 @@ export default function QuotationDocument({
   quotation: QuotationModel;
   brand: QuotationBrand | null;
 }) {
+  /* A longer About text is set smaller, so the boxes under it keep the
+     size and place the printed proposal gives them - the PDF does the
+     same. Measured after layout and stepped down until it fits. */
+  const coverText = useRef<HTMLDivElement | null>(null);
+  const [sizeStep, setSizeStep] = useState(0);
+  const aboutSize = ABOUT_SIZES[sizeStep];
+  const aboutKey = (brand?.about || []).join("\n") + (brand?.tagline || "");
+  const [measuredFor, setMeasuredFor] = useState(aboutKey);
+
+  if (measuredFor !== aboutKey) {
+    setMeasuredFor(aboutKey);
+    setSizeStep(0);
+  }
+
+  useLayoutEffect(() => {
+    const block = coverText.current;
+
+    if (
+      block &&
+      block.scrollHeight > COVER_TEXT_ROOM &&
+      sizeStep < ABOUT_SIZES.length - 1
+    ) {
+      setSizeStep(sizeStep + 1);
+    }
+  }, [sizeStep, aboutKey]);
+
   const company = brand?.name || "Synergy Group";
   const brandName = brand?.brand_name || company.split(" ")[0];
   const logo = quotationBrandLogoUrl(quotation.id, quotation.company_id);
@@ -169,7 +204,7 @@ export default function QuotationDocument({
           {/* The foot of the photo fades into the page, as printed. */}
           <span
             aria-hidden
-            className="absolute inset-x-0 bottom-0 h-[28%]"
+            className="absolute inset-x-0 bottom-0 h-[14%]"
             style={{ background: "linear-gradient(to bottom, rgba(255,255,255,0), #fff)" }}
           />
         </div>
@@ -183,17 +218,36 @@ export default function QuotationDocument({
           }}
         />
 
-        <h1 className="absolute inset-x-0 top-[548px] text-center text-[61px] font-bold leading-none tracking-tight text-[#111]">
-          PROPOSAL
-        </h1>
+        {/* As tall and as wide as the printed word, whatever face the
+            browser has: the width is fixed and the letters fill it. */}
+        <svg
+          className="absolute left-1/2 top-[565px] -translate-x-1/2"
+          width="265"
+          height="50"
+          viewBox="0 0 265 50"
+          role="img"
+          aria-label="Proposal"
+        >
+          <text
+            x="0"
+            y="44"
+            textLength="265"
+            lengthAdjust="spacingAndGlyphs"
+            fill="#111"
+            style={{ font: "700 55px Helvetica, Arial, sans-serif" }}
+          >
+            PROPOSAL
+          </text>
+        </svg>
 
-        <div className="absolute inset-x-[38px] top-[643px]">
+        <div ref={coverText} className="absolute inset-x-[38px] top-[643px]">
           <h2 className="text-[21px] font-bold leading-[27px]">About {brandName}</h2>
 
           {(brand?.about || []).map((paragraph, index) => (
             <p
               key={index}
-              className="mt-[8px] text-justify text-[13.7px] leading-[22.4px]"
+              className="mt-[8px] text-justify"
+              style={{ fontSize: aboutSize, lineHeight: `${aboutSize * 1.63}px` }}
             >
               {paragraph}
             </p>
@@ -203,13 +257,13 @@ export default function QuotationDocument({
             <p className="mt-[19px] text-[13.7px] font-bold">{brand.tagline}</p>
           )}
 
-          <div className="mx-[11px] mt-[30px] flex items-end justify-between gap-6">
-            <p className="pb-[2px] pl-[6px] text-[12.5px]">
+          <div className="mx-[11px] mt-[17px] flex items-end justify-between gap-6">
+            <p className="text-[12.5px]">
               For order confirmation and advance payment processing
             </p>
 
             <div
-              className="w-[265px] shrink-0 border px-[19px] py-[19px] text-[11px] leading-[14px]"
+              className="w-[272px] shrink-0 border px-[19px] py-[23px] text-[11px] leading-[14px]"
               style={{ background: BOX, borderColor: RULE }}
             >
               <p className="text-[10px] font-bold" style={{ color: NAVY }}>
@@ -220,7 +274,7 @@ export default function QuotationDocument({
                 ["Issue Date", shownDate(quotation.quotation_date)],
                 ["Valid Until", shownDate(quotation.validation_date)],
               ].map(([label, value]) => (
-                <p key={label} className="grid grid-cols-[115px_1fr]">
+                <p key={label} className="grid grid-cols-[83px_1fr]">
                   <span className="font-bold" style={{ color: LABEL }}>
                     {label}
                   </span>
@@ -231,7 +285,7 @@ export default function QuotationDocument({
           </div>
 
           <div
-            className="mx-[11px] mt-[9px] grid grid-cols-2 border"
+            className="mx-[11px] mt-[17px] grid grid-cols-2 border"
             style={{ background: PANEL, borderColor: RULE }}
           >
             <Party label="BILL TO" name={billTo.name}>
@@ -262,14 +316,14 @@ export default function QuotationDocument({
 
       {/* ---------------- THE OFFER ---------------- */}
       <section
-        className="relative min-h-[1123px] px-[49px] pb-[110px] pt-[121px]"
+        className="relative min-h-[1123px] px-[49px] pb-[110px] pt-[117px]"
         style={{ background: TINT }}
       >
         {/* Letterhead: the logo over the maroon rule, the company beside it. */}
         <img
           src={logo}
           alt=""
-          className="absolute left-[49px] top-[38px] max-h-[64px] max-w-[181px] object-contain mix-blend-multiply"
+          className="absolute left-[57px] top-[40px] max-h-[45px] max-w-[140px] object-contain mix-blend-multiply"
           onError={(event) => {
             (event.target as HTMLImageElement).style.display = "none";
           }}
@@ -282,11 +336,11 @@ export default function QuotationDocument({
         </div>
         <span
           aria-hidden
-          className="absolute inset-x-[49px] top-[98px] h-[1.6px]"
+          className="absolute inset-x-[49px] top-[100px] h-[1.6px]"
           style={{ background: MAROON }}
         />
 
-        <h3 className="mt-[15px] text-[11.5px] font-bold" style={{ color: NAVY }}>
+        <h3 className="text-[11.5px] font-bold" style={{ color: NAVY }}>
           SUPPLY SUMMARY
         </h3>
 
@@ -369,7 +423,7 @@ export default function QuotationDocument({
         </table>
 
         <table
-          className="mt-[23px] w-full border-collapse text-[11.2px]"
+          className="mt-[17px] w-full border-collapse text-[11.2px]"
           style={{ background: PANEL }}
         >
           <colgroup>
@@ -417,7 +471,7 @@ export default function QuotationDocument({
           </tbody>
         </table>
 
-        <h3 className="mt-[23px] text-[11.5px] font-bold" style={{ color: NAVY }}>
+        <h3 className="mt-[13px] text-[11.5px] font-bold" style={{ color: NAVY }}>
           PAYMENT &amp; COMMERCIAL TERMS
         </h3>
 
@@ -464,10 +518,10 @@ export default function QuotationDocument({
           </div>
         )}
 
-        <p className="mt-[26px] text-[11.2px] font-bold" style={{ color: NAVY }}>
+        <p className="mt-[17px] text-[11.2px] font-bold" style={{ color: NAVY }}>
           Issued by:&nbsp;&nbsp;{issuedBy}
         </p>
-        <p className="mt-[26px] pr-[4px] text-right text-[11.2px] font-bold text-slate-500">
+        <p className="mt-[21px] pr-[4px] text-right text-[11.2px] font-bold text-slate-500">
           Authorised Signatory
         </p>
 
@@ -557,13 +611,13 @@ function TotalRow({
   return (
     <tr>
       <td
-        className={`border px-[14px] py-[5px] ${bold ? "font-bold" : "text-slate-500"}`}
+        className={`border px-[14px] py-[3.5px] ${bold ? "font-bold" : "text-slate-500"}`}
         style={style}
       >
         {label}
       </td>
       <td
-        className={`border px-[12px] py-[5px] text-right ${bold ? "font-bold" : ""}`}
+        className={`border px-[12px] py-[3.5px] text-right ${bold ? "font-bold" : ""}`}
         style={style}
       >
         INR {money(value)}
