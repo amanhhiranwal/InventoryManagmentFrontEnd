@@ -22,6 +22,13 @@ export interface CompanyProfile {
   company_offerings: string;
   company_logo_path: string;
   company_cover_image: string;
+  /** The proposal's cover and letterhead: "About {brand}", the line under
+      the About text, the line under the company name on each page, and
+      the white mark printed over the cover photograph. */
+  company_brand_name: string;
+  company_tagline: string;
+  company_services_line: string;
+  company_cover_logo: string;
   signatory_name: string;
   signatory_title: string;
 
@@ -86,8 +93,48 @@ export const removeUpiQrApi = async (): Promise<CompanyProfile> => {
   return data.data;
 };
 
-/** The picture on the proposal cover, under the addresses. Optional. */
+/** The photograph across the top of the proposal cover. */
 export const uploadCompanyCoverApi = (file: File) => upload("cover", file);
+
+/** The white logo printed over the cover photograph. */
+export const uploadCompanyCoverLogoApi = (file: File) => upload("cover-logo", file);
+
+export const removeCompanyCoverLogoApi = async (): Promise<CompanyProfile> => {
+  const { data } = await api.delete("/api/v1/company-profile/cover-logo");
+  return data.data;
+};
+
+/** The images the proposal prints, uploaded or bundled. Open URLs, since an
+    <img> cannot carry a token; ``v`` busts the cache after an upload. */
+export const companyCoverImageUrl = (version?: string) =>
+  `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/company-profile/cover/image?v=${encodeURIComponent(version || "default")}`;
+
+/** The page logo as the proposal prints it (the Company Profile logo). */
+export const companyLogoUrl = (version?: string) =>
+  `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/quotations/brand/logo?v=${encodeURIComponent(version || "default")}`;
+
+/** Save one of those images as a file - to upload the same one on another
+    installation. Fetched as a blob because the API is on another origin,
+    where a plain download link only opens the image. */
+export const downloadProfileImage = async (url: string, name: string) => {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`The image could not be downloaded (${response.status}).`);
+  }
+
+  const blob = await response.blob();
+  const extension = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+  const link = document.createElement("a");
+
+  link.href = URL.createObjectURL(blob);
+  link.download = `${name}.${extension}`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+};
+
+export const companyCoverLogoUrl = (version?: string) =>
+  `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/company-profile/cover-logo/image?v=${encodeURIComponent(version || "default")}`;
 
 export const removeCompanyCoverApi = async (): Promise<CompanyProfile> => {
   const { data } = await api.delete("/api/v1/company-profile/cover");

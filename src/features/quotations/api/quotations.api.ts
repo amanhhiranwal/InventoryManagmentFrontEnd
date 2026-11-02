@@ -395,6 +395,16 @@ export interface QuotationBrand {
   about: string[];
   email?: string | null;
   phone?: string | null;
+  /** "About {brand_name}" on the cover, the bold line under the About text,
+      and the line under the company name on each page. */
+  brand_name?: string | null;
+  /** Where Masters keeps each image; changes when one is replaced, so the
+      preview asks for the new file instead of a cached old one. */
+  logo_path?: string | null;
+  cover_logo?: string | null;
+  cover_image?: string | null;
+  tagline?: string | null;
+  services_line?: string | null;
   /** Who is sending this quotation - named on the cover and the signature. */
   sender?: {
     name: string;

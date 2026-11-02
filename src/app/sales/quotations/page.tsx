@@ -143,6 +143,8 @@ import {
   FiBookmark,
   FiMinus,
   FiUser,
+  FiEdit2,
+  FiCheck,
 } from "react-icons/fi";
 
 import { CgSpinner } from "react-icons/cg";
@@ -612,6 +614,52 @@ export default function QuotationPage() {
   const [attachments, setAttachments] = useState<AttachmentState[]>([]);
 
   const [terms, setTerms] = useState<TermState[]>(DEFAULT_TERMS);
+  /* The clause being typed into, by position, and what it says so far. */
+  const [editingTerm, setEditingTerm] = useState<number | null>(null);
+  const [termDraft, setTermDraft] = useState("");
+
+  const startEditingTerm = (index: number) => {
+    setEditingTerm(index);
+    setTermDraft(terms[index]?.label || "");
+  };
+
+  /* A clause saved empty is removed rather than kept as a blank bullet. */
+  const saveTerm = () => {
+    if (editingTerm === null) return;
+
+    const label = termDraft.trim();
+
+    setTerms((current) =>
+      label
+        ? current.map((entry, i) => (i === editingTerm ? { ...entry, label } : entry))
+        : current.filter((_, i) => i !== editingTerm),
+    );
+    setEditingTerm(null);
+    setTermDraft("");
+  };
+
+  const cancelTerm = () => {
+    // A clause just added and never written in goes away again.
+    if (editingTerm !== null && !terms[editingTerm]?.label) {
+      setTerms((current) => current.filter((_, i) => i !== editingTerm));
+    }
+    setEditingTerm(null);
+    setTermDraft("");
+  };
+
+  const addTerm = () => {
+    setTerms((current) => [...current, { label: "", checked: true }]);
+    setEditingTerm(terms.length);
+    setTermDraft("");
+  };
+
+  const removeTerm = (index: number) => {
+    setTerms((current) => current.filter((_, i) => i !== index));
+    if (editingTerm === index) {
+      setEditingTerm(null);
+      setTermDraft("");
+    }
+  };
   const [remarks, setRemarks] = useState("");
 
   /* ---- product picker ---- */
@@ -1068,6 +1116,8 @@ export default function QuotationPage() {
     setAdvancePercent(30);
     setAttachments([]);
     setTerms(DEFAULT_TERMS);
+    setEditingTerm(null);
+    setTermDraft("");
     setRemarks("");
     /* Back to the obvious company, so a fresh quotation never inherits the
        letterhead of the one edited before it. */
@@ -1171,6 +1221,8 @@ export default function QuotationPage() {
         );
 
         setTerms(saved.terms?.length ? saved.terms : DEFAULT_TERMS);
+        setEditingTerm(null);
+        setTermDraft("");
         setRemarks(saved.remarks || "");
 
         setEditingId(saved.id);
@@ -1396,7 +1448,8 @@ export default function QuotationPage() {
     advance_percent: advancePercent,
 
     attachments,
-    terms,
+    // A clause added and left blank is not saved as an empty bullet.
+    terms: terms.filter((term) => term.label.trim()),
     remarks: remarks.trim() || undefined,
 
     assigned_to_id: assignedToId || undefined,
@@ -2344,33 +2397,118 @@ export default function QuotationPage() {
                   Statutory &amp; Operational Clauses
                 </p>
 
+                {/* Ticked clauses print on the PDF, after the validity
+                    line it works out from the proposal's validity date.
+                    Each one can be reworded or removed, and new ones added. */}
                 <div className="space-y-2.5">
-                  {terms.map((term, index) => (
-                    <label
-                      key={term.label}
-                      className="flex cursor-pointer items-start gap-2.5"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={term.checked}
-                        onChange={(event) =>
-                          setTerms((current) =>
-                            current.map((entry, i) =>
-                              i === index
-                                ? { ...entry, checked: event.target.checked }
-                                : entry,
-                            ),
-                          )
-                        }
-                        className="mt-0.5 h-3.5 w-3.5 cursor-pointer rounded border-slate-300 accent-[#233353]"
-                      />
+                  {terms.map((term, index) =>
+                    editingTerm === index ? (
+                      <div key={`editing-${index}`} className="flex items-start gap-2.5">
+                        <textarea
+                          autoFocus
+                          rows={2}
+                          value={termDraft}
+                          aria-label="Clause text"
+                          placeholder="Write the clause as it should read on the proposal"
+                          onFocus={(event) => {
+                            // Carry on from the end of the clause, not the start.
+                            const end = event.currentTarget.value.length;
+                            event.currentTarget.setSelectionRange(end, end);
+                          }}
+                          onChange={(event) => setTermDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              saveTerm();
+                            } else if (event.key === "Escape") {
+                              cancelTerm();
+                            }
+                          }}
+                          className="min-h-[52px] flex-1 resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[11px] leading-relaxed text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-slate-200"
+                        />
 
-                      <span className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-                        {term.label}
-                      </span>
-                    </label>
-                  ))}
+                        <button
+                          type="button"
+                          onClick={saveTerm}
+                          aria-label="Save clause"
+                          title="Save (Enter)"
+                          className="mt-1 rounded-md p-1.5 text-emerald-600 transition hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                        >
+                          <FiCheck size={14} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={cancelTerm}
+                          aria-label="Cancel editing"
+                          title="Cancel (Esc)"
+                          className="mt-1 rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 dark:hover:bg-[#0d2336]"
+                        >
+                          <FiX size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div key={`${index}-${term.label}`} className="group flex items-start gap-2.5">
+                        <label className="flex flex-1 cursor-pointer items-start gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={term.checked}
+                            onChange={(event) =>
+                              setTerms((current) =>
+                                current.map((entry, i) =>
+                                  i === index
+                                    ? { ...entry, checked: event.target.checked }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            className="mt-0.5 h-3.5 w-3.5 cursor-pointer rounded border-slate-300 accent-[#233353]"
+                          />
+
+                          <span className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                            {term.label}
+                          </span>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => startEditingTerm(index)}
+                          aria-label={`Edit clause ${index + 1}`}
+                          title="Edit"
+                          className="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-[#233353] dark:hover:bg-[#0d2336] dark:hover:text-sky-400"
+                        >
+                          <FiEdit2 size={12} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => removeTerm(index)}
+                          aria-label={`Remove clause ${index + 1}`}
+                          title="Remove"
+                          className="rounded-md p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/20"
+                        >
+                          <FiTrash2 size={12} />
+                        </button>
+                      </div>
+                    ),
+                  )}
+
+                  {terms.length === 0 && (
+                    <p className="text-[11px] text-slate-400">
+                      No clauses yet. Only the validity line will print.
+                    </p>
+                  )}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={addTerm}
+                  disabled={editingTerm !== null}
+                  className="mt-3 flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:border-[#233353] hover:text-[#233353] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#17304a] dark:text-slate-300"
+                >
+                  <FiPlus size={12} />
+                  Add Clause
+                </button>
               </div>
 
               <div className="mt-5">
