@@ -3629,12 +3629,11 @@ function NewOpportunityPage({
 
     setOpportunityNameError("");
 
-    /* The website is required on this form and nothing had ever looked
-       at what was typed into it, so "zdxfcgv" was saved as a company's
+    /* The website is optional - plenty of schools have none - but what is
+       typed is still checked, so "zdxfcgv" is not saved as a company's
        web address. The browser's own check only runs on fields it knows
        are URLs, and this one takes acme.com without a scheme. */
     const websiteProblem = websiteError(organizationWebsite, {
-      required: true,
       field: "Organization website",
     });
 
@@ -3838,7 +3837,7 @@ function NewOpportunityPage({
                     />
 
                     <FormInput
-                      label="Organization Website *"
+                      label="Organization Website"
                       value={organizationWebsite}
                       error={websiteFieldError}
                       onChange={(value) => {
