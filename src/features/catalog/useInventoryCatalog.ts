@@ -22,6 +22,18 @@ import {
   getPickerCatalogueApi,
   type PickerProduct,
 } from "@/features/inventory/api/inventory.api";
+import { useWarrantyTerms } from "@/features/pricing/warrantyTerms";
+
+/** The tab the priced warranty terms are listed under. */
+export const WARRANTY_CATEGORY = "Warranty Terms";
+
+/** A warranty line's SKU: "WARRANTY:4 Years". The server prices it from
+    the Warranty Terms master (sales_order_service.rate_for_sku). */
+export const WARRANTY_SKU_PREFIX = "WARRANTY:";
+
+/** A line that is itself a warranty term carries no warranty of its own. */
+export const isWarrantyLine = (sku?: string | null) =>
+  String(sku || "").toUpperCase().startsWith(WARRANTY_SKU_PREFIX);
 
 /** The picker's tabs for inventory's product types. */
 const CATEGORY_FOR_TYPE: Record<string, string> = {
@@ -107,15 +119,43 @@ export function useInventoryCatalog(open: boolean) {
     };
   }, [wanted]);
 
+  /* The extended warranty terms from Masters, offered after the products
+     as items of their own. The standard term is included in the price, so
+     it is not one. A term with no price yet is listed as "Price not set"
+     and cannot be picked, like any unpriced product. */
+  const { terms } = useWarrantyTerms();
+
+  const warranties = useMemo<CatalogProduct[]>(
+    () =>
+      terms
+        .filter((term) => !term.is_default)
+        .map((term) => ({
+          id: `${WARRANTY_SKU_PREFIX}${term.name}`,
+          name: `${term.name} Warranty`,
+          category: WARRANTY_CATEGORY,
+          price: term.price || 0,
+          dtp: term.price || 0,
+          available: 0,
+          hsn: "",
+          service: true,
+        })),
+    [terms],
+  );
+
+  const offered = useMemo(
+    () => (warranties.length ? [...products, ...warranties] : products),
+    [products, warranties],
+  );
+
   const categories = useMemo(
     () => [
       "All",
-      ...Array.from(new Set(products.map((product) => product.category))),
+      ...Array.from(new Set(offered.map((product) => product.category))),
     ],
-    [products],
+    [offered],
   );
 
-  return { products, categories, loading, error };
+  return { products: offered, categories, loading, error };
 }
 
 /** What the picker says while the list loads or fails to. An empty list

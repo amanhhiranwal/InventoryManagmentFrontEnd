@@ -24,6 +24,7 @@ import {
 } from "@/features/catalog/productCatalog";
 import {
   catalogNotice,
+  isWarrantyLine,
   useInventoryCatalog,
 } from "@/features/catalog/useInventoryCatalog";
 import AmountInput, {
@@ -210,6 +211,8 @@ interface Product {
   price: number;
   available: number;
   hsn?: string;
+  /** A warranty term sold as its own line, not stock. */
+  service?: boolean;
 }
 
 /** One line of the revenue working. Read-only by design: every figure on
@@ -1674,8 +1677,9 @@ export default function OrdersListPage() {
           quantity: 1,
           discount: 0,
           tax: 18,
-          /* The standard term, which is included in the price. */
-          warrantyTerm: defaultWarrantyTerm,
+          /* The standard term, which is included in the price. A
+             warranty sold as its own line carries none. */
+          warrantyTerm: product.service ? "" : defaultWarrantyTerm,
         },
       ];
     });
@@ -2955,7 +2959,11 @@ export default function OrdersListPage() {
                                 applied on the server, so it cannot be
                                 retyped here. */}
                             <td className="px-3 py-3">
+                              {isWarrantyLine(item.id) && (
+                                <span className="text-[11px] text-slate-400">—</span>
+                              )}
                               <select
+                                hidden={isWarrantyLine(item.id)}
                                 value={item.warrantyTerm}
                                 aria-label={`Warranty for ${item.name}`}
                                 onChange={(event) =>
@@ -3688,7 +3696,7 @@ export default function OrdersListPage() {
                          taken off again. */
                       const unavailable =
                         !checked &&
-                        (Number(product.available) <= 0 ||
+                        (!product.service && Number(product.available) <= 0 ||
                           rateFor(product, priceBasis) <= 0);
 
                       return (
@@ -3698,7 +3706,7 @@ export default function OrdersListPage() {
                           disabled={unavailable}
                           title={
                             unavailable
-                              ? Number(product.available) <= 0
+                              ? !product.service && Number(product.available) <= 0
                                 ? "Out of stock"
                                 : "This product has no price set"
                               : undefined
@@ -3766,7 +3774,7 @@ export default function OrdersListPage() {
                                 <span className="text-slate-300">•</span>
 
                                 <span className="text-[10px] text-slate-500">
-                                  {product.available} available
+                                  {product.service ? "per unit, + GST" : `${product.available} available`}
                                 </span>
                               </div>
                             </div>
@@ -3920,7 +3928,11 @@ export default function OrdersListPage() {
                                 Warranty
                               </label>
 
+                              {isWarrantyLine(item.id) && (
+                                <p className="flex h-9 items-center text-xs text-slate-400">—</p>
+                              )}
                               <select
+                                hidden={isWarrantyLine(item.id)}
                                 value={item.warrantyTerm}
                                 aria-label={`Warranty for ${item.name}`}
                                 onChange={(e) =>

@@ -22,6 +22,8 @@ export interface WarrantyTermOption {
   name: string;
   years: number;
   is_default: boolean;
+  /** Rupees per unit, before GST, when sold as its own line. */
+  price?: number;
 }
 
 /** What a product charges for one term. */

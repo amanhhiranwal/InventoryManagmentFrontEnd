@@ -31,6 +31,7 @@ import {
 } from "@/features/catalog/productCatalog";
 import {
   catalogNotice,
+  isWarrantyLine,
   useInventoryCatalog,
 } from "@/features/catalog/useInventoryCatalog";
 import { Lead, getLeadsApi } from "@/features/workflows/api/workflows.api";
@@ -3577,8 +3578,9 @@ function NewOpportunityPage({
           unitPrice: rateFor(product, priceBasis),
           discount: 0,
           tax: 18,
-          /* The standard term, which is included in the price. */
-          warrantyTerm: defaultWarrantyTerm,
+          /* The standard term, which is included in the price. A
+             warranty sold as its own line carries none. */
+          warrantyTerm: product.service ? "" : defaultWarrantyTerm,
         },
       ];
     });
@@ -4298,7 +4300,11 @@ function NewOpportunityPage({
                                 applied on the server, so it cannot be
                                 retyped here. */}
                             <td className="px-2 py-2.5">
+                              {isWarrantyLine(item.sku) && (
+                                <span className="text-[10px] text-slate-400">—</span>
+                              )}
                               <select
+                                hidden={isWarrantyLine(item.sku)}
                                 value={item.warrantyTerm}
                                 aria-label={`Warranty for ${item.model}`}
                                 onChange={(event) =>
@@ -4751,7 +4757,7 @@ function OpportunityProductModal({
                  off again. */
               const unavailable =
                 !checked &&
-                (Number(product.available) <= 0 ||
+                (!product.service && Number(product.available) <= 0 ||
                   rateFor(product, priceBasis) <= 0);
 
               return (
@@ -4761,7 +4767,7 @@ function OpportunityProductModal({
                   disabled={unavailable}
                   title={
                     unavailable
-                      ? Number(product.available) <= 0
+                      ? !product.service && Number(product.available) <= 0
                         ? "Out of stock"
                         : "This product has no price set"
                       : undefined
@@ -4804,7 +4810,7 @@ function OpportunityProductModal({
                             Price not set
                           </span>
                         )}{" "}
-                        · {product.available} available
+                        · {product.service ? "per unit, + GST" : `${product.available} available`}
                       </p>
                     </div>
                   </div>
@@ -4957,7 +4963,11 @@ function OpportunityProductModal({
                           settled on the server from Masters, so the figure
                           cannot be typed here. The rate is not named on
                           the option because it differs by product. */}
+                      {isWarrantyLine(item.sku) && (
+                        <p className="flex h-8 items-center text-[11px] text-slate-400">—</p>
+                      )}
                       <select
+                        hidden={isWarrantyLine(item.sku)}
                         value={item.warrantyTerm}
                         aria-label={`Warranty for ${item.model}`}
                         onChange={(event) =>

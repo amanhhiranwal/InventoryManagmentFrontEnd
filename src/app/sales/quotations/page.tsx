@@ -91,6 +91,7 @@ import {
 } from "@/features/catalog/productCatalog";
 import {
   catalogNotice,
+  isWarrantyLine,
   useInventoryCatalog,
 } from "@/features/catalog/useInventoryCatalog";
 
@@ -1680,8 +1681,9 @@ export default function QuotationPage() {
           discount: 0,
           tax: 18,
           /* The standard term, which is included in the price. A line
-             always starts on the cover the customer gets anyway. */
-          warrantyTerm: defaultWarrantyTerm,
+             always starts on the cover the customer gets anyway. A
+             warranty sold as its own line carries none. */
+          warrantyTerm: product.service ? "" : defaultWarrantyTerm,
         },
       ];
     });
@@ -2230,7 +2232,9 @@ export default function QuotationPage() {
                               costs: that is settled on the server from
                               Masters, so it cannot be retyped here. */}
                           <td className="px-4 py-3">
-                            {editing ? (
+                            {isWarrantyLine(item.sku) ? (
+                              <span className="text-[11px] text-slate-400">—</span>
+                            ) : editing ? (
                               <select
                                 value={item.warrantyTerm}
                                 aria-label={`Warranty for ${item.model}`}
@@ -3658,7 +3662,7 @@ function ProductPickerModal({
                  so it can be taken off again. */
               const unavailable =
                 !checked &&
-                (Number(product.available) <= 0 ||
+                (!product.service && Number(product.available) <= 0 ||
                   rateFor(product, priceBasis) <= 0);
 
               return (
@@ -3668,7 +3672,7 @@ function ProductPickerModal({
                   disabled={unavailable}
                   title={
                     unavailable
-                      ? Number(product.available) <= 0
+                      ? !product.service && Number(product.available) <= 0
                         ? "Out of stock"
                         : "This product has no price set"
                       : undefined
@@ -3714,7 +3718,7 @@ function ProductPickerModal({
                             Price not set
                           </span>
                         )}{" "}
-                        · {product.available} available
+                        · {product.service ? "per unit, + GST" : `${product.available} available`}
                         {missingDtp(product, priceBasis) && (
                           <span className="ml-1 font-medium text-amber-600">
                             · no DTP set, end customer price shown
@@ -3869,7 +3873,11 @@ function ProductPickerModal({
                       {/* The cover quoted on this line. The price of it is
                           held against the product and applied on the
                           server, so it cannot be typed here. */}
+                      {isWarrantyLine(item.sku) && (
+                        <p className="flex h-[30px] items-center text-[11px] text-slate-400">—</p>
+                      )}
                       <select
+                        hidden={isWarrantyLine(item.sku)}
                         value={item.warrantyTerm}
                         onChange={(event) =>
                           onUpdate(item.key, { warrantyTerm: event.target.value })

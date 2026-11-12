@@ -38,6 +38,9 @@ export interface CatalogProduct {
       carry one, so it travels with the product rather than being typed
       onto each document. */
   hsn: string;
+  /** Not stock: a warranty term sold as its own line. Pickable however
+      much inventory holds, and shown without a stock count. */
+  service?: boolean;
 }
 
 export const PRODUCT_CATEGORIES = [
