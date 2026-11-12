@@ -37,13 +37,10 @@ export interface Department {
   members?: number;
 }
 
-export interface CostCenter {
-  id: number;
-  code: string;
+/** A company of the group: a requisition's cost centre. */
+export interface CompanyOption {
+  id: string;
   name: string;
-  department_id?: number | null;
-  department_name?: string | null;
-  is_active: boolean;
 }
 
 export interface ApprovalMatrix {
@@ -59,15 +56,6 @@ export const saveDepartmentApi = async (payload: Partial<Department>, id?: numbe
     : (await api.post("/api/v1/departments", payload)).data;
 export const deleteDepartmentApi = async (id: number) =>
   (await api.delete(`/api/v1/departments/${id}`)).data;
-
-export const getCostCentersApi = async (active = false): Promise<CostCenter[]> =>
-  (await api.get("/api/v1/cost-centers", { params: { active } })).data.data;
-export const saveCostCenterApi = async (payload: Partial<CostCenter>, id?: number) =>
-  id
-    ? (await api.put(`/api/v1/cost-centers/${id}`, payload)).data
-    : (await api.post("/api/v1/cost-centers", payload)).data;
-export const deleteCostCenterApi = async (id: number) =>
-  (await api.delete(`/api/v1/cost-centers/${id}`)).data;
 
 export const getApprovalMatrixApi = async (): Promise<ApprovalMatrix> =>
   (await api.get("/api/v1/procurement/approval-matrix")).data.data;
@@ -127,8 +115,10 @@ export interface Requisition {
   designation?: string | null;
   department_id?: number | null;
   department_name?: string | null;
-  cost_center_id?: number | null;
+  /** Requisitions raised before the company became the cost centre. */
   cost_center_code?: string | null;
+  company_id?: string | null;
+  company_name?: string | null;
   reporting_manager_name?: string | null;
   purchase_type: string;
   purchase_type_label: string;
@@ -187,7 +177,8 @@ export interface RequisitionMeta {
   purchase_types: Option[];
   priorities: string[];
   departments: Department[];
-  cost_centers: CostCenter[];
+  /** The companies this person may charge a purchase to. */
+  companies: CompanyOption[];
   matrix: ApprovalMatrix;
   me: {
     id: string | null;

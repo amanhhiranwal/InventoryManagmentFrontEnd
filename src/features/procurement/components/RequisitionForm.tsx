@@ -27,7 +27,7 @@ import {
   type RequisitionItem,
   type RequisitionMeta,
 } from "../api/procurement.api";
-import SalesOrderFields, { costCentersFor } from "./SalesOrderFields";
+import SalesOrderFields, { CompanyField, companyValue } from "./SalesOrderFields";
 import { AttachmentsField, ErrorState, Field, initials, Loading } from "./shared";
 
 const blankLine = (): RequisitionItem => ({
@@ -51,7 +51,7 @@ type Header = {
   priority: string;
   required_by: string;
   department_id: string;
-  cost_center_id: string;
+  company_id: string;
   sales_order_id: string;
   customer_name: string;
   project_code: string;
@@ -67,7 +67,7 @@ const fromRequisition = (pr?: Requisition | null): Header => ({
   priority: pr?.priority || "NORMAL",
   required_by: toDateInput(pr?.required_by) || "",
   department_id: pr?.department_id ? String(pr.department_id) : "",
-  cost_center_id: pr?.cost_center_id ? String(pr.cost_center_id) : "",
+  company_id: pr?.company_id || "",
   sales_order_id: pr?.sales_order_id ? String(pr.sales_order_id) : "",
   customer_name: pr?.customer_name || "",
   project_code: pr?.project_code || "",
@@ -138,14 +138,12 @@ export default function RequisitionForm({ existing }: { existing?: Requisition |
   const setLine = (index: number, patch: Partial<RequisitionItem>) =>
     setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
 
-  const costCenters = costCentersFor(meta?.cost_centers, header.department_id);
-
   const today = toDateInput(new Date());
 
   const payload = (submit: boolean) => ({
     ...header,
     department_id: num(header.department_id),
-    cost_center_id: num(header.cost_center_id),
+    company_id: companyValue(header.company_id, meta?.companies || []) || null,
     sales_order_id: header.purchase_type === "SALES_ORDER" ? num(header.sales_order_id) : null,
     attachments: files,
     items: lines.map((line) => ({
@@ -245,7 +243,7 @@ export default function RequisitionForm({ existing }: { existing?: Requisition |
                   id="pr-dept"
                   className={FIELD}
                   value={header.department_id}
-                  onChange={(e) => setHeader((c) => ({ ...c, department_id: e.target.value, cost_center_id: "" }))}
+                  onChange={(e) => set("department_id", e.target.value)}
                 >
                   <option value="">{meta.departments.length ? "Select department" : "No departments set up"}</option>
                   {meta.departments.map((d) => (
@@ -253,15 +251,14 @@ export default function RequisitionForm({ existing }: { existing?: Requisition |
                   ))}
                 </select>
               </div>
-              <div>
-                <label className={LABEL} htmlFor="pr-cc">Cost Center{meta.cost_centers.length ? " *" : ""}</label>
-                <select id="pr-cc" className={FIELD} value={header.cost_center_id} onChange={(e) => set("cost_center_id", e.target.value)}>
-                  <option value="">{meta.cost_centers.length ? "Select cost center" : "No cost centers set up"}</option>
-                  {costCenters.map((c) => (
-                    <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
-                  ))}
-                </select>
-              </div>
+              <CompanyField
+                id="pr-cc"
+                value={header.company_id}
+                companies={meta.companies}
+                onChange={(id) => set("company_id", id)}
+                fieldClass={FIELD}
+                labelClass={LABEL}
+              />
               <div>
                 <label className={LABEL} htmlFor="pr-project">Project Code</label>
                 <input id="pr-project" className={FIELD} value={header.project_code} onChange={(e) => set("project_code", e.target.value)} />

@@ -62,7 +62,7 @@ export function RequisitionSummary({ pr }: { pr: Requisition }) {
             ["Designation", pr.designation],
             ["Reporting manager", pr.reporting_manager_name],
             ["Department", pr.department_name],
-            ["Cost center", pr.cost_center_code],
+            ["Cost center", pr.company_name || pr.cost_center_code],
             ["Raised on", day(pr.pr_date)],
           ]}
         />

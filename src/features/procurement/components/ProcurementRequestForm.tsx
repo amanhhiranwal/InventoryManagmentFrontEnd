@@ -27,7 +27,7 @@ import {
   vendorOptionsApi,
   type RequisitionMeta,
 } from "../api/procurement.api";
-import SalesOrderFields, { costCentersFor } from "./SalesOrderFields";
+import SalesOrderFields, { CompanyField, companyValue } from "./SalesOrderFields";
 import { AttachmentsField, ErrorState, Loading, money } from "./shared";
 
 const LABEL = "mb-1.5 block";
@@ -90,7 +90,7 @@ export default function ProcurementRequestForm() {
     priority: "NORMAL",
     required_by: "",
     department_id: "",
-    cost_center_id: "",
+    company_id: "",
     project_code: "",
     sales_order_id: "",
     delivery_location: "",
@@ -143,7 +143,7 @@ export default function ProcurementRequestForm() {
     setForId(id);
     const person = people.find((p) => p.id === id);
     const department = person ? person.department_id : meta?.me.department_id;
-    setHeader((c) => ({ ...c, department_id: department ? String(department) : "", cost_center_id: "" }));
+    setHeader((c) => ({ ...c, department_id: department ? String(department) : "" }));
   };
 
   const askedVendors = useMemo(() => new Set(lines.flatMap((l) => l.vendor_ids)).size, [lines]);
@@ -153,7 +153,6 @@ export default function ProcurementRequestForm() {
     0,
   );
   const today = toDateInput(new Date());
-  const costCenters = costCentersFor(meta?.cost_centers, header.department_id);
 
   const save = async () => {
     if (!lines.some((l) => l.product_name.trim())) return addToast("Add at least one item.", "error");
@@ -168,7 +167,7 @@ export default function ProcurementRequestForm() {
         ...header,
         requested_for: forId || null,
         department_id: num(header.department_id),
-        cost_center_id: num(header.cost_center_id),
+        company_id: companyValue(header.company_id, meta?.companies || []) || null,
         sales_order_id: header.purchase_type === "SALES_ORDER" ? num(header.sales_order_id) : null,
         attachments: files,
         items: lines
@@ -261,7 +260,7 @@ export default function ProcurementRequestForm() {
                   id="np-dept"
                   className={FIELD}
                   value={header.department_id}
-                  onChange={(e) => setHeader((c) => ({ ...c, department_id: e.target.value, cost_center_id: "" }))}
+                  onChange={(e) => set("department_id", e.target.value)}
                 >
                   <option value="">{meta.departments.length ? "Select department" : "No departments set up"}</option>
                   {meta.departments.map((d) => (
@@ -269,15 +268,14 @@ export default function ProcurementRequestForm() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className={LABEL} htmlFor="np-cc">Cost Center{meta.cost_centers.length ? " *" : ""}</label>
-                <select id="np-cc" className={FIELD} value={header.cost_center_id} onChange={(e) => set("cost_center_id", e.target.value)}>
-                  <option value="">{meta.cost_centers.length ? "Select cost center" : "No cost centers set up"}</option>
-                  {costCenters.map((c) => (
-                    <option key={c.id} value={c.id}>{c.code}: {c.name}</option>
-                  ))}
-                </select>
-              </div>
+              <CompanyField
+                id="np-cc"
+                value={header.company_id}
+                companies={meta.companies}
+                onChange={(id) => set("company_id", id)}
+                fieldClass={FIELD}
+                labelClass={LABEL}
+              />
               {header.purchase_type === "SALES_ORDER" && (
                 <SalesOrderFields
                   idPrefix="np"

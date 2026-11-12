@@ -2,21 +2,58 @@
 
 /* The parts of a requisition's request section both forms share - the
  * employee's New Requisition and the desk's New Procurement - so a fix to
- * either lands once: the sales order picker and the cost centres offered
- * for a department.
+ * either lands once: the sales order picker and the cost centre, which is
+ * the company the purchase is for.
  *
  * The picker searches the orders the server lets this person see (the
  * sales chart only, scoped by the reporting line) as they type. */
 
 import { useEffect, useState } from "react";
 
-import { salesOrderOptionsApi, type CostCenter } from "../api/procurement.api";
+import { salesOrderOptionsApi, type CompanyOption } from "../api/procurement.api";
 
 type Order = { id: number; order_number: string; customer_name: string };
 
-/** The cost centres for a department, plus those that belong to none. */
-export const costCentersFor = (centers: CostCenter[] | undefined, departmentId: string) =>
-  (centers || []).filter((c) => !departmentId || !c.department_id || String(c.department_id) === departmentId);
+/** The chosen company while it is still one of theirs, or the only one
+ * there is to choose. A draft keeps its company even after it leaves the
+ * person's profile; that one has to be chosen again. */
+export const companyValue = (chosen: string, companies: CompanyOption[]) =>
+  chosen && companies.some((c) => c.id === chosen)
+    ? chosen
+    : companies.length === 1
+      ? companies[0].id
+      : "";
+
+/** Cost Center: the companies on the person's profile. */
+export function CompanyField({
+  id,
+  value,
+  companies,
+  onChange,
+  fieldClass,
+  labelClass,
+}: {
+  id: string;
+  value: string;
+  companies: CompanyOption[];
+  onChange: (companyId: string) => void;
+  fieldClass: string;
+  labelClass: string;
+}) {
+  return (
+    <div>
+      <label className={labelClass} htmlFor={id}>Cost Center{companies.length ? " *" : ""}</label>
+      <select id={id} className={fieldClass} value={companyValue(value, companies)} onChange={(e) => onChange(e.target.value)}>
+        {companies.length !== 1 && (
+          <option value="">{companies.length ? "Select company" : "No company on your profile"}</option>
+        )}
+        {companies.map((c) => (
+          <option key={c.id} value={c.id}>{c.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 export default function SalesOrderFields({
   idPrefix,
