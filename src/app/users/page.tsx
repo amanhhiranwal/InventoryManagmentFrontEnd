@@ -40,6 +40,42 @@ import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
 import { eligibleManagers, userLabel } from "@/features/users/utils/hierarchy";
 import { passwordProblem } from "@/features/auth/utils/passwordRules";
 import PasswordRules from "@/features/auth/components/PasswordRules";
+import { getDepartmentsApi, type Department } from "@/features/procurement/api/procurement.api";
+
+/** Department picker, labelled like the Input fields around it. */
+function DepartmentSelect({
+  id,
+  value,
+  onChange,
+  departments,
+  failed,
+}: {
+  id: string;
+  value: string;
+  onChange: (id: string) => void;
+  departments: Department[];
+  failed: boolean;
+}) {
+  return (
+    <div className="flex w-full flex-col gap-1.5">
+      <label htmlFor={id} className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        Department
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={failed}
+        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-primary dark:border-[#0d2336] dark:bg-[#071929]/50 dark:text-white"
+      >
+        <option value="">{failed ? "Departments could not be loaded" : departments.length ? "None" : "No departments set up yet"}</option>
+        {departments.map((d) => (
+          <option key={d.id} value={d.id}>{d.name}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 /** The manager a user reports to. With the role hierarchy on the Workflows
     page it decides whose records each manager sees: a Zonal Head sees only
@@ -156,7 +192,23 @@ export default function UserListPage() {
     role_ids: [] as string[],
     company_ids: [] as string[],
     reports_to_id: "",
+    department_id: "",
   });
+
+  /* Masters > Departments, for the Department field. Optional: if it will
+     not load, the field says so and the rest of the form still works. */
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [departmentsFailed, setDepartmentsFailed] = useState(false);
+  const [editDepartmentId, setEditDepartmentId] = useState("");
+
+  useEffect(() => {
+    getDepartmentsApi(true)
+      .then((rows) => {
+        setDepartments(rows);
+        setDepartmentsFailed(false);
+      })
+      .catch(() => setDepartmentsFailed(true));
+  }, []);
 
   /* Everyone the Reports To picker can offer - the table only holds one
      page of users, so it is loaded separately. */
@@ -289,6 +341,7 @@ export default function UserListPage() {
     setEditRoleIds(u.role_ids || []);
     setEditCompanyIds(u.company_ids || []);
     setEditReportsToId(u.reports_to_id || "");
+    setEditDepartmentId(u.department_id ? String(u.department_id) : "");
   };
 
   const handleUpdateUser = async (e: React.FormEvent) => {
@@ -311,6 +364,7 @@ export default function UserListPage() {
         role_ids: editRoleIds,
         company_ids: editCompanyIds,
         reports_to_id: editReportsToId || null,
+        department_id: editDepartmentId ? Number(editDepartmentId) : null,
       });
       addToast("User updated successfully!", "success");
       setEditUser(null);
@@ -429,6 +483,7 @@ export default function UserListPage() {
       await createUserApi({
         ...formData,
         reports_to_id: formData.reports_to_id || null,
+        department_id: formData.department_id ? Number(formData.department_id) : null,
       });
       addToast("User created successfully!", "success");
       setFormData({
@@ -442,6 +497,7 @@ export default function UserListPage() {
         role_ids: [],
         company_ids: [],
         reports_to_id: "",
+        department_id: "",
       });
       setShowCreateModal(false);
       // The new person joins the list and the Reports To picker both.
@@ -870,6 +926,14 @@ export default function UserListPage() {
             onChange={(e) => setFormData({ ...formData, location: e.target.value })}
           />
 
+          <DepartmentSelect
+            id="create-department"
+            value={formData.department_id}
+            onChange={(id) => setFormData({ ...formData, department_id: id })}
+            departments={departments}
+            failed={departmentsFailed}
+          />
+
           <SearchableMultiSelect
             label="Assigned Roles"
             placeholder="Select roles..."
@@ -960,6 +1024,14 @@ export default function UserListPage() {
               placeholder="e.g. Delhi/NCR"
               value={editLocation}
               onChange={(e) => setEditLocation(e.target.value)}
+            />
+
+            <DepartmentSelect
+              id="edit-department"
+              value={editDepartmentId}
+              onChange={setEditDepartmentId}
+              departments={departments}
+              failed={departmentsFailed}
             />
 
             <SearchableMultiSelect

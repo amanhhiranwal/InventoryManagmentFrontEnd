@@ -24,8 +24,17 @@ import {
 } from "@/features/catalog/productCatalog";
 import {
   catalogNotice,
+  isWarrantyLine,
   useInventoryCatalog,
 } from "@/features/catalog/useInventoryCatalog";
+import {
+  alignWarrantyLines,
+  coverFor,
+  unitsOnTerm,
+  warrantyCaption,
+  warrantyLineProblems,
+  warrantyTermOfSku,
+} from "@/features/catalog/warrantyLines";
 import AmountInput, {
   resolveAmount,
   type AmountMode,
@@ -210,6 +219,8 @@ interface Product {
   price: number;
   available: number;
   hsn?: string;
+  /** A warranty term sold as its own line, not stock. */
+  service?: boolean;
 }
 
 /** One line of the revenue working. Read-only by design: every figure on
@@ -551,8 +562,18 @@ export default function OrdersListPage() {
      as a term is picked rather than only once the order is saved. */
   const warrantyRates = useWarrantyRates();
 
-  const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>(
+  const [rawSelected, setSelectedProducts] = useState<SelectedProduct[]>(
     [],
+  );
+  /* What the table and picker show, total and save: each warranty line's
+     quantity follows the products on its term, so it is never typed. */
+  const selectedProducts = useMemo(
+    () => alignWarrantyLines(rawSelected, (item) => item.id),
+    [rawSelected],
+  );
+  const warrantyCover = useMemo(
+    () => unitsOnTerm(selectedProducts, (item) => item.id),
+    [selectedProducts],
   );
 
   const [creatingOrder, setCreatingOrder] = useState(false);
@@ -1674,8 +1695,9 @@ export default function OrdersListPage() {
           quantity: 1,
           discount: 0,
           tax: 18,
-          /* The standard term, which is included in the price. */
-          warrantyTerm: defaultWarrantyTerm,
+          /* The standard term, which is included in the price. A
+             warranty sold as its own line carries none. */
+          warrantyTerm: product.service ? "" : defaultWarrantyTerm,
         },
       ];
     });
@@ -1723,6 +1745,13 @@ export default function OrdersListPage() {
     if (selectedProducts.length === 0) {
       addToast("Please add at least one product.", "warning");
 
+      return;
+    }
+
+    /* A warranty line has to go with products on its term. */
+    const warrantyProblems = warrantyLineProblems(selectedProducts, (item) => item.id);
+    if (warrantyProblems.length) {
+      addToast(warrantyProblems[0], "error");
       return;
     }
 
@@ -2894,6 +2923,7 @@ export default function OrdersListPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
+                                  hidden={isWarrantyLine(item.id)}
                                   onClick={() =>
                                     updateSelectedProduct(
                                       item.id,
@@ -2912,6 +2942,7 @@ export default function OrdersListPage() {
 
                                 <button
                                   type="button"
+                                  hidden={isWarrantyLine(item.id)}
                                   onClick={() =>
                                     updateSelectedProduct(
                                       item.id,
@@ -2955,7 +2986,11 @@ export default function OrdersListPage() {
                                 applied on the server, so it cannot be
                                 retyped here. */}
                             <td className="px-3 py-3">
+                              {isWarrantyLine(item.id) && (
+                                <span className="text-[11px] text-slate-400">—</span>
+                              )}
                               <select
+                                hidden={isWarrantyLine(item.id)}
                                 value={item.warrantyTerm}
                                 aria-label={`Warranty for ${item.name}`}
                                 onChange={(event) =>
@@ -3686,10 +3721,16 @@ export default function OrdersListPage() {
                          against stock that is not there. An item
                          already picked stays clickable so it can be
                          taken off again. */
+                      /* A warranty item goes with products on its term. */
+                      const uncovered =
+                        Boolean(product.service) &&
+                        coverFor(warrantyCover, product.id) <= 0;
+
                       const unavailable =
                         !checked &&
-                        (Number(product.available) <= 0 ||
-                          rateFor(product, priceBasis) <= 0);
+                        (!product.service && Number(product.available) <= 0 ||
+                          rateFor(product, priceBasis) <= 0 ||
+                          uncovered);
 
                       return (
                         <button
@@ -3698,9 +3739,11 @@ export default function OrdersListPage() {
                           disabled={unavailable}
                           title={
                             unavailable
-                              ? Number(product.available) <= 0
+                              ? !product.service && Number(product.available) <= 0
                                 ? "Out of stock"
-                                : "This product has no price set"
+                                : rateFor(product, priceBasis) <= 0
+                                  ? "This product has no price set"
+                                  : `Set a product's Warranty to ${warrantyTermOfSku(product.id)} first`
                               : undefined
                           }
                           onClick={() => toggleProduct(product)}
@@ -3766,7 +3809,9 @@ export default function OrdersListPage() {
                                 <span className="text-slate-300">•</span>
 
                                 <span className="text-[10px] text-slate-500">
-                                  {product.available} available
+                                  {product.service
+                                    ? warrantyCaption(product.id, warrantyCover)
+                                    : `${product.available} available`}
                                 </span>
                               </div>
                             </div>
@@ -3823,12 +3868,15 @@ export default function OrdersListPage() {
 
                           <div className="flex items-center justify-between mt-3">
                             <span className="text-[10px] text-slate-500">
-                              Quantity
+                              {isWarrantyLine(item.id)
+                                ? `Quantity · matches the products on ${warrantyTermOfSku(item.id)}`
+                                : "Quantity"}
                             </span>
 
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
+                                hidden={isWarrantyLine(item.id)}
                                 onClick={() =>
                                   updateSelectedProduct(
                                     item.id,
@@ -3847,6 +3895,7 @@ export default function OrdersListPage() {
 
                               <button
                                 type="button"
+                                hidden={isWarrantyLine(item.id)}
                                 onClick={() =>
                                   updateSelectedProduct(
                                     item.id,
@@ -3920,7 +3969,11 @@ export default function OrdersListPage() {
                                 Warranty
                               </label>
 
+                              {isWarrantyLine(item.id) && (
+                                <p className="flex h-9 items-center text-xs text-slate-400">—</p>
+                              )}
                               <select
+                                hidden={isWarrantyLine(item.id)}
                                 value={item.warrantyTerm}
                                 aria-label={`Warranty for ${item.name}`}
                                 onChange={(e) =>

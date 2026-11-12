@@ -24,6 +24,8 @@ export interface User {
   created_at?: string | null;
   /** When the super admin sent the one-time welcome email; null until then. */
   welcome_email_sent_at?: string | null;
+  /** Masters > Departments; fills the purchase requisition form. */
+  department_id?: number | null;
 }
 
 export interface CreateUserPayload {
@@ -38,6 +40,7 @@ export interface CreateUserPayload {
   reports_to_id?: string | null;
   /** Where they are based, as the staffing sheet records it. */
   location?: string;
+  department_id?: number | null;
 }
 
 export const getUsersApi = async (

@@ -7,10 +7,9 @@
  * already included in the price, and every line falls back to it when
  * nobody picks another.
  *
- * What each term costs is not here. Five years on a panel and five years
- * on a camera are different undertakings, so the rate is held against
- * each product, on the product record, and applied on the server when a
- * document is saved.
+ * Each term may carry a price per unit (before GST). A priced term is
+ * listed in Add Products under the Warranty Terms tab and sold as its own
+ * line; the server prices that line from here when a document is saved.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -31,9 +30,13 @@ export interface WarrantyTerm {
   name: string;
   years: number;
   is_default: boolean;
+  /** Rupees per unit, before GST. */
+  price: number;
   description?: string | null;
   is_active: boolean;
 }
+
+const rupees = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
 export default function WarrantyTermsPage() {
   const { addToast } = useUIStore();
@@ -55,6 +58,7 @@ export default function WarrantyTermsPage() {
   const [name, setName] = useState("");
   const [years, setYears] = useState("");
   const [isDefault, setIsDefault] = useState(false);
+  const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
 
   const fetchTerms = useCallback(async () => {
@@ -79,6 +83,7 @@ export default function WarrantyTermsPage() {
     setName("");
     setYears("");
     setIsDefault(false);
+    setPrice("");
     setDescription("");
     setShowForm(true);
   };
@@ -88,6 +93,7 @@ export default function WarrantyTermsPage() {
     setName(term.name || "");
     setYears(String(term.years ?? ""));
     setIsDefault(term.is_default);
+    setPrice(term.price ? String(term.price) : "");
     setDescription(term.description || "");
     setShowForm(true);
   };
@@ -100,6 +106,12 @@ export default function WarrantyTermsPage() {
       return;
     }
 
+    const priceValue = price.trim() === "" ? 0 : Number(price);
+    if (!Number.isFinite(priceValue) || priceValue < 0) {
+      addToast("Enter the price as an amount of 0 or more.", "warning");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -107,6 +119,7 @@ export default function WarrantyTermsPage() {
         name: name.trim(),
         years: Number(years) || 0,
         is_default: isDefault,
+        price: priceValue,
         description: description.trim() || undefined,
       };
 
@@ -162,7 +175,7 @@ export default function WarrantyTermsPage() {
     <ListPage>
       <PageHeader
         title="Warranty Terms Master"
-        description="How long the cover runs. Offered against every product line on a proposal; what each term costs is set per product, on the product."
+        description="How long the cover runs, and its price per unit before GST. Priced terms can be added in Add Products, under the Warranty Terms tab."
       />
 
       <ListToolbar
@@ -179,7 +192,7 @@ export default function WarrantyTermsPage() {
       />
 
       <Table
-        headers={["Term", "Years", "Priced", "Description", "Actions"]}
+        headers={["Term", "Years", "Price / Unit", "Description", "Actions"]}
         loading={loading}
       >
         {filtered.map((row) => (
@@ -203,7 +216,11 @@ export default function WarrantyTermsPage() {
             <td className="px-5 py-4 text-sm text-slate-500">{row.years}</td>
 
             <td className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
-              {row.is_default ? "Included in the price" : "On each product"}
+              {row.price > 0
+                ? `${rupees(row.price)} + GST`
+                : row.is_default
+                  ? "Included in the price"
+                  : "Not priced"}
             </td>
 
             <td className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
@@ -263,6 +280,22 @@ export default function WarrantyTermsPage() {
             value={years}
             onChange={(event) => setYears(event.target.value)}
           />
+
+          <div>
+            <Input
+              label="Price per unit (₹, before GST)"
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="0"
+              value={price}
+              onChange={(event) => setPrice(event.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">
+              Shown under the Warranty Terms tab in Add Products and charged
+              per unit added. Leave at 0 for the standard cover.
+            </p>
+          </div>
 
           <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             <input
