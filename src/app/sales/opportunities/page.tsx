@@ -34,6 +34,14 @@ import {
   isWarrantyLine,
   useInventoryCatalog,
 } from "@/features/catalog/useInventoryCatalog";
+import {
+  alignWarrantyLines,
+  coverFor,
+  unitsOnTerm,
+  warrantyCaption,
+  warrantyLineProblems,
+  warrantyTermOfSku,
+} from "@/features/catalog/warrantyLines";
 import { Lead, getLeadsApi } from "@/features/workflows/api/workflows.api";
 import StatCard from "@/components/crm/StatCard";
 import { percentChange } from "@/components/crm/kpiChange";
@@ -130,7 +138,6 @@ interface ProductItem {
 const LINE_CELL_BASE =
   "h-8 rounded-md border border-slate-200 bg-white px-2 text-[10px] text-slate-800 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
 
-const LINE_CELL_MODEL = `${LINE_CELL_BASE} w-[112px]`;
 const LINE_CELL_SMALL = `${LINE_CELL_BASE} w-[46px] text-center`;
 
 const LINE_STEPPER =
@@ -3438,7 +3445,7 @@ function NewOpportunityPage({
 
   /* Line items chosen through Add Product, replacing the old fixed
      checkbox list which could not carry a model, SKU, price or tax. */
-  const [lineItems, setLineItems] = useState<OpportunityLineItem[]>(() =>
+  const [rawLineItems, setLineItems] = useState<OpportunityLineItem[]>(() =>
     (seed.product_items || []).map((item: any, index: number) => ({
       key: `${item.sku || item.product || "line"}-${index}`,
       productId: String(item.product_id ?? item.sku ?? index),
@@ -3453,6 +3460,12 @@ function NewOpportunityPage({
       /* The term it was saved quoting; empty falls back to standard. */
       warrantyTerm: item.warranty_term || "",
     })),
+  );
+  /* What the table shows, totals and saves: each warranty line's quantity
+     follows the products on its term, so it is never typed. */
+  const lineItems = useMemo(
+    () => alignWarrantyLines(rawLineItems, (item) => item.sku),
+    [rawLineItems],
   );
 
   /* Offered against each line. Only the choice travels with the document;
@@ -3494,7 +3507,18 @@ function NewOpportunityPage({
   const [showProductModal, setShowProductModal] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [productCategory, setProductCategory] = useState("All");
-  const [pickedProducts, setPickedProducts] = useState<OpportunityLineItem[]>([]);
+  const [rawPicked, setPickedProducts] = useState<OpportunityLineItem[]>([]);
+  /* The picker's choices, counted with the lines already on the
+     opportunity: a panel already on 4 Years is covered by a 4 Years
+     Warranty picked now. */
+  const pickedProducts = useMemo(
+    () => alignWarrantyLines(rawPicked, (item) => item.sku, lineItems),
+    [rawPicked, lineItems],
+  );
+  const warrantyCover = useMemo(
+    () => unitsOnTerm([...lineItems, ...pickedProducts], (item) => item.sku),
+    [lineItems, pickedProducts],
+  );
 
   const catalog = useInventoryCatalog(showProductModal);
 
@@ -3594,6 +3618,15 @@ function NewOpportunityPage({
   const confirmProducts = () => {
     if (!pickedProducts.length) return;
 
+    const problems = warrantyLineProblems(
+      [...lineItems, ...pickedProducts],
+      (item) => item.sku,
+    );
+    if (problems.length) {
+      addToast(problems[0], "error");
+      return;
+    }
+
     setLineItems((current) => [...current, ...pickedProducts]);
     setPickedProducts([]);
     setShowProductModal(false);
@@ -3630,6 +3663,13 @@ function NewOpportunityPage({
     }
 
     setOpportunityNameError("");
+
+    /* A warranty line has to go with products on its term. */
+    const warrantyProblems = warrantyLineProblems(lineItems, (item) => item.sku);
+    if (warrantyProblems.length) {
+      addToast(warrantyProblems[0], "error");
+      return;
+    }
 
     /* The website is optional - plenty of schools have none - but what is
        typed is still checked, so "zdxfcgv" is not saved as a company's
@@ -4177,22 +4217,13 @@ function NewOpportunityPage({
                               </p>
                             </td>
 
+                            {/* The model is the product picked, or the
+                                warranty term: it comes from the catalogue
+                                and Masters, so it is not typed over here. */}
                             <td className="px-2 py-2.5">
-                              {editing ? (
-                                <input
-                                  value={item.model}
-                                  onChange={(event) =>
-                                    updateLineItem(item.key, {
-                                      model: event.target.value,
-                                    })
-                                  }
-                                  className={LINE_CELL_MODEL}
-                                />
-                              ) : (
-                                <span className="text-[10px] text-slate-600 dark:text-slate-300">
-                                  {item.model}
-                                </span>
-                              )}
+                              <span className="text-[10px] text-slate-600 dark:text-slate-300">
+                                {item.model}
+                              </span>
                             </td>
 
                             {/* Set here so it carries to the proposal and the
@@ -4210,7 +4241,9 @@ function NewOpportunityPage({
                             </td>
 
                             <td className="px-2 py-2.5">
-                              {editing ? (
+                              {/* A warranty line's quantity follows the
+                                  products on its term, so it has no stepper. */}
+                              {editing && !isWarrantyLine(item.sku) ? (
                                 <div className="flex items-center gap-1">
                                   <button
                                     type="button"
@@ -4559,6 +4592,7 @@ function NewOpportunityPage({
           notice={catalogNotice(catalog)}
           noticeIsError={Boolean(catalog.error)}
           picked={pickedProducts}
+          warrantyCover={warrantyCover}
           priceBasis={priceBasis}
           search={productSearch}
           onSearch={setProductSearch}
@@ -4637,6 +4671,7 @@ function LineNumberInput({
  */
 function OpportunityProductModal({
   warrantyTerms,
+  warrantyCover,
   products,
   categories,
   notice,
@@ -4655,6 +4690,9 @@ function OpportunityProductModal({
   /** Offered against each picked line. What a term costs is settled on
       the server, so only the choice is made here. */
   warrantyTerms: WarrantyTermOption[];
+  /** Units of product on each warranty term, here and already on the
+      opportunity. A warranty item is offered only for a term that has some. */
+  warrantyCover: Record<string, number>;
   products: CatalogProduct[];
   /** The tabs, from what inventory holds. */
   categories: string[];
@@ -4755,10 +4793,15 @@ function OpportunityProductModal({
                  out at Rs 0.00 or against stock that is not there. An
                  item already picked stays clickable so it can be taken
                  off again. */
+              /* A warranty item goes with products on its term. */
+              const uncovered =
+                Boolean(product.service) && coverFor(warrantyCover, product.id) <= 0;
+
               const unavailable =
                 !checked &&
                 (!product.service && Number(product.available) <= 0 ||
-                  rateFor(product, priceBasis) <= 0);
+                  rateFor(product, priceBasis) <= 0 ||
+                  uncovered);
 
               return (
                 <button
@@ -4769,7 +4812,9 @@ function OpportunityProductModal({
                     unavailable
                       ? !product.service && Number(product.available) <= 0
                         ? "Out of stock"
-                        : "This product has no price set"
+                        : rateFor(product, priceBasis) <= 0
+                          ? "This product has no price set"
+                          : `Set a product's Warranty to ${warrantyTermOfSku(product.id)} first`
                       : undefined
                   }
                   onClick={() => onToggle(product)}
@@ -4810,7 +4855,9 @@ function OpportunityProductModal({
                             Price not set
                           </span>
                         )}{" "}
-                        · {product.service ? "per unit, + GST" : `${product.available} available`}
+                        · {product.service
+                          ? warrantyCaption(product.id, warrantyCover)
+                          : `${product.available} available`}
                       </p>
                     </div>
                   </div>
@@ -4879,12 +4926,17 @@ function OpportunityProductModal({
                   </div>
 
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">Quantity</span>
+                    <span className="text-[10px] text-slate-500">
+                      {isWarrantyLine(item.sku)
+                        ? `Quantity · matches the products on ${warrantyTermOfSku(item.sku)}`
+                        : "Quantity"}
+                    </span>
 
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         aria-label="Decrease quantity"
+                        hidden={isWarrantyLine(item.sku)}
                         onClick={() =>
                           onUpdate(item.key, {
                             quantity: Math.max(1, item.quantity - 1),
@@ -4902,6 +4954,7 @@ function OpportunityProductModal({
                       <button
                         type="button"
                         aria-label="Increase quantity"
+                        hidden={isWarrantyLine(item.sku)}
                         onClick={() =>
                           onUpdate(item.key, { quantity: item.quantity + 1 })
                         }

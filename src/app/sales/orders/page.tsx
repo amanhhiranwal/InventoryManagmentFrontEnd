@@ -27,6 +27,14 @@ import {
   isWarrantyLine,
   useInventoryCatalog,
 } from "@/features/catalog/useInventoryCatalog";
+import {
+  alignWarrantyLines,
+  coverFor,
+  unitsOnTerm,
+  warrantyCaption,
+  warrantyLineProblems,
+  warrantyTermOfSku,
+} from "@/features/catalog/warrantyLines";
 import AmountInput, {
   resolveAmount,
   type AmountMode,
@@ -554,8 +562,18 @@ export default function OrdersListPage() {
      as a term is picked rather than only once the order is saved. */
   const warrantyRates = useWarrantyRates();
 
-  const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>(
+  const [rawSelected, setSelectedProducts] = useState<SelectedProduct[]>(
     [],
+  );
+  /* What the table and picker show, total and save: each warranty line's
+     quantity follows the products on its term, so it is never typed. */
+  const selectedProducts = useMemo(
+    () => alignWarrantyLines(rawSelected, (item) => item.id),
+    [rawSelected],
+  );
+  const warrantyCover = useMemo(
+    () => unitsOnTerm(selectedProducts, (item) => item.id),
+    [selectedProducts],
   );
 
   const [creatingOrder, setCreatingOrder] = useState(false);
@@ -1730,6 +1748,13 @@ export default function OrdersListPage() {
       return;
     }
 
+    /* A warranty line has to go with products on its term. */
+    const warrantyProblems = warrantyLineProblems(selectedProducts, (item) => item.id);
+    if (warrantyProblems.length) {
+      addToast(warrantyProblems[0], "error");
+      return;
+    }
+
     /* What was typed is checked for shape on every save. What the form
        marks as required is asked for when the order is sent for approval:
        a draft is work in progress, and saving one half-filled is the point
@@ -2898,6 +2923,7 @@ export default function OrdersListPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
+                                  hidden={isWarrantyLine(item.id)}
                                   onClick={() =>
                                     updateSelectedProduct(
                                       item.id,
@@ -2916,6 +2942,7 @@ export default function OrdersListPage() {
 
                                 <button
                                   type="button"
+                                  hidden={isWarrantyLine(item.id)}
                                   onClick={() =>
                                     updateSelectedProduct(
                                       item.id,
@@ -3694,10 +3721,16 @@ export default function OrdersListPage() {
                          against stock that is not there. An item
                          already picked stays clickable so it can be
                          taken off again. */
+                      /* A warranty item goes with products on its term. */
+                      const uncovered =
+                        Boolean(product.service) &&
+                        coverFor(warrantyCover, product.id) <= 0;
+
                       const unavailable =
                         !checked &&
                         (!product.service && Number(product.available) <= 0 ||
-                          rateFor(product, priceBasis) <= 0);
+                          rateFor(product, priceBasis) <= 0 ||
+                          uncovered);
 
                       return (
                         <button
@@ -3708,7 +3741,9 @@ export default function OrdersListPage() {
                             unavailable
                               ? !product.service && Number(product.available) <= 0
                                 ? "Out of stock"
-                                : "This product has no price set"
+                                : rateFor(product, priceBasis) <= 0
+                                  ? "This product has no price set"
+                                  : `Set a product's Warranty to ${warrantyTermOfSku(product.id)} first`
                               : undefined
                           }
                           onClick={() => toggleProduct(product)}
@@ -3774,7 +3809,9 @@ export default function OrdersListPage() {
                                 <span className="text-slate-300">•</span>
 
                                 <span className="text-[10px] text-slate-500">
-                                  {product.service ? "per unit, + GST" : `${product.available} available`}
+                                  {product.service
+                                    ? warrantyCaption(product.id, warrantyCover)
+                                    : `${product.available} available`}
                                 </span>
                               </div>
                             </div>
@@ -3831,12 +3868,15 @@ export default function OrdersListPage() {
 
                           <div className="flex items-center justify-between mt-3">
                             <span className="text-[10px] text-slate-500">
-                              Quantity
+                              {isWarrantyLine(item.id)
+                                ? `Quantity · matches the products on ${warrantyTermOfSku(item.id)}`
+                                : "Quantity"}
                             </span>
 
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
+                                hidden={isWarrantyLine(item.id)}
                                 onClick={() =>
                                   updateSelectedProduct(
                                     item.id,
@@ -3855,6 +3895,7 @@ export default function OrdersListPage() {
 
                               <button
                                 type="button"
+                                hidden={isWarrantyLine(item.id)}
                                 onClick={() =>
                                   updateSelectedProduct(
                                     item.id,

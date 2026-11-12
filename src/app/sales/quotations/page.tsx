@@ -94,6 +94,14 @@ import {
   isWarrantyLine,
   useInventoryCatalog,
 } from "@/features/catalog/useInventoryCatalog";
+import {
+  alignWarrantyLines,
+  coverFor,
+  unitsOnTerm,
+  warrantyCaption,
+  warrantyLineProblems,
+  warrantyTermOfSku,
+} from "@/features/catalog/warrantyLines";
 
 import {
   createQuotationApi,
@@ -562,7 +570,13 @@ export default function QuotationPage() {
   const [shipping, setShipping] = useState<AddressState>(EMPTY_ADDRESS);
   const [sameAsBilling, setSameAsBilling] = useState(false);
 
-  const [items, setItems] = useState<LineItem[]>([]);
+  const [rawItems, setItems] = useState<LineItem[]>([]);
+  /* What the table shows, totals and saves: each warranty line's quantity
+     follows the products on its term, so it is never typed. */
+  const items = useMemo(
+    () => alignWarrantyLines(rawItems, (item) => item.sku),
+    [rawItems],
+  );
   const [editingItemKey, setEditingItemKey] = useState<string | null>(null);
 
   /* Discount stays null until the user overrides it, so an untouched form
@@ -669,7 +683,17 @@ export default function QuotationPage() {
   const [productCategory, setProductCategory] = useState("All");
 
   const catalog = useInventoryCatalog(showProductModal);
-  const [picked, setPicked] = useState<LineItem[]>([]);
+  const [rawPicked, setPicked] = useState<LineItem[]>([]);
+  /* The picker's choices, counted with the lines already on the proposal:
+     a panel already on 4 Years is covered by a 4 Years Warranty picked now. */
+  const picked = useMemo(
+    () => alignWarrantyLines(rawPicked, (item) => item.sku, items),
+    [rawPicked, items],
+  );
+  const warrantyCover = useMemo(
+    () => unitsOnTerm([...items, ...picked], (item) => item.sku),
+    [items, picked],
+  );
 
   /* Offered against each line. Only the choice travels with the document;
      what the cover costs is settled on the server against Masters. */
@@ -1472,6 +1496,13 @@ export default function QuotationPage() {
       return false;
     }
 
+    /* A warranty line has to go with products on its term. */
+    const warrantyProblems = warrantyLineProblems(items, (item) => item.sku);
+    if (warrantyProblems.length) {
+      addToast(warrantyProblems[0], "error");
+      return false;
+    }
+
     /* The contact's numbers for shape, and both addresses in full, as the
        form's asterisks say - a proposal goes to the customer, and it
        carries these addresses onto the sales order it may become. */
@@ -1698,6 +1729,12 @@ export default function QuotationPage() {
   const confirmProducts = () => {
     if (!picked.length) {
       addToast("Select at least one product.", "warning");
+      return;
+    }
+
+    const problems = warrantyLineProblems([...items, ...picked], (item) => item.sku);
+    if (problems.length) {
+      addToast(problems[0], "error");
       return;
     }
 
@@ -2105,20 +2142,13 @@ export default function QuotationPage() {
                             </p>
                           </td>
 
+                          {/* The model is the product picked, or the
+                              warranty term: it comes from the catalogue
+                              and Masters, so it is not typed over here. */}
                           <td className="px-4 py-3">
-                            {editing ? (
-                              <input
-                                value={item.model}
-                                onChange={(event) =>
-                                  updateItem(item.key, { model: event.target.value })
-                                }
-                                className={CELL_INPUT}
-                              />
-                            ) : (
-                              <span className="text-[11px] text-slate-600 dark:text-slate-300">
-                                {item.model}
-                              </span>
-                            )}
+                            <span className="text-[11px] text-slate-600 dark:text-slate-300">
+                              {item.model}
+                            </span>
                           </td>
 
                           {/* The classification the product is filed
@@ -2132,7 +2162,9 @@ export default function QuotationPage() {
                           </td>
 
                           <td className="px-4 py-3">
-                            {editing ? (
+                            {/* A warranty line's quantity follows the
+                                products on its term, so it has no stepper. */}
+                            {editing && !isWarrantyLine(item.sku) ? (
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
@@ -2678,6 +2710,7 @@ export default function QuotationPage() {
             notice={catalogNotice(catalog)}
             noticeIsError={Boolean(catalog.error)}
             picked={picked}
+            warrantyCover={warrantyCover}
             priceBasis={priceBasis}
             search={productSearch}
             onSearch={setProductSearch}
@@ -3547,6 +3580,7 @@ function ProductPickerModal({
   notice,
   noticeIsError,
   picked,
+  warrantyCover,
   priceBasis,
   search,
   onSearch,
@@ -3565,6 +3599,9 @@ function ProductPickerModal({
   notice: string | null;
   noticeIsError: boolean;
   picked: LineItem[];
+  /** Units of product on each warranty term, here and already on the
+      proposal. A warranty item is offered only for a term that has some. */
+  warrantyCover: Record<string, number>;
   /** Offered against each picked line. What a term costs is settled on
       the server, so only the choice is made here. */
   warrantyTerms: WarrantyTermOption[];
@@ -3660,10 +3697,15 @@ function ProductPickerModal({
                  there - and the first anybody heard of it was the
                  customer's copy. An item already picked stays clickable
                  so it can be taken off again. */
+              /* A warranty item goes with products on its term. */
+              const uncovered =
+                Boolean(product.service) && coverFor(warrantyCover, product.id) <= 0;
+
               const unavailable =
                 !checked &&
                 (!product.service && Number(product.available) <= 0 ||
-                  rateFor(product, priceBasis) <= 0);
+                  rateFor(product, priceBasis) <= 0 ||
+                  uncovered);
 
               return (
                 <button
@@ -3674,7 +3716,9 @@ function ProductPickerModal({
                     unavailable
                       ? !product.service && Number(product.available) <= 0
                         ? "Out of stock"
-                        : "This product has no price set"
+                        : rateFor(product, priceBasis) <= 0
+                          ? "This product has no price set"
+                          : `Set a product's Warranty to ${warrantyTermOfSku(product.id)} first`
                       : undefined
                   }
                   onClick={() => onToggle(product)}
@@ -3718,7 +3762,9 @@ function ProductPickerModal({
                             Price not set
                           </span>
                         )}{" "}
-                        · {product.service ? "per unit, + GST" : `${product.available} available`}
+                        · {product.service
+                          ? warrantyCaption(product.id, warrantyCover)
+                          : `${product.available} available`}
                         {missingDtp(product, priceBasis) && (
                           <span className="ml-1 font-medium text-amber-600">
                             · no DTP set, end customer price shown
@@ -3792,11 +3838,16 @@ function ProductPickerModal({
                   </div>
 
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-500">Quantity</span>
+                    <span className="text-[10px] text-slate-500">
+                      {isWarrantyLine(item.sku)
+                        ? `Quantity · matches the products on ${warrantyTermOfSku(item.sku)}`
+                        : "Quantity"}
+                    </span>
 
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
+                        hidden={isWarrantyLine(item.sku)}
                         onClick={() =>
                           onUpdate(item.key, {
                             quantity: Math.max(1, item.quantity - 1),
@@ -3813,6 +3864,7 @@ function ProductPickerModal({
 
                       <button
                         type="button"
+                        hidden={isWarrantyLine(item.sku)}
                         onClick={() =>
                           onUpdate(item.key, { quantity: item.quantity + 1 })
                         }
