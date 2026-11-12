@@ -91,6 +91,15 @@ export const money = (value?: number | null, currency = "INR") =>
 export const day = (value?: string | null) => (value ? formatDate(value) : "—");
 export const when = (value?: string | null) => (value ? formatDateTime(value) : "—");
 
+/** "Priya Sharma" -> "PS", for an avatar. */
+export const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("");
+
 export function Loading({ text = "Loading..." }: { text?: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400">

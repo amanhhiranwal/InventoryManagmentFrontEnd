@@ -28,7 +28,7 @@ import {
   type RequisitionMeta,
 } from "../api/procurement.api";
 import SalesOrderFields, { costCentersFor } from "./SalesOrderFields";
-import { AttachmentsField, ErrorState, Field, Loading } from "./shared";
+import { AttachmentsField, ErrorState, Field, initials, Loading } from "./shared";
 
 const blankLine = (): RequisitionItem => ({
   product_name: "",
@@ -403,17 +403,23 @@ export default function RequisitionForm({ existing }: { existing?: Requisition |
 
         <div className="space-y-5 xl:sticky xl:top-[var(--form-header-offset,0px)] xl:self-start">
           <FormCard>
-            <p className="text-[12px] text-[#777777]">Who approves</p>
-            <p className="mt-1.5 text-[14px] font-medium text-[#141414] dark:text-white">
-              {meta.me.reporting_manager_name || "A super admin"}
-            </p>
-            <p className="mt-1 text-[12px] text-[#777777]">
-              Your reporting manager confirms the need. Procurement then gets prices from vendors, and the purchase order is
-              approved by amount.
-            </p>
-            <p className="mt-3 border-t border-[#f3f3f3] pt-3 text-[11px] text-[#999999] dark:border-[#17304a]">
-              {lines.length} line{lines.length === 1 ? "" : "s"}
-            </p>
+            <p className="text-[12px] text-[#777777] dark:text-slate-400">Approver</p>
+            <div className="mt-2 flex items-center gap-3">
+              <span
+                aria-hidden
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#233353] text-[12px] font-semibold text-white dark:bg-sky-600"
+              >
+                {initials(meta.me.reporting_manager_name || "Super Admin")}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-[14px] font-medium text-[#141414] dark:text-white">
+                  {meta.me.reporting_manager_name || "Super Admin"}
+                </p>
+                <p className="text-[12px] text-[#777777] dark:text-slate-400">
+                  {meta.me.reporting_manager_name ? "Reporting Manager" : "No reporting manager set"}
+                </p>
+              </div>
+            </div>
           </FormCard>
 
           <FormCard>

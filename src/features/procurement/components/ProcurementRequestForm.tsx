@@ -28,7 +28,7 @@ import {
   type RequisitionMeta,
 } from "../api/procurement.api";
 import SalesOrderFields, { costCentersFor } from "./SalesOrderFields";
-import { AttachmentsField, ErrorState, Loading } from "./shared";
+import { AttachmentsField, ErrorState, Loading, money } from "./shared";
 
 const LABEL = "mb-1.5 block";
 const FIELD = "w-full rounded-lg border bg-white px-3 outline-none focus:border-[#233353] dark:bg-[#071929]";
@@ -36,8 +36,8 @@ const AREA = "w-full rounded-lg border px-3 py-2 outline-none focus:border-[#233
 const LINE_LABEL = "mb-1 block text-[11px] text-[#777777] dark:text-slate-400";
 const CELL =
   "field-compact w-full rounded-md border border-[#d1d1d1] bg-white px-2 py-1.5 text-[12px] outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
-/** Item, qty, unit, GST %, remove - one row from tablet width up. */
-const LINE_GRID = "md:grid-cols-[minmax(0,1fr)_96px_96px_88px_32px]";
+/** Item, qty, unit, est. price, GST %, remove - one row from tablet width up. */
+const LINE_GRID = "md:grid-cols-[minmax(0,1fr)_88px_80px_112px_80px_32px]";
 
 type Line = {
   product_name: string;
@@ -47,6 +47,7 @@ type Line = {
   specification: string;
   uom: string;
   quantity: string;
+  est_unit_price: string;
   tax_percent: string;
   vendor_ids: number[];
   details: boolean;
@@ -60,6 +61,7 @@ const blankLine = (): Line => ({
   specification: "",
   uom: "Nos",
   quantity: "",
+  est_unit_price: "",
   tax_percent: "18",
   vendor_ids: [],
   details: false,
@@ -145,6 +147,11 @@ export default function ProcurementRequestForm() {
   };
 
   const askedVendors = useMemo(() => new Set(lines.flatMap((l) => l.vendor_ids)).size, [lines]);
+  /* As the server works it out: quantity x price, plus GST. */
+  const estimate = lines.reduce(
+    (sum, l) => sum + (Number(l.quantity) || 0) * (Number(l.est_unit_price) || 0) * (1 + (Number(l.tax_percent) || 0) / 100),
+    0,
+  );
   const today = toDateInput(new Date());
   const costCenters = costCentersFor(meta?.cost_centers, header.department_id);
 
@@ -169,6 +176,7 @@ export default function ProcurementRequestForm() {
           .map(({ details: _details, ...l }) => ({
             ...l,
             quantity: num(l.quantity),
+            est_unit_price: num(l.est_unit_price),
             tax_percent: num(l.tax_percent),
           })),
       });
@@ -311,6 +319,7 @@ export default function ProcurementRequestForm() {
               <span>Item *</span>
               <span>Qty *</span>
               <span>Unit</span>
+              <span>Est. Price (₹)</span>
               <span>GST %</span>
               <span className="sr-only">Remove</span>
             </div>
@@ -333,6 +342,19 @@ export default function ProcurementRequestForm() {
                         <input className={CELL} value={line.uom} onChange={(e) => setLine(index, { uom: e.target.value })} />
                       </label>
                       <label className="block">
+                        <span className={`${LINE_LABEL} md:sr-only`}>Est. Price (₹)</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          inputMode="decimal"
+                          placeholder="Per unit"
+                          className={CELL}
+                          value={line.est_unit_price}
+                          onChange={(e) => setLine(index, { est_unit_price: e.target.value })}
+                        />
+                      </label>
+                      <label className="block">
                         <span className={`${LINE_LABEL} md:sr-only`}>GST %</span>
                         <select className={CELL} value={line.tax_percent} onChange={(e) => setLine(index, { tax_percent: e.target.value })}>
                           {["0", "5", "12", "18", "28"].map((g) => (
@@ -345,7 +367,7 @@ export default function ProcurementRequestForm() {
                         aria-label={`Remove item ${n}`}
                         disabled={lines.length === 1}
                         onClick={() => setLines((c) => c.filter((_, i) => i !== index))}
-                        className="justify-self-end rounded-md p-1.5 text-rose-500 hover:bg-rose-50 disabled:opacity-30 dark:hover:bg-rose-950/20"
+                        className="col-span-2 justify-self-end rounded-md p-1.5 text-rose-500 hover:bg-rose-50 disabled:opacity-30 md:col-span-1 dark:hover:bg-rose-950/20"
                       >
                         <FiTrash2 size={13} />
                       </button>
@@ -417,22 +439,26 @@ export default function ProcurementRequestForm() {
 
         <div className="space-y-5 xl:sticky xl:top-[var(--form-header-offset,0px)] xl:self-start">
           <FormCard>
-            <p className="text-[12px] text-[#777777]">When you raise it</p>
-            <ul className="mt-2 space-y-2 text-[13px] text-[#141414] dark:text-slate-200">
-              <li>
-                It goes straight onto the procurement desk{forName ? `, for ${forName},` : ""} assigned to you. No manager approval
-                is needed for the requisition.
-              </li>
-              <li>
-                {askedVendors
-                  ? `Quotation requests are recorded for ${askedVendors} vendor${askedVendors === 1 ? "" : "s"}. You contact them yourself; nothing is sent from here.`
-                  : "Pick vendors under each item to record quotation requests now, or request them later from the desk."}
-              </li>
-              <li>The purchase order you create from their quotations is approved by amount.</li>
-            </ul>
-            <p className="mt-3 border-t border-[#f3f3f3] pt-3 text-[11px] text-[#999999] dark:border-[#17304a]">
-              {lines.length} item{lines.length === 1 ? "" : "s"}, {askedVendors} vendor{askedVendors === 1 ? "" : "s"} to ask
-            </p>
+            <p className="text-[12px] text-[#777777] dark:text-slate-400">Summary</p>
+            <dl className="mt-2 space-y-2 text-[13px]">
+              {[
+                ["For", forName || `Myself (${meta.me.name})`],
+                ["Approval", "Not needed"],
+                ["Items", String(lines.length)],
+                ["Vendors to ask", askedVendors ? String(askedVendors) : "Later, from the desk"],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-baseline justify-between gap-3">
+                  <dt className="text-[#777777] dark:text-slate-400">{label}</dt>
+                  <dd className="truncate text-right font-medium text-[#141414] dark:text-white">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            {estimate > 0 && (
+              <p className="mt-3 flex items-baseline justify-between gap-3 border-t border-[#f3f3f3] pt-3 text-[13px] dark:border-[#17304a]">
+                <span className="text-[#777777] dark:text-slate-400">Est. total incl. GST</span>
+                <span className="font-semibold tabular-nums text-[#141414] dark:text-white">{money(estimate)}</span>
+              </p>
+            )}
           </FormCard>
           <FormCard>
             <AttachmentsField value={files} onChange={setFiles} label="Supporting Documents" hint="Optional: specifications, drawings, an existing quote." />
