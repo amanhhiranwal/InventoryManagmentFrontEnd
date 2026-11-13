@@ -27,18 +27,23 @@ import {
   proformaInvoiceStatusLabel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
 import { downloadSalesOrderPdfApi } from "@/features/salesOrders/api/salesOrders.api";
+import { DeskWithHistory } from "@/features/fulfilment/components/DeskHistory";
 
 export default function AccountsDeskPage() {
+  /* Pending is the working queue; Approved and Rejected are what accounts
+     already decided, so a verified advance can still be looked up. */
   return (
-    <DeskBoard
-      title="Accounts Desk"
-      description="Confirm the money before an order moves, and close it when the balance is settled."
-      load={getAccountsDeskApi}
-      approveLabel="Verify Payment"
-      askReceivedDate
-      emptyNote="Every processed order has had its payment confirmed. New ones arrive here once the business coordinator processes them."
-      detail={(order) => <PaymentDetail order={order} />}
-    />
+    <DeskWithHistory desk="accounts">
+      <DeskBoard
+        title="Accounts Desk"
+        description="Confirm the money before an order moves, and close it when the balance is settled."
+        load={getAccountsDeskApi}
+        approveLabel="Verify Payment"
+        askReceivedDate
+        emptyNote="Every processed order has had its payment confirmed. New ones arrive here once the business coordinator processes them."
+        detail={(order) => <PaymentDetail order={order} />}
+      />
+    </DeskWithHistory>
   );
 }
 

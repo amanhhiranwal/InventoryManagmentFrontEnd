@@ -27,9 +27,11 @@ import {
   getProcurementMetaApi,
   getPurchaseOrderApi,
   logPurchaseOrderActivityApi,
+  paymentActionApi,
   purchaseOrderActionApi,
   updatePaymentApi,
   updatePurchaseOrderApi,
+  type PaymentAction,
   type PaymentInstalment,
   type ProcurementMeta,
   type PurchaseOrder,
@@ -50,6 +52,7 @@ import {
   LABEL,
   Loading,
   Panel,
+  PaymentStatusPill,
   ProcStatus,
   RemarksPrompt,
   day,
@@ -100,12 +103,16 @@ export default function PurchaseOrderDetailPage() {
   const [terms, setTerms] = useState<TermsValue>(EMPTY_TERMS);
   const [instalment, setInstalment] = useState<PaymentInstalment | null>(null);
   const [payment, setPayment] = useState<PaymentDraft | null>(null);
+  const [returnReason, setReturnReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [printing, setPrinting] = useState(false);
 
   const manage = hasPermission("purchase_order.manage");
-  /* Approved POs go to accounts, who record the payments. */
-  const canPay = hasPermission("purchase_order.pay");
+  /* Procurement fill in and submit each instalment; accounts approve it
+     (or return it) and mark it paid. The server decides; these only pick
+     which buttons to show. */
+  const canPay = po?.can_approve_payments ?? hasPermission("purchase_order.pay");
+  const canSubmit = po?.can_submit_payments ?? manage;
   const canSeeList = hasPermission("purchase_order.read") || hasPermission("purchase_order.pay");
 
   const load = useCallback(async () => {
@@ -188,6 +195,7 @@ export default function PurchaseOrderDetailPage() {
 
   const openPayment = (row: PaymentInstalment) => {
     setInstalment(row);
+    setReturnReason("");
     setPayment({
       mode: row.mode || po?.payment_mode || "BANK_TRANSFER",
       bank_name: row.bank_name || "",
@@ -199,19 +207,34 @@ export default function PurchaseOrderDetailPage() {
     });
   };
 
-  const savePayment = async (paid?: boolean) => {
+  const closePayment = () => {
+    setInstalment(null);
+    setPayment(null);
+  };
+
+  /** Procurement: save the details, and with ``submit`` send them to accounts. */
+  const savePayment = async (submit = false) => {
     if (!po || !instalment || !payment) return;
     const body: Record<string, unknown> = {
       ...payment,
       cheque_date: payment.cheque_date || null,
       due_date: payment.due_date || null,
     };
-    if (paid !== undefined) body.paid = paid;
-    const label = paid === true ? "Payment recorded." : paid === false ? "Payment marked unpaid." : "Payment details saved.";
-    if (await run(() => updatePaymentApi(po.id, instalment.id, body), label)) {
-      setInstalment(null);
-      setPayment(null);
-    }
+    const saved = await run(() => updatePaymentApi(po.id, instalment.id, body), "Payment details saved.");
+    if (!saved) return;
+    if (!submit) return closePayment();
+    if (await run(() => paymentActionApi(po.id, instalment.id, "SUBMIT"), "Submitted to accounts.")) closePayment();
+  };
+
+  /** Accounts: approve, return with a reason, or mark paid. */
+  const accountsStep = async (step: PaymentAction) => {
+    if (!po || !instalment) return;
+    if (step === "REJECT" && !returnReason.trim()) return addToast("Say why it is being returned.", "error");
+    const done = await run(
+      () => paymentActionApi(po.id, instalment.id, step, step === "REJECT" ? returnReason.trim() : undefined),
+      "Payment updated.",
+    );
+    if (done) closePayment();
   };
 
   const pdf = async () => {
@@ -406,19 +429,27 @@ export default function PurchaseOrderDetailPage() {
                       primary: true,
                       cell: (p) => (
                         <>
-                          <ProcStatus status={p.status === "PAID" ? "APPROVED" : "PENDING"} label={p.status === "PAID" ? "Paid" : "Pending"} />
-                          {p.paid_by_name && <span className={SUB}>{p.paid_by_name}, {day(p.paid_at)}</span>}
+                          <PaymentStatusPill status={p.status} />
+                          {p.status === "PAID" && p.paid_by_name ? (
+                            <span className={SUB}>{p.paid_by_name}, {day(p.paid_at)}</span>
+                          ) : p.status === "APPROVED" && p.approved_by_name ? (
+                            <span className={SUB}>by {p.approved_by_name}</span>
+                          ) : p.status === "SUBMITTED" && p.submitted_by_name ? (
+                            <span className={SUB}>from {p.submitted_by_name}</span>
+                          ) : p.status === "RETURNED" && p.returned_reason ? (
+                            <span className={SUB}>{p.returned_reason}</span>
+                          ) : null}
                         </>
                       ),
                     },
-                    ...(canPay && po.status !== "CANCELLED"
+                    ...((canPay || canSubmit) && po.status !== "CANCELLED"
                       ? [
                           {
                             header: "",
                             align: "right" as const,
                             cell: (p: PaymentInstalment) => (
                               <button type="button" onClick={() => openPayment(p)} className="text-[12px] font-medium text-[#233353] hover:underline dark:text-sky-300">
-                                {p.status === "PAID" ? "View" : "Update"}
+                                Open
                               </button>
                             ),
                           },
@@ -428,8 +459,8 @@ export default function PurchaseOrderDetailPage() {
                 />
                 <p className="mt-3 text-[11px] text-[#999999]">
                   {payable
-                    ? "Approved: the accounts team records each payment as it is made."
-                    : "Once the PO is approved it goes to accounts, who record the payments."}
+                    ? "Procurement enter each instalment's cheque or transfer and submit it; accounts approve it, then mark it paid."
+                    : "Once the PO is approved, procurement submit each instalment to accounts for payment."}
                 </p>
               </>
             )}
@@ -570,7 +601,26 @@ export default function PurchaseOrderDetailPage() {
       >
         {instalment && payment && (
           <div className="space-y-3">
-            <fieldset disabled={instalment.status === "PAID"} className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <PaymentStatusPill status={instalment.status} />
+              <span className="text-[11px] text-[#777777] dark:text-slate-400">
+                {[
+                  instalment.submitted_by_name && `Submitted by ${instalment.submitted_by_name}, ${when(instalment.submitted_at)}`,
+                  instalment.approved_by_name && `Approved by ${instalment.approved_by_name}, ${when(instalment.approved_at)}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </div>
+            {instalment.status === "RETURNED" && instalment.returned_reason && (
+              <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-[12px] text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+                Returned by {instalment.returned_by_name || "accounts"}: {instalment.returned_reason}
+              </p>
+            )}
+            <fieldset
+              disabled={!canSubmit || !["PENDING", "RETURNED"].includes(instalment.status)}
+              className="space-y-3"
+            >
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className={LABEL} htmlFor="pay-mode">Paid by</label>
@@ -615,13 +665,23 @@ export default function PurchaseOrderDetailPage() {
                 Paid, recorded by {instalment.paid_by_name || "—"} on {when(instalment.paid_at)}.
               </p>
             )}
+            {canPay && instalment.status === "SUBMITTED" && (
+              <div>
+                <label className={LABEL} htmlFor="pay-return">Reason, if returning it to procurement</label>
+                <input
+                  id="pay-return"
+                  className={INPUT}
+                  value={returnReason}
+                  onChange={(e) => setReturnReason(e.target.value)}
+                  placeholder="e.g. Cheque date does not match the due date"
+                />
+              </div>
+            )}
             <div className="flex flex-wrap justify-end gap-2 border-t border-[#f3f3f3] pt-3 dark:border-[#17304a]">
-              <button type="button" onClick={() => setInstalment(null)} className="rounded-lg border border-slate-200 px-3.5 py-2 text-[13px] dark:border-[#17304a]">Close</button>
-              {instalment.status === "PAID" ? (
-                <button type="button" disabled={busy} onClick={() => savePayment(false)} className="rounded-lg border border-[#f7969e] px-3.5 py-2 text-[13px] text-[#d00517] disabled:opacity-50">
-                  Mark Unpaid
-                </button>
-              ) : (
+              <button type="button" onClick={closePayment} className="rounded-lg border border-slate-200 px-3.5 py-2 text-[13px] dark:border-[#17304a]">Close</button>
+
+              {/* Procurement: details, then submit to accounts. */}
+              {canSubmit && ["PENDING", "RETURNED"].includes(instalment.status) && (
                 <>
                   <button type="button" disabled={busy} onClick={() => savePayment()} className="rounded-lg border border-slate-200 px-3.5 py-2 text-[13px] dark:border-[#17304a] disabled:opacity-50">
                     Save Details
@@ -631,11 +691,34 @@ export default function PurchaseOrderDetailPage() {
                     disabled={busy || !payable}
                     title={payable ? undefined : "The PO must be approved first"}
                     onClick={() => savePayment(true)}
-                    className="rounded-lg bg-emerald-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                    className="rounded-lg bg-[#243454] px-3.5 py-2 text-[13px] font-medium text-white hover:bg-[#18243a] disabled:opacity-50"
                   >
-                    Mark Paid
+                    Submit to Accounts
                   </button>
                 </>
+              )}
+
+              {/* Accounts: approve or return what procurement submitted, then pay it. */}
+              {canPay && instalment.status === "SUBMITTED" && (
+                <>
+                  <button
+                    type="button"
+                    disabled={busy || !returnReason.trim()}
+                    title={returnReason.trim() ? undefined : "Enter the reason first"}
+                    onClick={() => accountsStep("REJECT")}
+                    className="rounded-lg border border-[#f7969e] px-3.5 py-2 text-[13px] text-[#d00517] disabled:opacity-50"
+                  >
+                    Return to Procurement
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => accountsStep("APPROVE")} className="rounded-lg bg-[#243454] px-3.5 py-2 text-[13px] font-medium text-white hover:bg-[#18243a] disabled:opacity-50">
+                    Approve
+                  </button>
+                </>
+              )}
+              {canPay && instalment.status === "APPROVED" && (
+                <button type="button" disabled={busy} onClick={() => accountsStep("MARK_PAID")} className="rounded-lg bg-emerald-600 px-3.5 py-2 text-[13px] font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                  Mark Paid
+                </button>
               )}
             </div>
           </div>

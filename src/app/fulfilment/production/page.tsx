@@ -12,24 +12,27 @@
 
 import { getProductionDeskApi } from "@/features/fulfilment/api/fulfilment.api";
 import DeskBoard from "@/features/fulfilment/components/DeskBoard";
+import { DeskWithHistory } from "@/features/fulfilment/components/DeskHistory";
 import StockDetail from "@/features/fulfilment/components/StockDetail";
 import { SALES_ORDER_STATUS } from "@/features/salesOrders/api/salesOrders.api";
 
 export default function ProductionDeskPage() {
   return (
-    <DeskBoard
-      title="Production"
-      description="Confirm the stock, then name a serial for every unit and mark the order ready for dispatch."
-      load={getProductionDeskApi}
-      approveLabel={(order) =>
-        order.status === SALES_ORDER_STATUS.PAYMENT_VERIFIED
-          ? "Start Production"
-          : "Mark Ready For Dispatch"
-      }
-      emptyNote="Nothing has been released to production. Orders arrive here once accounts have verified the payment."
-      detail={(order, context) => (
-        <StockDetail key={order.id} order={order} context={context} />
-      )}
-    />
+    <DeskWithHistory desk="production">
+      <DeskBoard
+        title="Production"
+        description="Confirm the stock, then name a serial for every unit and mark the order ready for dispatch."
+        load={getProductionDeskApi}
+        approveLabel={(order) =>
+          order.status === SALES_ORDER_STATUS.PAYMENT_VERIFIED
+            ? "Start Production"
+            : "Mark Ready For Dispatch"
+        }
+        emptyNote="Nothing has been released to production. Orders arrive here once accounts have verified the payment."
+        detail={(order, context) => (
+          <StockDetail key={order.id} order={order} context={context} />
+        )}
+      />
+    </DeskWithHistory>
   );
 }

@@ -656,6 +656,10 @@ export interface PurchaseOrder {
   requester_name?: string | null;
   waiting_on?: ApprovalStepRow | null;
   can_decide?: boolean;
+  /** Procurement: fill in and submit instalments. */
+  can_submit_payments?: boolean;
+  /** Accounts: approve, return and mark instalments paid. */
+  can_approve_payments?: boolean;
   items?: PurchaseOrderItem[];
   approvals?: ApprovalStepRow[];
   payments?: PaymentInstalment[];
@@ -675,11 +679,35 @@ export interface PaymentInstalment {
   cheque_number?: string | null;
   cheque_date?: string | null;
   reference?: string | null;
-  status: "PENDING" | "PAID";
+  status: PaymentStatus;
+  submitted_at?: string | null;
+  submitted_by_name?: string | null;
+  approved_at?: string | null;
+  approved_by_name?: string | null;
+  returned_reason?: string | null;
+  returned_at?: string | null;
+  returned_by_name?: string | null;
   paid_at?: string | null;
   paid_by_name?: string | null;
   remarks?: string | null;
 }
+
+/** PENDING (procurement to submit) -> SUBMITTED (with accounts) ->
+    APPROVED -> PAID; accounts may send a submission back (RETURNED). */
+export type PaymentStatus = "PENDING" | "RETURNED" | "SUBMITTED" | "APPROVED" | "PAID";
+export type PaymentAction = "SUBMIT" | "APPROVE" | "REJECT" | "MARK_PAID";
+
+/** Procurement submits; accounts approve, return (remarks needed) or mark paid. */
+export const paymentActionApi = async (
+  poId: number,
+  paymentId: number,
+  action: PaymentAction,
+  remarks?: string,
+) =>
+  (await api.post(`/api/v1/purchase-orders/${poId}/payments/${paymentId}/action`, { action, remarks })).data as {
+    data: PurchaseOrder;
+    message: string;
+  };
 
 export const getPurchaseOrdersApi = async (params: Record<string, unknown>) =>
   (await api.get("/api/v1/purchase-orders", { params })).data as {
@@ -697,6 +725,65 @@ export const decidePurchaseOrderApi = async (id: number, decision: "APPROVE" | "
     data: PurchaseOrder;
     message: string;
   };
+/** One instalment on the Payment Calendar, with the PO it belongs to. */
+export interface CalendarPayment {
+  id: number;
+  purchase_order_id: number;
+  po_number: string;
+  vendor_name?: string | null;
+  link: string;
+  label: string;
+  percent: number;
+  amount: number;
+  due_date?: string | null;
+  week?: number | null;
+  week_start?: string | null;
+  mode?: string | null;
+  bank_name?: string | null;
+  cheque_number?: string | null;
+  cheque_date?: string | null;
+  reference?: string | null;
+  status: PaymentStatus;
+  /** "Awaiting accounts approval" and the like. */
+  stage: string;
+  overdue: boolean;
+  submitted_by_name?: string | null;
+  approved_by_name?: string | null;
+  returned_reason?: string | null;
+  returned_by_name?: string | null;
+  paid_by_name?: string | null;
+}
+
+export interface PaymentCalendar {
+  weeks: {
+    week_start: string | null;
+    week: number | null;
+    rows: CalendarPayment[];
+    total: number;
+    pending: number;
+  }[];
+  summary: {
+    pending: number;
+    overdue: number;
+    with_procurement: number;
+    with_accounts: number;
+    approved: number;
+    paid: number;
+    count: number;
+  };
+  can_submit: boolean;
+  can_approve: boolean;
+}
+
+/** Every approved PO's instalments by week. Unpaid ones from before
+    ``start`` are always included, marked overdue. */
+export const getPaymentCalendarApi = async (params: {
+  start?: string;
+  end?: string;
+  status?: string;
+}): Promise<PaymentCalendar> =>
+  (await api.get("/api/v1/purchase-orders/payment-calendar", { params })).data.data;
+
 export const updatePaymentApi = async (poId: number, paymentId: number, payload: Record<string, unknown>) =>
   (await api.put(`/api/v1/purchase-orders/${poId}/payments/${paymentId}`, payload)).data as {
     data: PurchaseOrder;
