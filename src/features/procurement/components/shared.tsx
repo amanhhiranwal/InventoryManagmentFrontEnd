@@ -80,6 +80,28 @@ export function ProcStatus({ status, label }: { status?: string | null; label?: 
   return <StatusPill status={key} label={label || humanize(key)} tone={TONE[key] || "neutral"} />;
 }
 
+/** Where a PO instalment stands: procurement submit it, accounts approve
+    it (or return it) and then mark it paid. */
+const PAYMENT_STATUS: Record<string, { label: string; tone: PillTone }> = {
+  PENDING: { label: "To submit", tone: "neutral" },
+  RETURNED: { label: "Returned", tone: "rose" },
+  SUBMITTED: { label: "With accounts", tone: "amber" },
+  APPROVED: { label: "Approved", tone: "blue" },
+  PAID: { label: "✓ Paid", tone: "green" },
+};
+
+export function PaymentStatusPill({ status, overdue }: { status: string; overdue?: boolean }) {
+  const known = PAYMENT_STATUS[status] || { label: humanize(status), tone: "neutral" as PillTone };
+  const late = overdue && status !== "PAID";
+  return (
+    <StatusPill
+      status={status}
+      label={late ? `${known.label} · Overdue` : known.label}
+      tone={late && known.tone === "neutral" ? "rose" : known.tone}
+    />
+  );
+}
+
 export const money = (value?: number | null, currency = "INR") =>
   value === null || value === undefined || Number.isNaN(Number(value))
     ? "—"

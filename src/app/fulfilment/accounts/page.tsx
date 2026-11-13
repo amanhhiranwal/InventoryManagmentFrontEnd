@@ -27,18 +27,62 @@ import {
   proformaInvoiceStatusLabel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
 import { downloadSalesOrderPdfApi } from "@/features/salesOrders/api/salesOrders.api";
+import AccountsHistory from "@/features/fulfilment/components/AccountsHistory";
+import { useState } from "react";
+
+const VIEWS = [
+  { value: "PENDING", label: "Pending" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REJECTED", label: "Rejected" },
+] as const;
+
+type View = (typeof VIEWS)[number]["value"];
 
 export default function AccountsDeskPage() {
+  /* Pending is the working queue; Approved and Rejected are what accounts
+     already decided, so a verified advance can still be looked up. */
+  const [view, setView] = useState<View>("PENDING");
+
   return (
-    <DeskBoard
-      title="Accounts Desk"
-      description="Confirm the money before an order moves, and close it when the balance is settled."
-      load={getAccountsDeskApi}
-      approveLabel="Verify Payment"
-      askReceivedDate
-      emptyNote="Every processed order has had its payment confirmed. New ones arrive here once the business coordinator processes them."
-      detail={(order) => <PaymentDetail order={order} />}
-    />
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Accounts desk" className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 dark:border-[#17304a] dark:bg-[#071929]">
+        {VIEWS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={view === option.value}
+            onClick={() => setView(option.value)}
+            className={`rounded-md px-3.5 py-1.5 text-[12px] font-medium transition-colors ${
+              view === option.value
+                ? "bg-[#233353] text-white dark:bg-[#2b4470]"
+                : "text-[#474747] hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-[#0b2034]"
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {view === "PENDING" ? (
+        <DeskBoard
+          title="Accounts Desk"
+          description="Confirm the money before an order moves, and close it when the balance is settled."
+          load={getAccountsDeskApi}
+          approveLabel="Verify Payment"
+          askReceivedDate
+          emptyNote="Every processed order has had its payment confirmed. New ones arrive here once the business coordinator processes them."
+          detail={(order) => <PaymentDetail order={order} />}
+        />
+      ) : (
+        <>
+          <h1 className="text-[18px] font-semibold text-slate-900 dark:text-white">
+            Accounts Desk · {view === "APPROVED" ? "Approved" : "Rejected"}
+          </h1>
+          <AccountsHistory decision={view} />
+        </>
+      )}
+    </div>
   );
 }
 
