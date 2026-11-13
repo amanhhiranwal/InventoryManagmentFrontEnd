@@ -66,6 +66,36 @@ export function priceFromSelling(listPrice: number, sellingPrice: number): LineP
   return { unitPrice: list, discount: discountPercentFor(list, selling), markedUp: false };
 }
 
+/**
+ * A line moved onto another price list - the customer type changed, so the
+ * document is now written against DTP rather than ECP or back.
+ *
+ * Mirrors settle_line_price() on the server, which prices the saved line:
+ * a marked-up line keeps its selling price only while that is still above
+ * the new list price; every other line sells from the new list, keeping
+ * its discount. Without this the screen kept the old list's prices while
+ * the server stored the new one's, and the two totals disagreed.
+ */
+export function rebaseLinePrice<
+  T extends { price: number; discount: number; listPrice?: number; markedUp?: boolean },
+>(line: T, listPrice: number): T {
+  const list = Number(listPrice) || 0;
+
+  if (list <= 0) return line;
+
+  if (line.markedUp && Number(line.price) > list) {
+    return { ...line, listPrice: list };
+  }
+
+  return {
+    ...line,
+    price: list,
+    listPrice: list,
+    markedUp: false,
+    discount: line.markedUp ? 0 : line.discount,
+  };
+}
+
 /** The rupees off one unit, for a discount entered as an amount. */
 export function discountAmountFor(unitPrice: number, discountPercent: number): number {
   const price = Number(unitPrice) || 0;

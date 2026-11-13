@@ -15,10 +15,7 @@ import api from "@/lib/axios";
 import { numericText } from "@/components/crm/AmountInput";
 import { useUIStore } from "@/lib/store/ui.store";
 import { StatusPill } from "@/components/crm/Pill";
-import {
-  PRICE_TYPE,
-  requestApprovalApi,
-} from "@/features/approvals/api/approvals.api";
+import { sendSalesOrderForApproval } from "@/features/salesOrders/sendForApproval";
 import ApprovalPanel from "@/features/approvals/components/ApprovalPanel";
 import OrderAdvancePanel from "@/features/fulfilment/components/OrderAdvancePanel";
 import { hasPermission } from "@/features/auth/utils/permissions";
@@ -565,11 +562,7 @@ export default function SalesOrderDetailPage() {
         ? (Number(order.discount_amount || 0) / subtotal) * 100
         : 0;
 
-      const approval = await requestApprovalApi({
-        document_type: "SALES_ORDER",
-        document_id: order.id,
-        document_number: order.order_number,
-        price_type: PRICE_TYPE.ECP,
+      const sent = await sendSalesOrderForApproval(order, {
         discount_percent: Number(discountPercent.toFixed(2)),
         discount_amount: order.discount_amount,
         orc_percent: order.orc_percent,
@@ -577,20 +570,12 @@ export default function SalesOrderDetailPage() {
         document_value: order.grand_total,
       });
 
-      if (approval) {
-        addToast(
-          `Sent to the ${approval.waiting_on} for approval.`,
-          "success",
-        );
-      } else {
-        const result = await logSalesOrderActivityApi(order.id, {
-          status: SALES_ORDER_STATUS.CONFIRMED,
-          remarks: "No discount to approve, so the order was confirmed.",
-        });
-
-        setOrder(result.order);
-        addToast("No discount to approve. Sales order confirmed.", "success");
-      }
+      addToast(
+        sent.kind === "sent"
+          ? `Sent to the ${sent.approval.waiting_on} for approval.`
+          : "No discount to approve. Sales order confirmed.",
+        "success",
+      );
 
       await loadOrder();
       await loadActivities();
