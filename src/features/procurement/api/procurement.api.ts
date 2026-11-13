@@ -697,6 +697,49 @@ export const decidePurchaseOrderApi = async (id: number, decision: "APPROVE" | "
     data: PurchaseOrder;
     message: string;
   };
+/** One instalment on the Payment Calendar, with the PO it belongs to. */
+export interface CalendarPayment {
+  id: number;
+  purchase_order_id: number;
+  po_number: string;
+  vendor_name?: string | null;
+  link: string;
+  label: string;
+  percent: number;
+  amount: number;
+  due_date?: string | null;
+  week?: number | null;
+  week_start?: string | null;
+  mode?: string | null;
+  bank_name?: string | null;
+  cheque_number?: string | null;
+  cheque_date?: string | null;
+  reference?: string | null;
+  status: "PENDING" | "PAID";
+  overdue: boolean;
+  paid_by_name?: string | null;
+}
+
+export interface PaymentCalendar {
+  weeks: {
+    week_start: string | null;
+    week: number | null;
+    rows: CalendarPayment[];
+    total: number;
+    pending: number;
+  }[];
+  summary: { pending: number; overdue: number; paid: number; count: number };
+}
+
+/** Every approved PO's instalments by week. Unpaid ones from before
+    ``start`` are always included, marked overdue. */
+export const getPaymentCalendarApi = async (params: {
+  start?: string;
+  end?: string;
+  status?: string;
+}): Promise<PaymentCalendar> =>
+  (await api.get("/api/v1/purchase-orders/payment-calendar", { params })).data.data;
+
 export const updatePaymentApi = async (poId: number, paymentId: number, payload: Record<string, unknown>) =>
   (await api.put(`/api/v1/purchase-orders/${poId}/payments/${paymentId}`, payload)).data as {
     data: PurchaseOrder;
