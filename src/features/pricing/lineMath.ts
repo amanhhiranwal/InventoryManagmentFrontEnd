@@ -38,6 +38,34 @@ export function discountPercentFor(unitPrice: number, sellingPrice: number): num
   return clampPercent(round(((price - selling) / price) * 100));
 }
 
+/** A line's price once a selling price is typed, allowing a markup. */
+export interface LinePrice {
+  /** What the line is sold at per unit, before any discount. */
+  unitPrice: number;
+  discount: number;
+  /** Sold above its list price: no discount, and the unit price is the
+      selling price on every page and document. */
+  markedUp: boolean;
+}
+
+/**
+ * A typed selling price, against the list price.
+ *
+ * Up to the list price it is a discount, as it always was. Above it the
+ * line is marked up: the selling price becomes the unit price and the line
+ * takes no discount - the server refuses one (settle_line_price).
+ */
+export function priceFromSelling(listPrice: number, sellingPrice: number): LinePrice {
+  const list = Number(listPrice) || 0;
+  const selling = Number(sellingPrice) || 0;
+
+  if (list > 0 && selling > list) {
+    return { unitPrice: round(selling), discount: 0, markedUp: true };
+  }
+
+  return { unitPrice: list, discount: discountPercentFor(list, selling), markedUp: false };
+}
+
 /** The rupees off one unit, for a discount entered as an amount. */
 export function discountAmountFor(unitPrice: number, discountPercent: number): number {
   const price = Number(unitPrice) || 0;

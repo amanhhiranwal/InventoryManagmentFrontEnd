@@ -43,6 +43,7 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
+import type { LinePrice } from "@/features/pricing/lineMath";
 import {
   upliftFor,
   useWarrantyRates,
@@ -271,6 +272,11 @@ interface SelectedProduct {
   /** The warranty term quoted on this line, by name. What it costs is
       decided by Masters and applied on the server, never here. */
   warrantyTerm: string;
+  /** The price list's figure; ``price`` is above it only when marked up. */
+  listPrice?: number;
+  /** Sold above the list price: ``price`` is the selling price, and the
+      line takes no discount. */
+  markedUp?: boolean;
 }
 
 /* =========================================================
@@ -1213,6 +1219,8 @@ export default function OrdersListPage() {
               discount: Number(item.discount) || 0,
               tax: Number(item.tax_rate) || 0,
               warrantyTerm: item.warranty_term || "",
+              listPrice: Number(item.list_price) || Number(item.price ?? item.rate) || 0,
+              markedUp: Boolean(item.marked_up),
             };
           }),
         );
@@ -1581,6 +1589,9 @@ export default function OrdersListPage() {
               tax: Number(item.tax ?? quotation.gst_percent) || 0,
               /* Whatever cover the proposal quoted comes across with it. */
               warrantyTerm: item.warranty_term || "",
+              /* So does a price above the list price. */
+              listPrice: Number(item.list_price) || Number(item.unit_price) || 0,
+              markedUp: Boolean(item.marked_up),
             };
           }),
         );
@@ -1692,6 +1703,8 @@ export default function OrdersListPage() {
           /* The rate that matches who is buying, carried from the
              proposal's customer type onto the order. */
           price: rateFor(product, priceBasis),
+          listPrice: rateFor(product, priceBasis),
+          markedUp: false,
           quantity: 1,
           discount: 0,
           tax: 18,
@@ -1722,6 +1735,18 @@ export default function OrdersListPage() {
                 ? String(value)
                 : Math.max(0, Number(value)),
             }
+          : item,
+      ),
+    );
+  };
+
+  /** A typed selling price: a discount up to the list price, a markup
+      (with no discount) above it. */
+  const priceSelectedProduct = (id: string, line: LinePrice) => {
+    setSelectedProducts((current) =>
+      current.map((item) =>
+        item.id === id
+          ? { ...item, price: line.unitPrice, discount: line.discount, markedUp: line.markedUp }
           : item,
       ),
     );
@@ -1878,6 +1903,7 @@ export default function OrdersListPage() {
           discount: item.discount,
           tax_rate: item.tax,
           warranty_term: item.warrantyTerm,
+          marked_up: Boolean(item.markedUp),
         })),
 
         total_amount: subtotal,
@@ -2082,6 +2108,13 @@ export default function OrdersListPage() {
     (sum, item) => sum + lineWithCover(item) * (item.discount / 100),
     0,
   );
+
+  /* A line sold above its list price takes no discount, and neither does
+     the order then: a typed overall discount is cleared. */
+  const anyMarkedUp = selectedProducts.some((item) => item.markedUp);
+  useEffect(() => {
+    if (anyMarkedUp) setDiscountInput((current) => (current ? null : current));
+  }, [anyMarkedUp]);
 
   /* A discount typed into the summary overrides the per-line total, and can
      never exceed what is being discounted. Mirrors compute_order_totals in
@@ -2958,16 +2991,21 @@ export default function OrdersListPage() {
                             </td>
 
                             <td className="px-3 py-3">
-                              <PercentCell
-                                value={item.discount}
-                                onChange={(next) =>
-                                  updateSelectedProduct(
-                                    item.id,
-                                    "discount",
-                                    next,
-                                  )
-                                }
-                              />
+                              {/* Sold above the list price: no discount. */}
+                              {item.markedUp ? (
+                                <span className="text-[11px] text-slate-400" title="Sold above the list price - no discount">—</span>
+                              ) : (
+                                <PercentCell
+                                  value={item.discount}
+                                  onChange={(next) =>
+                                    updateSelectedProduct(
+                                      item.id,
+                                      "discount",
+                                      next,
+                                    )
+                                  }
+                                />
+                              )}
                             </td>
 
                             {/* Tax was display-only, so a line that should be
@@ -3026,14 +3064,9 @@ export default function OrdersListPage() {
                               <LineSellingPriceInput
                                 unitPrice={item.price}
                                 discount={item.discount}
+                                listPrice={item.listPrice}
                                 ariaLabel={`Selling price for ${item.name}`}
-                                onChange={(discount) =>
-                                  updateSelectedProduct(
-                                    item.id,
-                                    "discount",
-                                    discount,
-                                  )
-                                }
+                                onPrice={(price) => priceSelectedProduct(item.id, price)}
                               />
                             </td>
 
@@ -3073,21 +3106,32 @@ export default function OrdersListPage() {
 
                       {/* Discount defaults to the per-line total; entering one
                           here overrides it, in rupees or as a percentage. */}
+                      {/* With a line sold above its list price the order takes
+                          no overall discount; the server refuses one. */}
                       <OrderSummaryRow
                         label="Total Discount"
                         value={`-${money(orderDiscount)}`}
                         tone="rose"
-                        edit={{
-                          amount:
-                            discountInput === null
-                              ? Math.round(orderDiscount)
-                              : discountInput,
-                          mode: discountMode,
-                          base: orderSubtotal,
-                          onChange: setDiscountInput,
-                          onModeChange: setDiscountMode,
-                        }}
+                        edit={
+                          anyMarkedUp
+                            ? undefined
+                            : {
+                                amount:
+                                  discountInput === null
+                                    ? Math.round(orderDiscount)
+                                    : discountInput,
+                                mode: discountMode,
+                                base: orderSubtotal,
+                                onChange: setDiscountInput,
+                                onModeChange: setDiscountMode,
+                              }
+                        }
                       />
+                      {anyMarkedUp && (
+                        <p className="text-right text-[10px] text-slate-400">
+                          A line is sold above its list price, so the order takes no overall discount.
+                        </p>
+                      )}
 
                       {/* A commission we pay out, not a charge the customer
                           is billed, so it is recorded here and comes off the
@@ -3933,14 +3977,9 @@ export default function OrdersListPage() {
                                 fill
                                 unitPrice={item.price}
                                 discount={item.discount}
+                                listPrice={item.listPrice}
                                 ariaLabel={`Selling price for ${item.name}`}
-                                onChange={(discount) =>
-                                  updateSelectedProduct(
-                                    item.id,
-                                    "discount",
-                                    discount,
-                                  )
-                                }
+                                onPrice={(price) => priceSelectedProduct(item.id, price)}
                               />
                             </div>
 
@@ -3949,10 +3988,12 @@ export default function OrdersListPage() {
                                 Discount
                               </label>
 
+                              {/* Sold above the list price: no discount. */}
                               <LineDiscountInput
                                 fill
                                 unitPrice={item.price}
                                 discount={item.discount}
+                                disabled={item.markedUp}
                                 ariaLabel={`Discount for ${item.name}`}
                                 onChange={(discount) =>
                                   updateSelectedProduct(

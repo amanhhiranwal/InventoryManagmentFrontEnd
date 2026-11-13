@@ -8,7 +8,9 @@ import {
   discountAmountFor,
   discountPercentFor,
   percentForDiscountAmount,
+  priceFromSelling,
   sellingPriceFor,
+  type LinePrice,
 } from "./lineMath";
 
 /**
@@ -33,6 +35,8 @@ export function LineSellingPriceInput({
   unitPrice,
   discount,
   onChange,
+  listPrice,
+  onPrice,
   ariaLabel,
   disabled,
   fill,
@@ -40,7 +44,13 @@ export function LineSellingPriceInput({
   unitPrice: number;
   discount: number;
   /** Receives the discount the typed selling price works out to. */
-  onChange: (discount: number) => void;
+  onChange?: (discount: number) => void;
+  /** The price list's figure. With ``onPrice`` it lets the selling price
+      go above it: the line is then marked up, with no discount. */
+  listPrice?: number;
+  /** Receives the line's price - unit price, discount, marked up - for a
+      selling price that may be above the list price. */
+  onPrice?: (price: LinePrice) => void;
   ariaLabel?: string;
   disabled?: boolean;
   /** Take the whole column, for a form row rather than a table cell. */
@@ -68,7 +78,9 @@ export function LineSellingPriceInput({
       }}
       onChange={(event) => {
         setDraft(event.target.value);
-        onChange(discountPercentFor(unitPrice, parseAmount(event.target.value)));
+        const typed = parseAmount(event.target.value);
+        if (onPrice) onPrice(priceFromSelling(listPrice ?? unitPrice, typed));
+        else onChange?.(discountPercentFor(unitPrice, typed));
       }}
       onBlur={() => setEditing(false)}
       className={`${FIELD} ${fill ? "w-full" : "w-24"} disabled:cursor-not-allowed disabled:bg-slate-50 dark:disabled:bg-[#0b2034]`}
