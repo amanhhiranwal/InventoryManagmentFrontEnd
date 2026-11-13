@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CgSpinner } from "react-icons/cg";
-import { FiFileText } from "react-icons/fi";
+import { FiFileText, FiTruck } from "react-icons/fi";
 import { LuCheck, LuUpload } from "react-icons/lu";
 
 import { useUIStore } from "@/lib/store/ui.store";
@@ -33,6 +33,7 @@ import DeskBoard, {
   DeskDetailContext,
 } from "@/features/fulfilment/components/DeskBoard";
 import { Panel } from "@/features/fulfilment/components/DeskPanels";
+import { DeskWithHistory } from "@/features/fulfilment/components/DeskHistory";
 import StockDetail from "@/features/fulfilment/components/StockDetail";
 import { SALES_ORDER_STATUS } from "@/features/salesOrders/api/salesOrders.api";
 
@@ -44,16 +45,18 @@ const BUTTON: Record<string, string> = {
 
 export default function LogisticsDeskPage() {
   return (
-    <DeskBoard
-      title="Logistics"
-      description="Upload the dispatch documents, send ready orders out, and mark them out for delivery and delivered."
-      load={getLogisticsDeskApi}
-      approveLabel={(order) => BUTTON[order.status] || "Confirm & Move On"}
-      emptyNote="Nothing is ready to go out. Orders arrive here once production have marked them ready to dispatch."
-      detail={(order, context) => (
-        <LogisticsDetail key={order.id} order={order} context={context} />
-      )}
-    />
+    <DeskWithHistory desk="logistics">
+      <DeskBoard
+        title="Logistics"
+        description="Upload the dispatch documents, send ready orders out, and mark them out for delivery and delivered."
+        load={getLogisticsDeskApi}
+        approveLabel={(order) => BUTTON[order.status] || "Confirm & Move On"}
+        emptyNote="Nothing is ready to go out. Orders arrive here once production have marked them ready to dispatch."
+        detail={(order, context) => (
+          <LogisticsDetail key={order.id} order={order} context={context} />
+        )}
+      />
+    </DeskWithHistory>
   );
 }
 
@@ -70,18 +73,76 @@ function LogisticsDetail({
     .map((doc) => doc.label)
     .join(", ");
   const ready = order.status === SALES_ORDER_STATUS.READY;
+  const goingOut = order.status === SALES_ORDER_STATUS.DISPATCHED;
+
+  /* Out for delivery needs the vehicle and the driver taking it; the
+     server refuses the move without both. */
+  const [vehicle, setVehicle] = useState(order.delivery_vehicle_number || "");
+  const [driver, setDriver] = useState(order.delivery_driver_name || "");
+  const needs = [!vehicle.trim() && "vehicle number", !driver.trim() && "driver name"].filter(Boolean).join(" and ");
 
   const { setAction } = context;
 
   useEffect(() => {
     setAction({
       label: BUTTON[order.status],
-      blocked: ready && missing ? `Upload the ${missing} first.` : null,
+      blocked: ready && missing
+        ? `Upload the ${missing} first.`
+        : goingOut && needs
+          ? `Enter the ${needs} first.`
+          : null,
+      extra: goingOut ? { vehicle_number: vehicle.trim(), driver_name: driver.trim() } : undefined,
     });
-  }, [order.status, missing, ready, setAction]);
+  }, [order.status, missing, ready, goingOut, needs, vehicle, driver, setAction]);
 
   return (
     <div className="space-y-6">
+      {goingOut && (
+        <Panel title="Vehicle & Driver" icon={<FiTruck size={14} />}>
+          <p className="text-[11px] text-[#777777] dark:text-slate-400">
+            Both are needed to mark the order out for delivery. They are kept on the sales order.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="ld-vehicle" className="mb-1 block text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+                Vehicle Number <span className="text-rose-500">*</span>
+              </label>
+              <input
+                id="ld-vehicle"
+                required
+                maxLength={30}
+                value={vehicle}
+                onChange={(event) => setVehicle(event.target.value.toUpperCase())}
+                placeholder="e.g. DL 01 AB 1234"
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[12px] uppercase text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+              />
+            </div>
+            <div>
+              <label htmlFor="ld-driver" className="mb-1 block text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+                Driver Name <span className="text-rose-500">*</span>
+              </label>
+              <input
+                id="ld-driver"
+                required
+                maxLength={120}
+                value={driver}
+                onChange={(event) => setDriver(event.target.value)}
+                placeholder="Full name"
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[12px] text-slate-700 outline-none focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+              />
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {order.status === SALES_ORDER_STATUS.OUT_FOR_DELIVERY && order.delivery_vehicle_number && (
+        <Panel title="Vehicle & Driver" icon={<FiTruck size={14} />}>
+          <p className="text-[12px] text-[#474747] dark:text-slate-200">
+            {order.delivery_vehicle_number} · {order.delivery_driver_name}
+          </p>
+        </Panel>
+      )}
+
       <Panel title="Dispatch Documents" icon={<FiFileText size={14} />}>
         <p className="text-[11px] text-[#777777] dark:text-slate-400">
           All three are needed before the order can be dispatched. They are kept

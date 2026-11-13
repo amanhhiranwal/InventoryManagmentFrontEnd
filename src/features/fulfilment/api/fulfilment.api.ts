@@ -105,6 +105,9 @@ export interface DeskOrder {
   /** The day accounts said the advance, and later the balance, came in. */
   advance_received_date?: string | null;
   balance_received_date?: string | null;
+  /** Logistics' vehicle and driver, entered to mark it out for delivery. */
+  delivery_vehicle_number?: string | null;
+  delivery_driver_name?: string | null;
   /** Whether the advance on the invoice covers what was asked for. */
   advance_settled: boolean;
 
@@ -151,7 +154,7 @@ export const getAccountsDeskApi = async (): Promise<DeskQueue> => {
   return data.data;
 };
 
-/** One decision accounts already took on an order. */
+/** One decision a desk already took on an order. */
 export interface DeskDecision {
   id: number;
   order_id: number;
@@ -159,7 +162,11 @@ export interface DeskDecision {
   customer_name?: string | null;
   company_name?: string | null;
   stage: string;
-  kind: "ADVANCE" | "BALANCE";
+  /** Accounts decide on the advance or the balance; the other desks on a stage. */
+  kind: "ADVANCE" | "BALANCE" | "STAGE";
+  desk: string;
+  vehicle_number?: string | null;
+  driver_name?: string | null;
   decision: "APPROVED" | "REJECTED";
   action: string;
   remarks?: string | null;
@@ -171,13 +178,17 @@ export interface DeskDecision {
   current_status: string;
 }
 
-/** What accounts verified (APPROVED) or put on hold (REJECTED), newest first. */
-export const getAccountsHistoryApi = async (
+/** The desks that keep a history of their decisions. */
+export type HistoryDesk = "accounts" | "production" | "logistics";
+
+/** What a desk moved on (APPROVED) or put on hold (REJECTED), newest first. */
+export const getDeskHistoryApi = async (
+  desk: HistoryDesk,
   decision: "APPROVED" | "REJECTED",
   page = 1,
   size = 50,
 ): Promise<{ rows: DeskDecision[]; total: number; page: number; size: number }> => {
-  const { data } = await api.get("/api/v1/fulfilment/accounts/history", {
+  const { data } = await api.get(`/api/v1/fulfilment/${desk}/history`, {
     params: { decision, page, size },
   });
   return data.data;
