@@ -16,6 +16,7 @@ import {
 } from "@/lib/fieldChecks";
 
 import {
+  PRICE_BASIS,
   PRODUCT_CATALOG,
   priceBasisFor,
   productSku,
@@ -43,6 +44,7 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
+import { rebaseLinePrice, type LinePrice } from "@/features/pricing/lineMath";
 import {
   upliftFor,
   useWarrantyRates,
@@ -72,10 +74,7 @@ import {
   getPaymentTermOptionsApi,
   type PaymentTermOption,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
-import {
-  PRICE_TYPE,
-  requestApprovalApi,
-} from "@/features/approvals/api/approvals.api";
+import { sendSalesOrderForApproval } from "@/features/salesOrders/sendForApproval";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
 import {
   StoredAttachment,
@@ -271,6 +270,11 @@ interface SelectedProduct {
   /** The warranty term quoted on this line, by name. What it costs is
       decided by Masters and applied on the server, never here. */
   warrantyTerm: string;
+  /** The price list's figure; ``price`` is above it only when marked up. */
+  listPrice?: number;
+  /** Sold above the list price: ``price`` is the selling price, and the
+      line takes no discount. */
+  markedUp?: boolean;
 }
 
 /* =========================================================
@@ -536,7 +540,9 @@ export default function OrdersListPage() {
 
   const [productCategory, setProductCategory] = useState("All");
 
-  const catalog = useInventoryCatalog(showProductModal);
+  /* Loaded while the form is open, not only once the picker opens: a
+     change of customer type re-prices the lines from it. */
+  const catalog = useInventoryCatalog(showProductModal || showCreateOrder);
 
   /* Summary charges. These inputs previously had defaultValue={0} and were
      bound to nothing, so anything entered was discarded and never reached
@@ -582,6 +588,13 @@ export default function OrdersListPage() {
      form then saves through the update endpoint instead of creating a
      second order. */
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
+
+  /* The edited order's status when it was opened. A draft being edited can
+     still be sent for approval; an order past Draft is only saved. */
+  const [editingOrderStatus, setEditingOrderStatus] = useState("");
+  const editingDraft =
+    editingOrderId !== null &&
+    editingOrderStatus.toUpperCase() === SALES_ORDER_STATUS.DRAFT;
 
   /* Stored as soon as they are chosen, so the record keeps a file rather
      than only its name - and so it can be opened again from here. */
@@ -988,6 +1001,51 @@ export default function OrdersListPage() {
     }));
   };
 
+  /* A new customer type can mean a new price list (DTP or ECP). The lines
+     are re-priced against it here, the way the server will price them on
+     save, so the screen never shows one total and stores another. */
+  const changeCustomerType = (value: string) => {
+    const basis = priceBasisFor(value);
+
+    const unpriced: string[] = [];
+
+    const repriced = rawSelected.map((item) => {
+      const product =
+        catalog.products.find((entry) => entry.id === item.id) ||
+        PRODUCT_CATALOG.find((entry) => entry.id === item.id);
+
+      if (!product) {
+        unpriced.push(item.name);
+        return item;
+      }
+
+      return rebaseLinePrice(item, rateFor(product, basis));
+    });
+
+    const moved = repriced.some(
+      (item, index) =>
+        item.price !== rawSelected[index].price ||
+        item.markedUp !== rawSelected[index].markedUp,
+    );
+
+    setSelectedProducts(repriced);
+    updateNewOrder("customerType", value);
+
+    if (moved) {
+      addToast(
+        `Line prices moved to the ${basis === PRICE_BASIS.ECP ? "end customer (ECP)" : "transfer (DTP)"} price list for ${value || "this customer type"}.`,
+        "info",
+      );
+    }
+
+    if (basis !== priceBasis && unpriced.length) {
+      addToast(
+        `Could not re-price ${unpriced.join(", ")} for ${value || "this customer type"}${catalog.loading ? " - products are still loading" : ""}. Check the price before sending; the order is priced from the list on save.`,
+        "warning",
+      );
+    }
+  };
+
   const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 
   const ALLOWED_ATTACHMENT_TYPES = [
@@ -1208,11 +1266,15 @@ export default function OrdersListPage() {
               category:
                 item.product || catalogued?.category || item.category || "",
               hsn: item.hsn || catalogued?.hsn || "",
-              price: Number(item.price ?? item.rate) || 0,
+              /* The rate is what the server settled the line at; price is
+                 only what the client last sent, and can be missing. */
+              price: Number(item.rate ?? item.price) || 0,
               quantity: Number(item.quantity_case ?? item.qty) || 1,
               discount: Number(item.discount) || 0,
               tax: Number(item.tax_rate) || 0,
               warrantyTerm: item.warranty_term || "",
+              listPrice: Number(item.list_price) || Number(item.rate ?? item.price) || 0,
+              markedUp: Boolean(item.marked_up),
             };
           }),
         );
@@ -1247,6 +1309,7 @@ export default function OrdersListPage() {
         );
 
         setEditingOrderId(saved.id);
+        setEditingOrderStatus(String(saved.status || ""));
         setShowCreateOrder(true);
       } catch (error: any) {
         console.error(error);
@@ -1581,6 +1644,9 @@ export default function OrdersListPage() {
               tax: Number(item.tax ?? quotation.gst_percent) || 0,
               /* Whatever cover the proposal quoted comes across with it. */
               warrantyTerm: item.warranty_term || "",
+              /* So does a price above the list price. */
+              listPrice: Number(item.list_price) || Number(item.unit_price) || 0,
+              markedUp: Boolean(item.marked_up),
             };
           }),
         );
@@ -1692,6 +1758,8 @@ export default function OrdersListPage() {
           /* The rate that matches who is buying, carried from the
              proposal's customer type onto the order. */
           price: rateFor(product, priceBasis),
+          listPrice: rateFor(product, priceBasis),
+          markedUp: false,
           quantity: 1,
           discount: 0,
           tax: 18,
@@ -1722,6 +1790,18 @@ export default function OrdersListPage() {
                 ? String(value)
                 : Math.max(0, Number(value)),
             }
+          : item,
+      ),
+    );
+  };
+
+  /** A typed selling price: a discount up to the list price, a markup
+      (with no discount) above it. */
+  const priceSelectedProduct = (id: string, line: LinePrice) => {
+    setSelectedProducts((current) =>
+      current.map((item) =>
+        item.id === id
+          ? { ...item, price: line.unitPrice, discount: line.discount, markedUp: line.markedUp }
           : item,
       ),
     );
@@ -1878,6 +1958,7 @@ export default function OrdersListPage() {
           discount: item.discount,
           tax_rate: item.tax,
           warranty_term: item.warrantyTerm,
+          marked_up: Boolean(item.markedUp),
         })),
 
         total_amount: subtotal,
@@ -1970,7 +2051,18 @@ export default function OrdersListPage() {
            the user to go and find it. */
         const reference = created.order_number || `SO-${created.id}`;
 
-        if (asDraft || editingOrderId) {
+        /* From here the order exists. If sending it up fails, the form
+           stays open on it as a draft being edited, so trying again
+           updates this order rather than creating a second one. */
+        if (!editingOrderId) {
+          setEditingOrderId(created.id);
+          setEditingOrderStatus(SALES_ORDER_STATUS.DRAFT);
+        }
+
+        /* Editing saves first and then, for a draft, raises the chain the
+           same way a new order does. Before, an edited draft was only
+           updated, so Send For Approval left it sitting in Draft. */
+        if (asDraft || (editingOrderId && !editingDraft)) {
           addToast(
             editingOrderId
               ? `Sales order ${reference} updated.`
@@ -1981,11 +2073,7 @@ export default function OrdersListPage() {
           /* The discount the chain is built from is the deepest on the
              order, not the blended share - the server works that out
              from the lines, so what matters here is that it is asked. */
-          const approval = await requestApprovalApi({
-            document_type: "SALES_ORDER",
-            document_id: created.id,
-            document_number: created.order_number,
-            price_type: PRICE_TYPE.ECP,
+          const sent = await sendSalesOrderForApproval(created, {
             discount_percent: Number(
               (subtotal ? (discountAmount / subtotal) * 100 : 0).toFixed(2),
             ),
@@ -1994,9 +2082,9 @@ export default function OrdersListPage() {
           });
 
           addToast(
-            approval
-              ? `Sales order ${reference} sent to the ${approval.waiting_on} for approval.`
-              : `Sales order ${reference} created.`,
+            sent.kind === "sent"
+              ? `Sales order ${reference} sent to the ${sent.approval.waiting_on} for approval.`
+              : `No discount to approve. Sales order ${reference} confirmed.`,
             "success",
           );
         }
@@ -2047,10 +2135,13 @@ export default function OrdersListPage() {
         });
         await fetchOrders(true);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
 
-      addToast("Unable to create sales order.", "error");
+      addToast(
+        error?.response?.data?.detail || "Unable to save the sales order.",
+        "error",
+      );
     } finally {
       setCreatingOrder(false);
     }
@@ -2082,6 +2173,13 @@ export default function OrdersListPage() {
     (sum, item) => sum + lineWithCover(item) * (item.discount / 100),
     0,
   );
+
+  /* A line sold above its list price takes no discount, and neither does
+     the order then: a typed overall discount is cleared. */
+  const anyMarkedUp = selectedProducts.some((item) => item.markedUp);
+  useEffect(() => {
+    if (anyMarkedUp) setDiscountInput((current) => (current ? null : current));
+  }, [anyMarkedUp]);
 
   /* A discount typed into the summary overrides the per-line total, and can
      never exceed what is being discounted. Mirrors compute_order_totals in
@@ -2151,6 +2249,11 @@ export default function OrdersListPage() {
           title={editingOrderId ? "Edit Sales Order" : "New Sales Order"}
           parentLabel="Sales Order"
           currentLabel={editingOrderId ? "Edit" : "New"}
+          badge={
+            editingOrderId && editingOrderStatus
+              ? salesOrderStatusLabel(editingOrderStatus)
+              : undefined
+          }
           actions={
             <>
               <CancelButton onClick={closeCreateOrder} />
@@ -2166,7 +2269,13 @@ export default function OrdersListPage() {
                 disabled={creatingOrder}
                 onClick={() => createSalesOrder(false)}
               >
-                {creatingOrder ? "Sending..." : "Send For Approval"}
+                {editingOrderId && !editingDraft
+                  ? creatingOrder
+                    ? "Saving..."
+                    : "Save Changes"
+                  : creatingOrder
+                    ? "Sending..."
+                    : "Send For Approval"}
               </SubmitButton>
             </>
           }
@@ -2373,9 +2482,7 @@ export default function OrdersListPage() {
 
                     <select
                       value={newOrder.customerType}
-                      onChange={(e) =>
-                        updateNewOrder("customerType", e.target.value)
-                      }
+                      onChange={(e) => changeCustomerType(e.target.value)}
                       className="field-compact h-7 flex-1 max-w-[190px] rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 outline-none"
                     >
                       <option value="">Select type</option>
@@ -2958,16 +3065,21 @@ export default function OrdersListPage() {
                             </td>
 
                             <td className="px-3 py-3">
-                              <PercentCell
-                                value={item.discount}
-                                onChange={(next) =>
-                                  updateSelectedProduct(
-                                    item.id,
-                                    "discount",
-                                    next,
-                                  )
-                                }
-                              />
+                              {/* Sold above the list price: no discount. */}
+                              {item.markedUp ? (
+                                <span className="text-[11px] text-slate-400" title="Sold above the list price - no discount">—</span>
+                              ) : (
+                                <PercentCell
+                                  value={item.discount}
+                                  onChange={(next) =>
+                                    updateSelectedProduct(
+                                      item.id,
+                                      "discount",
+                                      next,
+                                    )
+                                  }
+                                />
+                              )}
                             </td>
 
                             {/* Tax was display-only, so a line that should be
@@ -3026,14 +3138,9 @@ export default function OrdersListPage() {
                               <LineSellingPriceInput
                                 unitPrice={item.price}
                                 discount={item.discount}
+                                listPrice={item.listPrice}
                                 ariaLabel={`Selling price for ${item.name}`}
-                                onChange={(discount) =>
-                                  updateSelectedProduct(
-                                    item.id,
-                                    "discount",
-                                    discount,
-                                  )
-                                }
+                                onPrice={(price) => priceSelectedProduct(item.id, price)}
                               />
                             </td>
 
@@ -3073,21 +3180,32 @@ export default function OrdersListPage() {
 
                       {/* Discount defaults to the per-line total; entering one
                           here overrides it, in rupees or as a percentage. */}
+                      {/* With a line sold above its list price the order takes
+                          no overall discount; the server refuses one. */}
                       <OrderSummaryRow
                         label="Total Discount"
                         value={`-${money(orderDiscount)}`}
                         tone="rose"
-                        edit={{
-                          amount:
-                            discountInput === null
-                              ? Math.round(orderDiscount)
-                              : discountInput,
-                          mode: discountMode,
-                          base: orderSubtotal,
-                          onChange: setDiscountInput,
-                          onModeChange: setDiscountMode,
-                        }}
+                        edit={
+                          anyMarkedUp
+                            ? undefined
+                            : {
+                                amount:
+                                  discountInput === null
+                                    ? Math.round(orderDiscount)
+                                    : discountInput,
+                                mode: discountMode,
+                                base: orderSubtotal,
+                                onChange: setDiscountInput,
+                                onModeChange: setDiscountMode,
+                              }
+                        }
                       />
+                      {anyMarkedUp && (
+                        <p className="text-right text-[10px] text-slate-400">
+                          A line is sold above its list price, so the order takes no overall discount.
+                        </p>
+                      )}
 
                       {/* A commission we pay out, not a charge the customer
                           is billed, so it is recorded here and comes off the
@@ -3933,14 +4051,9 @@ export default function OrdersListPage() {
                                 fill
                                 unitPrice={item.price}
                                 discount={item.discount}
+                                listPrice={item.listPrice}
                                 ariaLabel={`Selling price for ${item.name}`}
-                                onChange={(discount) =>
-                                  updateSelectedProduct(
-                                    item.id,
-                                    "discount",
-                                    discount,
-                                  )
-                                }
+                                onPrice={(price) => priceSelectedProduct(item.id, price)}
                               />
                             </div>
 
@@ -3949,10 +4062,12 @@ export default function OrdersListPage() {
                                 Discount
                               </label>
 
+                              {/* Sold above the list price: no discount. */}
                               <LineDiscountInput
                                 fill
                                 unitPrice={item.price}
                                 discount={item.discount}
+                                disabled={item.markedUp}
                                 ariaLabel={`Discount for ${item.name}`}
                                 onChange={(discount) =>
                                   updateSelectedProduct(

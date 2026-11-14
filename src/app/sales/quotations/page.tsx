@@ -190,6 +190,11 @@ interface LineItem {
   /** The warranty term quoted on this line, by name. What it costs is
       decided by Masters and applied on the server, never here. */
   warrantyTerm: string;
+  /** The price list's figure; ``unitPrice`` is above it only when marked up. */
+  listPrice?: number;
+  /** Sold above the list price: the unit price is the selling price, and
+      the line takes no discount. */
+  markedUp?: boolean;
 }
 
 interface AddressState {
@@ -1010,6 +1015,13 @@ export default function QuotationPage() {
     setDiscountInput((current) => (current ? null : current));
   }, [priceBasis]);
 
+  /* A line sold above its list price takes no discount, and neither does
+     the document then - the server refuses an overall discount with one. */
+  const anyMarkedUp = items.some((item) => item.markedUp);
+  useEffect(() => {
+    if (anyMarkedUp) setDiscountInput((current) => (current ? null : current));
+  }, [anyMarkedUp]);
+
   /* Asked of the server rather than worked out here, so the bands live in
      one place and a change to them does not need a frontend release. */
   useEffect(() => {
@@ -1211,6 +1223,8 @@ export default function QuotationPage() {
             /* The term the document was saved quoting, kept as it stands.
                An empty one falls back to the standard term. */
             warrantyTerm: item.warranty_term || "",
+            listPrice: Number(item.list_price) || Number(item.unit_price) || 0,
+            markedUp: Boolean(item.marked_up),
           })),
         );
 
@@ -1368,6 +1382,9 @@ export default function QuotationPage() {
         discount: num("discount"),
         tax: num("tax", "tax_rate"),
         warrantyTerm: text("warranty_term"),
+        /* A line the opportunity sold above its list price stays so. */
+        listPrice: num("list_price") || num("unit_price", "unitPrice", "price"),
+        markedUp: Boolean(item.marked_up),
       };
     });
 
@@ -1461,6 +1478,7 @@ export default function QuotationPage() {
       discount: item.discount,
       tax: item.tax,
       warranty_term: item.warrantyTerm,
+      marked_up: Boolean(item.markedUp),
     })),
 
     discount_mode: discountMode,
@@ -1709,6 +1727,8 @@ export default function QuotationPage() {
              fixed transfer price; an end customer line takes the list
              price a discount comes off. */
           unitPrice: rateFor(product, priceBasis),
+          listPrice: rateFor(product, priceBasis),
+          markedUp: false,
           discount: 0,
           tax: 18,
           /* The standard term, which is included in the price. A line
@@ -2206,7 +2226,10 @@ export default function QuotationPage() {
                               the field is closed rather than left open for
                               a figure the chain would refuse. */}
                           <td className="px-4 py-3">
-                            {editing && priceBasis === PRICE_BASIS.ECP ? (
+                            {/* Sold above the list price: no discount. */}
+                            {item.markedUp ? (
+                              <span className="text-[11px] text-slate-400" title="Sold above the list price - no discount">—</span>
+                            ) : editing && priceBasis === PRICE_BASIS.ECP ? (
                               <span className="flex items-center gap-1">
                                 <input
                                   type="number"
@@ -2316,10 +2339,9 @@ export default function QuotationPage() {
                               <LineSellingPriceInput
                                 unitPrice={item.unitPrice}
                                 discount={item.discount}
+                                listPrice={item.listPrice}
                                 ariaLabel={`Selling price for ${item.model}`}
-                                onChange={(discount) =>
-                                  updateItem(item.key, { discount })
-                                }
+                                onPrice={(price) => updateItem(item.key, price)}
                               />
                             ) : (
                               <span className="text-[11px] text-slate-600 dark:text-slate-300">
@@ -3898,8 +3920,9 @@ function ProductPickerModal({
                         fill
                         unitPrice={item.unitPrice}
                         discount={item.discount}
+                        listPrice={item.listPrice}
                         ariaLabel={`Selling price for ${item.model}`}
-                        onChange={(discount) => onUpdate(item.key, { discount })}
+                        onPrice={(price) => onUpdate(item.key, price)}
                       />
                     </div>
 
@@ -3908,10 +3931,12 @@ function ProductPickerModal({
                         Discount
                       </label>
 
+                      {/* Sold above the list price: no discount. */}
                       <LineDiscountInput
                         fill
                         unitPrice={item.unitPrice}
                         discount={item.discount}
+                        disabled={item.markedUp}
                         ariaLabel={`Discount for ${item.model}`}
                         onChange={(discount) => onUpdate(item.key, { discount })}
                       />

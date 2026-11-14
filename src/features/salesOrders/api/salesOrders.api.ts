@@ -154,6 +154,11 @@ export interface SalesOrderItem {
   warranty_term?: string;
   /** What that cover added, as the server worked it out. Read-only. */
   warranty_uplift?: number;
+  /** Sold above its list price: ``rate`` is the selling price and the line
+      takes no discount. */
+  marked_up?: boolean;
+  /** The price list's figure, as the server read it. Read-only. */
+  list_price?: number | null;
 }
 
 export interface SalesOrderModel {

@@ -163,6 +163,12 @@ interface OpportunityLineItem {
   /** The warranty term quoted on this line, by name. What it costs is
       decided by Masters and applied on the server, never here. */
   warrantyTerm: string;
+  /** The price list's figure. ``unitPrice`` is above it only when the
+      line is marked up. */
+  listPrice?: number;
+  /** Sold above the list price: the unit price is the selling price, and
+      the line takes no discount. */
+  markedUp?: boolean;
 }
 
 type CustomerType =
@@ -1068,6 +1074,8 @@ function OpportunitiesPageInner() {
             discount: item.discount,
             tax: item.tax,
             warranty_term: item.warrantyTerm,
+            list_price: item.listPrice ?? item.unitPrice,
+            marked_up: Boolean(item.markedUp),
           }),
         ),
       });
@@ -1424,6 +1432,8 @@ function OpportunitiesPageInner() {
             discount: item.discount,
             tax: item.tax,
             warranty_term: item.warrantyTerm,
+            list_price: item.listPrice ?? item.unitPrice,
+            marked_up: Boolean(item.markedUp),
           }),
         ),
       });
@@ -3459,6 +3469,8 @@ function NewOpportunityPage({
       tax: Number(item.tax) || 0,
       /* The term it was saved quoting; empty falls back to standard. */
       warrantyTerm: item.warranty_term || "",
+      listPrice: Number(item.list_price) || Number(item.unit_price ?? item.unitPrice) || 0,
+      markedUp: Boolean(item.marked_up),
     })),
   );
   /* What the table shows, totals and saves: each warranty line's quantity
@@ -3600,6 +3612,8 @@ function NewOpportunityPage({
           /* The rate that matches who is buying, so an opportunity and
              the proposal raised off it never disagree on the price. */
           unitPrice: rateFor(product, priceBasis),
+          listPrice: rateFor(product, priceBasis),
+          markedUp: false,
           discount: 0,
           tax: 18,
           /* The standard term, which is included in the price. A
@@ -4285,7 +4299,10 @@ function NewOpportunityPage({
                             </td>
 
                             <td className="px-2 py-2.5">
-                              {editing ? (
+                              {/* Sold above the list price: no discount. */}
+                              {item.markedUp ? (
+                                <span className="text-[10px] text-slate-400" title="Sold above the list price - no discount">—</span>
+                              ) : editing ? (
                                 <div className="flex items-center gap-1">
                                   <LineNumberInput
                                     ariaLabel={`Discount for ${item.model}`}
@@ -4382,10 +4399,9 @@ function NewOpportunityPage({
                               <LineSellingPriceInput
                                 unitPrice={item.unitPrice}
                                 discount={item.discount}
+                                listPrice={item.listPrice}
                                 ariaLabel={`Selling price for ${item.model}`}
-                                onChange={(discount) =>
-                                  updateLineItem(item.key, { discount })
-                                }
+                                onPrice={(price) => updateLineItem(item.key, price)}
                               />
                             </td>
 
@@ -4988,8 +5004,9 @@ function OpportunityProductModal({
                         fill
                         unitPrice={item.unitPrice}
                         discount={item.discount}
+                        listPrice={item.listPrice}
                         ariaLabel={`Selling price for ${item.model}`}
-                        onChange={(discount) => onUpdate(item.key, { discount })}
+                        onPrice={(price) => onUpdate(item.key, price)}
                       />
                     </div>
 
@@ -4998,10 +5015,12 @@ function OpportunityProductModal({
                         Discount
                       </label>
 
+                      {/* Sold above the list price: no discount. */}
                       <LineDiscountInput
                         fill
                         unitPrice={item.unitPrice}
                         discount={item.discount}
+                        disabled={item.markedUp}
                         ariaLabel={`Discount for ${item.model}`}
                         onChange={(discount) => onUpdate(item.key, { discount })}
                       />
