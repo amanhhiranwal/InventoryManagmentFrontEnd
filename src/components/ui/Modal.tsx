@@ -1,5 +1,8 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useId } from "react";
 import { FiX } from "react-icons/fi";
+
+/** The open dialogs, newest last: Escape belongs to the top one. */
+const openDialogs: string[] = [];
 
 interface ModalProps {
   isOpen: boolean;
@@ -18,6 +21,27 @@ export default function Modal({
   size = "md",
   hasUnsavedChanges = false,
 }: ModalProps) {
+  const titleId = useId();
+
+  /* Escape closes the top dialog only, through the same unsaved-changes
+     check as the X. Dialogs opened over another (a confirm inside a form)
+     are stacked, so one key press never closes both. */
+  useEffect(() => {
+    if (!isOpen) return;
+    openDialogs.push(titleId);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || openDialogs[openDialogs.length - 1] !== titleId) return;
+      if (hasUnsavedChanges && !window.confirm("You have unsaved changes. Are you sure you want to discard them?")) return;
+      onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      const at = openDialogs.lastIndexOf(titleId);
+      if (at >= 0) openDialogs.splice(at, 1);
+    };
+  }, [isOpen, hasUnsavedChanges, onClose, titleId]);
+
   if (!isOpen) return null;
 
   const sizeClasses = {
@@ -62,6 +86,9 @@ export default function Modal({
     "
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className={`
         w-full
         ${sizeClasses[size]}
@@ -93,6 +120,7 @@ export default function Modal({
         "
         >
           <h3
+            id={titleId}
             className="
             text-base
             font-bold
@@ -105,6 +133,7 @@ export default function Modal({
 
           <button
             type="button"
+            aria-label="Close"
             onClick={handleCloseAttempt}
             className="
             rounded-lg

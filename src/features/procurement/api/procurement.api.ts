@@ -46,6 +46,14 @@ export interface CompanyOption {
 export interface ApprovalMatrix {
   bands: { upto: number | null; steps: string[]; labels: string[] }[];
   limits: number[];
+  /** What a band's approvers can be: the four form steps, then roles. */
+  options: { value: string; label: string }[];
+}
+
+/** One band as the matrix page edits it. The last band has no ceiling. */
+export interface MatrixBandInput {
+  upto: number | null;
+  steps: string[];
 }
 
 export const getDepartmentsApi = async (active = false): Promise<Department[]> =>
@@ -59,8 +67,8 @@ export const deleteDepartmentApi = async (id: number) =>
 
 export const getApprovalMatrixApi = async (): Promise<ApprovalMatrix> =>
   (await api.get("/api/v1/procurement/approval-matrix")).data.data;
-export const saveApprovalMatrixApi = async (limits: number[]): Promise<ApprovalMatrix> =>
-  (await api.put("/api/v1/procurement/approval-matrix", { limits })).data.data;
+export const saveApprovalMatrixApi = async (bands: MatrixBandInput[]): Promise<ApprovalMatrix> =>
+  (await api.put("/api/v1/procurement/approval-matrix", { bands })).data.data;
 
 // ------------------------------------------------------------------
 // Requisitions
@@ -189,6 +197,8 @@ export interface RequisitionMeta {
     department_name?: string | null;
     reporting_manager_id?: string | null;
     reporting_manager_name?: string | null;
+    /** The My Requisitions tick (or no role at all): may raise one. */
+    can_raise?: boolean;
   };
 }
 

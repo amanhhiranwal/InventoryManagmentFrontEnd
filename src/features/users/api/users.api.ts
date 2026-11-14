@@ -26,6 +26,10 @@ export interface User {
   welcome_email_sent_at?: string | null;
   /** Masters > Departments; fills the purchase requisition form. */
   department_id?: number | null;
+  /** Their job title as HR writes it. Shown, never used for access. */
+  designation?: string | null;
+  /** Managers they also report to, beside reports_to_id. */
+  also_reports_to_ids?: string[];
 }
 
 export interface CreateUserPayload {
@@ -41,7 +45,70 @@ export interface CreateUserPayload {
   /** Where they are based, as the staffing sheet records it. */
   location?: string;
   department_id?: number | null;
+  designation?: string | null;
+  also_reports_to_ids?: string[];
 }
+
+/** One sheet row, as Users > Bulk Upload would or did handle it. */
+export interface UserImportRow {
+  row: number;
+  employee_id: string;
+  name: string;
+  email: string;
+  action: "create" | "update" | "deactivate" | "skip" | "error";
+  role: string;
+  department: string;
+  designation: string;
+  changes: string[];
+  issues: string[];
+}
+
+export interface UserImportResult {
+  applied: boolean;
+  counts: Partial<Record<UserImportRow["action"], number>>;
+  rows: UserImportRow[];
+  notes: string[];
+  message: string;
+}
+
+export interface UserImportOptions {
+  /** New people get @mailinator.com logins; nobody's email on file changes. */
+  testEmails: boolean;
+  /** Email each new person their sign-in. */
+  sendWelcome: boolean;
+  /** One starting password for everybody new; they change it at first sign-in. */
+  startPassword?: string;
+}
+
+/** Read a sheet of people: without commit it only says what it would do. */
+export const importUsersApi = async (
+  file: File,
+  commit: boolean,
+  options: UserImportOptions,
+): Promise<UserImportResult> => {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("commit", String(commit));
+  form.append("test_emails", String(options.testEmails));
+  form.append("send_welcome", String(options.sendWelcome));
+  if (options.startPassword) form.append("start_password", options.startPassword);
+
+  const { data } = await api.post("/api/v1/users/import", form);
+  return { ...(data.data || {}), message: data.message || "" };
+};
+
+/** The columns the upload reads, with an example row, to Downloads. */
+export const downloadUserTemplateApi = async (): Promise<void> => {
+  const { data } = await api.get("/api/v1/users/import/template", { responseType: "blob" });
+  const url = window.URL.createObjectURL(new Blob([data]));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "User_Upload_Template.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
 
 export const getUsersApi = async (
   page: number = 1,

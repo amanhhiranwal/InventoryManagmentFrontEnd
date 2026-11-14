@@ -93,6 +93,11 @@ const PAGE_ACTIONS: Record<string, { key: string; title: string }[]> = {
   "lead.read": [
     { key: "lead.bulk_upload", title: "Bulk Upload from Excel" },
   ],
+  /* Adding a hundred people from HR's sheet is a bigger trust than seeing
+     the list. Checked on the server (routes/user.py). */
+  "user.read": [
+    { key: "user.bulk_upload", title: "Bulk Upload from Excel" },
+  ],
 };
 
 /** The pages a menu group grants. A group with sub-pages grants those; a

@@ -22,12 +22,14 @@ import {
   StatGrid,
 } from "@/components/crm/ListPageShell";
 import StatCard from "@/components/crm/StatCard";
+import { hasPermission } from "@/features/auth/utils/permissions";
 import Pagination from "@/components/crm/Pagination";
 import QueueTabs from "@/components/crm/QueueTabs";
 import {
   errorDetail,
   getApprovalQueueApi,
   getMyRequisitionsApi,
+  getRequisitionMetaApi,
   type PurchaseOrder,
   type Requisition,
 } from "@/features/procurement/api/procurement.api";
@@ -195,6 +197,16 @@ const WAITING_POS: Column<PurchaseOrder>[] = [
 
 export default function MyRequisitionsPage() {
   const router = useRouter();
+  /* Asked of the server, which knows the rule (the My Requisitions tick,
+     or no role at all). Until it answers, the token's permissions decide. */
+  const [canRaise, setCanRaise] = useState(() => hasPermission("requisition.create"));
+  useEffect(() => {
+    getRequisitionMetaApi()
+      .then((meta) => setCanRaise(meta.me.can_raise !== false))
+      .catch(() => {
+        /* The API client has shown why; keep the token's answer. */
+      });
+  }, []);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<string | null>(null);
@@ -305,12 +317,16 @@ export default function MyRequisitionsPage() {
         onSearchChange={setSearch}
         placeholder="Search by PR number or purpose"
         trailing={
-          <PrimaryAction
-            icon={<FiPlus size={14} />}
-            onClick={() => router.push("/procurement/requisitions/new")}
-          >
-            New Requisition
-          </PrimaryAction>
+          /* The My Requisitions tick on Roles & Access. An approver whose
+             role lacks it still has this page for what waits on them. */
+          canRaise ? (
+            <PrimaryAction
+              icon={<FiPlus size={14} />}
+              onClick={() => router.push("/procurement/requisitions/new")}
+            >
+              New Requisition
+            </PrimaryAction>
+          ) : undefined
         }
       />
 
@@ -380,7 +396,9 @@ export default function MyRequisitionsPage() {
             text={
               query || status
                 ? "No requisitions match."
-                : "You have not raised a purchase requisition yet. Use New Requisition to raise one."
+                : canRaise
+                  ? "You have not raised a purchase requisition yet. Use New Requisition to raise one."
+                  : "Your role does not raise purchase requisitions. Ask a super admin if you need to."
             }
           />
         ) : (
