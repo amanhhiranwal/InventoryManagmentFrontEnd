@@ -11,6 +11,9 @@ import api from "@/lib/axios";
 import { hasPermission } from "@/features/auth/utils/permissions";
 import {
   FiPlus,
+  FiChevronDown,
+  FiFileText,
+  FiUserPlus,
   FiUser,
   FiMail,
   FiCheckCircle,
@@ -29,11 +32,13 @@ import PageHeader from "@/components/ui/PageHeader";
 import {
   ListPage,
   ListToolbar,
-  PrimaryAction,
 } from "@/components/crm/ListPageShell";
 import ListActionsMenu, {
+  DropdownButton,
+  DropdownMenu,
   ExportColumn,
 } from "@/components/crm/ListActions";
+import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
 import Table from "@/components/ui/Table";
 import { useTableSort } from "@/components/crm/sort";
 import SearchableMultiSelect from "@/components/ui/SearchableMultiSelect";
@@ -41,6 +46,7 @@ import { eligibleManagers, userLabel } from "@/features/users/utils/hierarchy";
 import { passwordProblem } from "@/features/auth/utils/passwordRules";
 import PasswordRules from "@/features/auth/components/PasswordRules";
 import { getDepartmentsApi, type Department } from "@/features/procurement/api/procurement.api";
+import UserBulkUploadModal from "@/features/users/components/UserBulkUploadModal";
 
 /** Department picker, labelled like the Input fields around it. */
 function DepartmentSelect({
@@ -128,6 +134,44 @@ function ReportsToSelect({
   );
 }
 
+/** Managers this user reports to beside the main one - two Directors over
+    the Founder. Both see their records and both sit above them on the
+    Reporting Chart; approvals still follow the main manager. */
+function AlsoReportsToSelect({
+  value,
+  onChange,
+  users,
+  roles,
+  roleIds,
+  mainManagerId,
+  excludeUserId,
+}: {
+  value: string[];
+  onChange: (ids: string[]) => void;
+  users: User[];
+  roles: Role[];
+  roleIds: string[];
+  mainManagerId: string;
+  excludeUserId?: string;
+}) {
+  const options = eligibleManagers(users, roleIds, roles, excludeUserId).filter((u) => u.id !== mainManagerId);
+
+  return (
+    <div className="space-y-1">
+      <SearchableMultiSelect
+        label="Also Reports To (optional)"
+        placeholder={mainManagerId ? "Another manager, if they have two..." : "Pick Reports To first"}
+        options={options.map((u) => ({ id: u.id, name: userLabel(u, roles) }))}
+        selectedIds={value.filter((id) => id !== mainManagerId)}
+        onChange={onChange}
+      />
+      <p className="text-[11px] text-slate-400">
+        For someone with two managers at the same level. Both see this user&apos;s work and appear above them on the Reporting Chart.
+      </p>
+    </div>
+  );
+}
+
 export default function UserListPage() {
   const { addToast } = useUIStore();
   const [users, setUsers] = useState<User[]>([]);
@@ -193,6 +237,8 @@ export default function UserListPage() {
     company_ids: [] as string[],
     reports_to_id: "",
     department_id: "",
+    designation: "",
+    also_reports_to_ids: [] as string[],
   });
 
   /* Masters > Departments, for the Department field. Optional: if it will
@@ -200,6 +246,8 @@ export default function UserListPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [departmentsFailed, setDepartmentsFailed] = useState(false);
   const [editDepartmentId, setEditDepartmentId] = useState("");
+  const [editDesignation, setEditDesignation] = useState("");
+  const [editAlsoReportsToIds, setEditAlsoReportsToIds] = useState<string[]>([]);
 
   useEffect(() => {
     getDepartmentsApi(true)
@@ -268,6 +316,12 @@ export default function UserListPage() {
   const canReadUsers = hasPermission("user.read");
   const canUpdateRole = hasPermission("user.update");
   const showAddUser = superAdmin;
+  /* Its own tick on Roles & Access (user.bulk_upload); checked again on
+     the server. */
+  const canBulkUpload = hasPermission("user.bulk_upload");
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const addMenuRef = useCloseOnOutsideClick<HTMLDivElement>(showAddMenu, () => setShowAddMenu(false));
 
   /* The page of users on screen. Only this depends on the page number
      and the search, so turning a page is one request. */
@@ -342,6 +396,8 @@ export default function UserListPage() {
     setEditCompanyIds(u.company_ids || []);
     setEditReportsToId(u.reports_to_id || "");
     setEditDepartmentId(u.department_id ? String(u.department_id) : "");
+    setEditDesignation(u.designation || "");
+    setEditAlsoReportsToIds(u.also_reports_to_ids || []);
   };
 
   const handleUpdateUser = async (e: React.FormEvent) => {
@@ -365,6 +421,8 @@ export default function UserListPage() {
         company_ids: editCompanyIds,
         reports_to_id: editReportsToId || null,
         department_id: editDepartmentId ? Number(editDepartmentId) : null,
+        designation: editDesignation.trim() || null,
+        also_reports_to_ids: editAlsoReportsToIds.filter((id) => id !== editReportsToId),
       });
       addToast("User updated successfully!", "success");
       setEditUser(null);
@@ -484,6 +542,8 @@ export default function UserListPage() {
         ...formData,
         reports_to_id: formData.reports_to_id || null,
         department_id: formData.department_id ? Number(formData.department_id) : null,
+        designation: formData.designation.trim() || null,
+        also_reports_to_ids: formData.also_reports_to_ids.filter((id) => id !== formData.reports_to_id),
       });
       addToast("User created successfully!", "success");
       setFormData({
@@ -498,6 +558,8 @@ export default function UserListPage() {
         company_ids: [],
         reports_to_id: "",
         department_id: "",
+        designation: "",
+        also_reports_to_ids: [],
       });
       setShowCreateModal(false);
       // The new person joins the list and the Reports To picker both.
@@ -576,13 +638,50 @@ export default function UserListPage() {
         onSearchChange={setSearchQuery}
         placeholder="Search users by name or email"
         trailing={
-          showAddUser ? (
-            <PrimaryAction
-              onClick={() => setShowCreateModal(true)}
-              icon={<FiPlus size={14} />}
-            >
-              Add User
-            </PrimaryAction>
+          showAddUser || canBulkUpload ? (
+            /* One Add button, as on Leads: a single person, or a sheet of
+               them. The sheet is its own tick in Roles & Access. */
+            <div ref={addMenuRef} className="relative">
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={showAddMenu}
+                onClick={() => setShowAddMenu((open) => !open)}
+                onKeyDown={(e) => e.key === "Escape" && setShowAddMenu(false)}
+                className="flex h-[39px] shrink-0 items-center justify-center gap-2 rounded-lg bg-[#273756] px-4 text-[13px] font-medium text-white shadow-sm transition hover:bg-[#18243a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#273756]"
+              >
+                <FiPlus size={14} />
+                Add User
+                <FiChevronDown size={14} className={`transition-transform ${showAddMenu ? "rotate-180" : ""}`} />
+              </button>
+
+              {showAddMenu && (
+                <DropdownMenu>
+                  {showAddUser && (
+                    <DropdownButton
+                      icon={<FiUserPlus className="text-primary" />}
+                      onClick={() => {
+                        setShowAddMenu(false);
+                        setShowCreateModal(true);
+                      }}
+                    >
+                      Add Single User
+                    </DropdownButton>
+                  )}
+                  {canBulkUpload && (
+                    <DropdownButton
+                      icon={<FiFileText className="text-emerald-500" />}
+                      onClick={() => {
+                        setShowAddMenu(false);
+                        setShowBulkUpload(true);
+                      }}
+                    >
+                      Add From Excel
+                    </DropdownButton>
+                  )}
+                </DropdownMenu>
+              )}
+            </div>
           ) : undefined
         }
       />
@@ -830,6 +929,15 @@ export default function UserListPage() {
         </Table>
 
       {/* User Creation Modal */}
+      <UserBulkUploadModal
+        open={showBulkUpload}
+        onClose={() => setShowBulkUpload(false)}
+        onLoaded={() => {
+          fetchData();
+          fetchSetup();
+        }}
+      />
+
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="Add New User">
         <form onSubmit={handleCreateUser} className="space-y-4" autoComplete="off">
           <div className="grid grid-cols-2 gap-4">
@@ -926,6 +1034,15 @@ export default function UserListPage() {
             onChange={(e) => setFormData({ ...formData, location: e.target.value })}
           />
 
+          {/* Their job title, as HR writes it. The role below decides what
+              they can open; this is only shown. */}
+          <Input
+            label="Designation"
+            placeholder="e.g. Sr. Area Sales Manager"
+            value={formData.designation}
+            onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+          />
+
           <DepartmentSelect
             id="create-department"
             value={formData.department_id}
@@ -948,6 +1065,15 @@ export default function UserListPage() {
             users={managerOptions}
             roles={roles}
             roleIds={formData.role_ids}
+          />
+
+          <AlsoReportsToSelect
+            value={formData.also_reports_to_ids}
+            onChange={(ids) => setFormData({ ...formData, also_reports_to_ids: ids })}
+            users={managerOptions}
+            roles={roles}
+            roleIds={formData.role_ids}
+            mainManagerId={formData.reports_to_id}
           />
 
           <SearchableMultiSelect
@@ -1026,6 +1152,13 @@ export default function UserListPage() {
               onChange={(e) => setEditLocation(e.target.value)}
             />
 
+            <Input
+              label="Designation"
+              placeholder="e.g. Sr. Area Sales Manager"
+              value={editDesignation}
+              onChange={(e) => setEditDesignation(e.target.value)}
+            />
+
             <DepartmentSelect
               id="edit-department"
               value={editDepartmentId}
@@ -1048,6 +1181,16 @@ export default function UserListPage() {
               users={managerOptions}
               roles={roles}
               roleIds={editRoleIds}
+              excludeUserId={editUser.id}
+            />
+
+            <AlsoReportsToSelect
+              value={editAlsoReportsToIds}
+              onChange={setEditAlsoReportsToIds}
+              users={managerOptions}
+              roles={roles}
+              roleIds={editRoleIds}
+              mainManagerId={editReportsToId}
               excludeUserId={editUser.id}
             />
 

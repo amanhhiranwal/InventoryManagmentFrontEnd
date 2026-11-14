@@ -29,8 +29,11 @@ import { getUsersApi, updateUserApi, User } from "@/features/users/api/users.api
 import { useUIStore } from "@/lib/store/ui.store";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 
+/** One place on the chart: usually one person, or several managers at the
+    same level who share someone beneath them (two Directors over the
+    Founder), drawn side by side over their combined line. */
 interface Node {
-  user: User;
+  members: User[];
   reports: Node[];
 }
 
@@ -38,21 +41,53 @@ function fullName(user: User) {
   return `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email;
 }
 
-/** The forest: everybody, hung off whoever they report to. */
+/** The forest: everybody, hung off whoever they report to.
+ *
+ * Someone who also reports to other managers (Users > Also Reports To)
+ * joins those managers into one group when they all stand at the same
+ * place - the same manager above them, or all at the top. Managers in
+ * different parts of the chart are not merged; the person stays under
+ * their main manager and their card says who else they report to. */
 function buildTree(users: User[]): Node[] {
-  const nodes = new Map<string, Node>();
+  const byId = new Map(users.map((u) => [String(u.id), u]));
+  const parentOf = (u: User) => (u.reports_to_id && byId.has(String(u.reports_to_id)) ? String(u.reports_to_id) : "");
 
-  for (const user of users) {
-    nodes.set(String(user.id), { user, reports: [] });
+  // Which people share a place: a small union-find over user ids.
+  const leader = new Map<string, string>();
+  const find = (id: string): string => {
+    const up = leader.get(id) ?? id;
+    if (up === id) return id;
+    const top = find(up);
+    leader.set(id, top);
+    return top;
+  };
+  for (const u of users) {
+    const managers = [u.reports_to_id, ...(u.also_reports_to_ids || [])]
+      .map((id) => (id ? String(id) : ""))
+      .filter((id, i, all) => id && byId.has(id) && all.indexOf(id) === i);
+    if (managers.length < 2) continue;
+    const place = parentOf(byId.get(managers[0])!);
+    if (managers.every((id) => parentOf(byId.get(id)!) === place)) {
+      managers.slice(1).forEach((id) => leader.set(find(id), find(managers[0])));
+    }
   }
 
-  const roots: Node[] = [];
+  const nodes = new Map<string, Node>();
+  const nodeOf = (id: string) => {
+    const key = find(id);
+    if (!nodes.has(key)) nodes.set(key, { members: [], reports: [] });
+    return nodes.get(key)!;
+  };
+  for (const u of users) nodeOf(String(u.id)).members.push(u);
 
-  for (const user of users) {
-    const node = nodes.get(String(user.id))!;
-    const parent = user.reports_to_id
-      ? nodes.get(String(user.reports_to_id))
-      : undefined;
+  const roots: Node[] = [];
+  const placed = new Set<Node>();
+  for (const u of users) {
+    const node = nodeOf(String(u.id));
+    if (placed.has(node)) continue;
+    placed.add(node);
+    const parentId = parentOf(node.members[0]);
+    const parent = parentId ? nodeOf(parentId) : undefined;
 
     /* Somebody whose manager is not on file hangs at the top rather than
        vanishing: a chart that quietly drops people is worse than one that
@@ -64,11 +99,10 @@ function buildTree(users: User[]): Node[] {
     }
   }
 
-  const byName = (a: Node, b: Node) =>
-    fullName(a.user).localeCompare(fullName(b.user));
-
+  const label = (n: Node) => fullName(n.members[0]);
   const sort = (list: Node[]) => {
-    list.sort(byName);
+    list.forEach((n) => n.members.sort((a, b) => fullName(a).localeCompare(fullName(b))));
+    list.sort((a, b) => label(a).localeCompare(label(b)));
     list.forEach((child) => sort(child.reports));
   };
 
@@ -77,15 +111,84 @@ function buildTree(users: User[]): Node[] {
   return roots;
 }
 
-/** Everybody at or beneath this person, so nobody can report into their own line. */
+/** Everybody at or beneath this place, so nobody can report into their own line. */
 function subtreeIds(node: Node): Set<string> {
-  const ids = new Set<string>([String(node.user.id)]);
+  const ids = new Set<string>(node.members.map((m) => String(m.id)));
 
   for (const child of node.reports) {
     for (const id of subtreeIds(child)) ids.add(id);
   }
 
   return ids;
+}
+
+/** One person's card, with the Reports To picker for a super admin. */
+function PersonCard({
+  user,
+  editable,
+  everyone,
+  forbidden,
+  onReassign,
+  saving,
+}: {
+  user: User;
+  editable: boolean;
+  everyone: User[];
+  forbidden: Set<string>;
+  onReassign: (user: User, managerId: string) => void;
+  saving: string | null;
+}) {
+  const roles = (user.role_names || []).join(", ");
+  const inactive = user.is_active === false;
+  const names = new Map(everyone.map((u) => [String(u.id), fullName(u)]));
+  const also = (user.also_reports_to_ids || []).map((id) => names.get(String(id))).filter(Boolean);
+
+  return (
+    <div
+      className={`w-[188px] shrink-0 rounded-xl border bg-white px-3 py-2 text-center shadow-sm dark:bg-[#071929] ${
+        inactive
+          ? "border-dashed border-slate-300 opacity-60 dark:border-[#17304a]"
+          : "border-slate-200 dark:border-[#17304a]"
+      }`}
+    >
+      <p className="truncate text-[12px] font-bold text-slate-800 dark:text-white">{fullName(user)}</p>
+
+      {roles && (
+        <p className="mt-0.5 truncate text-[10px] font-semibold text-[#233353] dark:text-sky-300">{roles}</p>
+      )}
+
+      <p className="mt-0.5 truncate text-[10px] text-slate-400">
+        {user.designation || user.location || "—"}
+        {inactive && " · inactive"}
+      </p>
+
+      {also.length > 0 && (
+        <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400" title={`Also reports to ${also.join(", ")}`}>
+          Also reports to {also.join(", ")}
+        </p>
+      )}
+
+      {editable && (
+        <select
+          aria-label={`Who ${fullName(user)} reports to`}
+          disabled={saving === String(user.id)}
+          value={user.reports_to_id ? String(user.reports_to_id) : ""}
+          onChange={(event) => onReassign(user, event.target.value)}
+          className="mt-1.5 h-6 w-full rounded border border-slate-200 bg-slate-50 px-1 text-[10px] text-slate-600 outline-none focus:border-[#233353] disabled:opacity-50 dark:border-[#17304a] dark:bg-[#0b2034] dark:text-slate-300"
+        >
+          <option value="">— top —</option>
+
+          {everyone
+            .filter((candidate) => !forbidden.has(String(candidate.id)))
+            .map((candidate) => (
+              <option key={candidate.id} value={String(candidate.id)}>
+                {fullName(candidate)}
+              </option>
+            ))}
+        </select>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -113,59 +216,41 @@ function Branch({
   onReassign: (user: User, managerId: string) => void;
   saving: string | null;
 }) {
-  const roles = (node.user.role_names || []).join(", ");
   const children = node.reports;
 
   /* Their own line is not a choice: making somebody report to their own
      report would take the whole branch off the chart. */
   const forbidden = subtreeIds(node);
-
-  const inactive = node.user.is_active === false;
+  const group = node.members.length > 1;
 
   return (
     <div className="flex flex-col items-center">
-      <div
-        className={`w-[188px] shrink-0 rounded-xl border bg-white px-3 py-2 text-center shadow-sm dark:bg-[#071929] ${
-          inactive
-            ? "border-dashed border-slate-300 opacity-60 dark:border-[#17304a]"
-            : "border-slate-200 dark:border-[#17304a]"
-        }`}
-      >
-        <p className="truncate text-[12px] font-bold text-slate-800 dark:text-white">
-          {fullName(node.user)}
-        </p>
-
-        {roles && (
-          <p className="mt-0.5 truncate text-[10px] font-semibold text-[#233353] dark:text-sky-300">
-            {roles}
-          </p>
-        )}
-
-        <p className="mt-0.5 truncate text-[10px] text-slate-400">
-          {node.user.location || "—"}
-          {inactive && " · inactive"}
-        </p>
-
-        {editable && (
-          <select
-            aria-label={`Who ${fullName(node.user)} reports to`}
-            disabled={saving === String(node.user.id)}
-            value={node.user.reports_to_id ? String(node.user.reports_to_id) : ""}
-            onChange={(event) => onReassign(node.user, event.target.value)}
-            className="mt-1.5 h-6 w-full rounded border border-slate-200 bg-slate-50 px-1 text-[10px] text-slate-600 outline-none focus:border-[#233353] disabled:opacity-50 dark:border-[#17304a] dark:bg-[#0b2034] dark:text-slate-300"
-          >
-            <option value="">— top —</option>
-
-            {everyone
-              .filter((candidate) => !forbidden.has(String(candidate.id)))
-              .map((candidate) => (
-                <option key={candidate.id} value={String(candidate.id)}>
-                  {fullName(candidate)}
-                </option>
-              ))}
-          </select>
-        )}
-      </div>
+      {group ? (
+        /* Managers at the same level, side by side, joined by one bracket
+           that runs down to the people they share. */
+        <div className="flex items-start" role="group" aria-label={`Shared managers: ${node.members.map(fullName).join(", ")}`}>
+          {node.members.map((member, index) => {
+            const first = index === 0;
+            const last = index === node.members.length - 1;
+            return (
+              <div key={String(member.id)} className="flex flex-col items-center">
+                <div className="px-1.5">
+                  <PersonCard user={member} editable={editable} everyone={everyone} forbidden={forbidden}
+                    onReassign={onReassign} saving={saving} />
+                </div>
+                <div className="flex h-5 w-full items-end">
+                  <div className={`h-px flex-1 ${!first ? "bg-slate-300 dark:bg-[#17304a]" : ""}`} />
+                  <div className="h-5 w-px bg-slate-300 dark:bg-[#17304a]" />
+                  <div className={`h-px flex-1 ${!last ? "bg-slate-300 dark:bg-[#17304a]" : ""}`} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <PersonCard user={node.members[0]} editable={editable} everyone={everyone} forbidden={forbidden}
+          onReassign={onReassign} saving={saving} />
+      )}
 
       {children.length > 0 && (
         <>
@@ -179,7 +264,7 @@ function Branch({
               const only = children.length === 1;
 
               return (
-                <div key={String(child.user.id)} className="flex flex-col items-center">
+                <div key={String(child.members[0].id)} className="flex flex-col items-center">
                   {/* The horizontal rail: half-width stubs on the outer
                       children so it starts and stops at the cards rather
                       than hanging past them. */}
@@ -261,13 +346,16 @@ export default function HierarchyPage() {
 
       if (!hit) continue;
 
-      let walker: User | undefined = user;
-
-      while (walker && !keep.has(String(walker.id))) {
+      // Everybody above them, through every manager they report to.
+      const queue: User[] = [user];
+      while (queue.length) {
+        const walker = queue.pop()!;
+        if (keep.has(String(walker.id))) continue;
         keep.add(String(walker.id));
-        walker = walker.reports_to_id
-          ? byId.get(String(walker.reports_to_id))
-          : undefined;
+        for (const id of [walker.reports_to_id, ...(walker.also_reports_to_ids || [])]) {
+          const above = id ? byId.get(String(id)) : undefined;
+          if (above) queue.push(above);
+        }
       }
     }
 
@@ -308,7 +396,7 @@ export default function HierarchyPage() {
     <ListPage>
       <PageHeader
         title="Reporting Chart"
-        description="Who reports to whom. A discount climbs this line until it reaches the level that can sign it, and a manager sees the work of everybody beneath them and nobody else's."
+        description="Who reports to whom. A discount climbs this line until it reaches the level that can sign it, and a manager sees the work of everybody beneath them and nobody else's. Someone with two managers at the same level (two Directors over the Founder) shows both side by side: set it under Users with Also Reports To."
       />
 
       <ListToolbar
@@ -346,7 +434,7 @@ export default function HierarchyPage() {
             <div className="flex min-w-max items-start gap-10 px-2 pb-2">
               {tree.map((node) => (
                 <Branch
-                  key={String(node.user.id)}
+                  key={String(node.members[0].id)}
                   node={node}
                   editable={superAdmin}
                   everyone={users}
