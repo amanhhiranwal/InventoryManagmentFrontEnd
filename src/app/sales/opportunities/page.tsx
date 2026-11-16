@@ -121,6 +121,14 @@ import {
 } from "react-icons/fi";
 import { ProductItemsIcon } from "@/components/icons/SectionIcons";
 import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
+import { AttachmentList } from "@/features/attachments/AttachmentList";
+import {
+  ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_BYTES,
+  asAttachments,
+  uploadAttachments,
+  type StoredAttachment,
+} from "@/features/attachments/attachments.api";
 import { SortTh, useTableSort } from "@/components/crm/sort";
 import {
   addressErrors,
@@ -1052,6 +1060,7 @@ function OpportunitiesPageInner() {
         gst_number: payload.gstNumber,
         pan_number: payload.panNumber,
         coi_number: payload.coiNumber,
+        attachments: payload.attachments,
 
         contact_name: payload.contactName,
         designation: payload.designation,
@@ -1415,6 +1424,7 @@ function OpportunitiesPageInner() {
         gst_number: payload.gstNumber,
         pan_number: payload.panNumber,
         coi_number: payload.coiNumber,
+        attachments: payload.attachments,
 
         contact_name: payload.contactName,
         designation: payload.designation,
@@ -3465,6 +3475,36 @@ function NewOpportunityPage({
      "Sales Team" option could never map to a real user. */
   const [assignedTo] = useState(seed.assigned_to_id || "");
 
+  /* The GST, PAN and COI documents (PDF, Word, Excel or an image such as
+     a JPEG), stored as files and kept on the opportunity. A converted
+     lead's documents come across with it. */
+  const [attachments, setAttachments] = useState<StoredAttachment[]>(() =>
+    asAttachments(seed.attachments),
+  );
+  const [uploadingAttachments, setUploadingAttachments] = useState(0);
+
+  const addAttachment = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!files.length) return;
+
+    const validFiles = files.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
+    if (validFiles.length !== files.length) {
+      addToast("Files above 10MB were ignored.", "warning");
+    }
+    if (!validFiles.length) return;
+
+    setUploadingAttachments((count) => count + validFiles.length);
+    try {
+      const stored = await uploadAttachments(validFiles, (file, reason) =>
+        addToast(`${file.name}: ${reason}`, "warning"),
+      );
+      if (stored.length) setAttachments((current) => [...current, ...stored]);
+    } finally {
+      setUploadingAttachments((count) => Math.max(0, count - validFiles.length));
+    }
+  };
+
 
   /* Line items chosen through Add Product, replacing the old fixed
      checkbox list which could not carry a model, SKU, price or tax. */
@@ -3818,6 +3858,7 @@ function NewOpportunityPage({
         gstNumber,
         panNumber,
         coiNumber,
+        attachments,
         contactName,
         designation,
         mobileNumber,
@@ -4091,6 +4132,7 @@ function NewOpportunityPage({
                     value={gstNumber}
                     onChange={(value) => setGstNumber(capCode(value, 15))}
                     placeholder="Enter GSTIN"
+                    onFile={addAttachment}
                   />
 
                   <DocumentInput
@@ -4098,6 +4140,7 @@ function NewOpportunityPage({
                     value={panNumber}
                     onChange={(value) => setPanNumber(capCode(value, 10))}
                     placeholder="Enter PAN"
+                    onFile={addAttachment}
                   />
 
                   <DocumentInput
@@ -4105,8 +4148,29 @@ function NewOpportunityPage({
                     value={coiNumber}
                     onChange={setCoiNumber}
                     placeholder="COI Number"
+                    onFile={addAttachment}
                   />
                 </div>
+
+                {/* What the three Upload Doc buttons have put on the
+                    opportunity, as on the lead. */}
+                {(attachments.length > 0 || uploadingAttachments > 0) && (
+                  <div className="mt-4">
+                    <p className="mb-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      Uploaded Documents
+                    </p>
+
+                    <AttachmentList
+                      files={attachments}
+                      uploadingCount={uploadingAttachments}
+                      onRemove={(index) =>
+                        setAttachments((current) =>
+                          current.filter((_, position) => position !== index),
+                        )
+                      }
+                    />
+                  </div>
+                )}
               </FormSectionBlock>
 
               {/* =================================================
@@ -5342,11 +5406,14 @@ function DocumentInput({
   value,
   onChange,
   placeholder,
+  onFile,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** Receives the chosen document: PDF, Word, Excel or an image. */
+  onFile: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
     <div className="grid grid-cols-[1fr_145px] items-end gap-3">
@@ -5357,13 +5424,17 @@ function DocumentInput({
         placeholder={placeholder}
       />
 
-      <button
-        type="button"
-        className="mb-0 flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 text-[10px] font-medium text-slate-400 dark:border-[#31506b]"
-      >
+      <label className="mb-0 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 text-[10px] font-medium text-slate-400 transition hover:bg-slate-50 dark:border-[#31506b] dark:hover:bg-[#071929]">
         <FiUploadCloud size={14} />
         Upload Doc
-      </button>
+        <input
+          type="file"
+          className="hidden"
+          accept={ATTACHMENT_ACCEPT}
+          aria-label={`Upload ${label} document`}
+          onChange={onFile}
+        />
+      </label>
     </div>
   );
 }

@@ -30,6 +30,7 @@ import {
 
 import { useUIStore } from "@/lib/store/ui.store";
 import {
+  ATTACHMENT_ACCEPT,
   MAX_ATTACHMENT_BYTES,
   StoredAttachment,
   asAttachments,
@@ -4425,7 +4426,7 @@ function DocumentField({
         >
           <FiUploadCloud />
           Upload Doc
-          <input type="file" className="hidden" onChange={onFile} />
+          <input type="file" className="hidden" accept={ATTACHMENT_ACCEPT} onChange={onFile} />
         </label>
       </div>
 

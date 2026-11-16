@@ -86,6 +86,7 @@ import {
 import { sendSalesOrderForApproval } from "@/features/salesOrders/sendForApproval";
 import DocumentPrintPreview from "@/components/documents/DocumentPrintPreview";
 import {
+  ATTACHMENT_ACCEPT,
   StoredAttachment,
   uploadAttachments,
 } from "@/features/attachments/attachments.api";
@@ -1061,21 +1062,20 @@ export default function OrdersListPage() {
 
   const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 
-  const ALLOWED_ATTACHMENT_TYPES = [
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  ];
+  /* The same list the server stores (attachment_store.ALLOWED), checked
+     by extension: a browser can report a JPEG's type as "" or
+     "image/pjpeg", and the server decides by extension too. */
+  const ALLOWED_ATTACHMENT_EXTENSIONS = ATTACHMENT_ACCEPT.split(",");
 
   const addAttachments = async (files: File[]) => {
     const validFiles: File[] = [];
 
     files.forEach((file) => {
-      if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
+      const extension = `.${file.name.split(".").pop() || ""}`.toLowerCase();
+
+      if (!ALLOWED_ATTACHMENT_EXTENSIONS.includes(extension)) {
         addToast(
-          `${file.name}: Only PDF, DOC, DOCX, XLS and XLSX files are allowed.`,
+          `${file.name}: Only PDF, Word, Excel and image (JPG, JPEG, PNG, WEBP) files are allowed.`,
           "warning",
         );
         return;
@@ -3640,7 +3640,7 @@ export default function OrdersListPage() {
                     ref={attachmentInputRef}
                     type="file"
                     multiple
-                    accept=".pdf,.doc,.docx,.xls,.xlsx"
+                    accept={ATTACHMENT_ACCEPT}
                     onChange={handleAttachmentChange}
                     className="hidden"
                   />
@@ -3703,7 +3703,7 @@ export default function OrdersListPage() {
                     </p>
 
                     <p className="text-[9px] text-slate-400 mt-1">
-                      PDF, DOC, DOCX, XLS, XLSX up to 10MB
+                      PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG, PNG up to 10MB
                     </p>
                   </div>
 
