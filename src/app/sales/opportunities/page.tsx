@@ -114,16 +114,14 @@ import {
   FiClock,
   FiFileText,
   FiShoppingCart,
-  FiUploadCloud,
   FiEdit2,
   FiChevronDown,
   FiAlertCircle,
 } from "react-icons/fi";
 import { ProductItemsIcon } from "@/components/icons/SectionIcons";
 import { useCloseOnOutsideClick } from "@/components/crm/useCloseOnOutsideClick";
-import { AttachmentList } from "@/features/attachments/AttachmentList";
+import { AttachmentList, DocumentSlot } from "@/features/attachments/AttachmentList";
 import {
-  ATTACHMENT_ACCEPT,
   MAX_ATTACHMENT_BYTES,
   asAttachments,
   uploadAttachments,
@@ -3481,29 +3479,47 @@ function NewOpportunityPage({
   const [attachments, setAttachments] = useState<StoredAttachment[]>(() =>
     asAttachments(seed.attachments),
   );
-  const [uploadingAttachments, setUploadingAttachments] = useState(0);
+  /* The document fields ("gst", "pan", "coi") with an upload in flight. */
+  const [uploadingDocs, setUploadingDocs] = useState<string[]>([]);
 
-  const addAttachment = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
+  /** Upload the document for one field. It shows in that field's own
+      slot, and choosing another replaces it. */
+  const addAttachment = async (
+    doc: string,
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
     event.target.value = "";
-    if (!files.length) return;
+    if (!file) return;
 
-    const validFiles = files.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
-    if (validFiles.length !== files.length) {
-      addToast("Files above 10MB were ignored.", "warning");
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      addToast(`${file.name}: File size must be 10MB or less.`, "warning");
+      return;
     }
-    if (!validFiles.length) return;
 
-    setUploadingAttachments((count) => count + validFiles.length);
+    setUploadingDocs((current) => [...current, doc]);
     try {
-      const stored = await uploadAttachments(validFiles, (file, reason) =>
-        addToast(`${file.name}: ${reason}`, "warning"),
+      const stored = await uploadAttachments([file], (failed, reason) =>
+        addToast(`${failed.name}: ${reason}`, "warning"),
       );
-      if (stored.length) setAttachments((current) => [...current, ...stored]);
+      if (stored.length) {
+        setAttachments((current) => [
+          ...current.filter((item) => item.doc !== doc),
+          { ...stored[0], doc },
+        ]);
+      }
     } finally {
-      setUploadingAttachments((count) => Math.max(0, count - validFiles.length));
+      setUploadingDocs((current) => current.filter((item) => item !== doc));
     }
   };
+
+  const documentProps = (doc: string) => ({
+    file: attachments.find((item) => item.doc === doc),
+    uploading: uploadingDocs.includes(doc),
+    onFile: (event: React.ChangeEvent<HTMLInputElement>) => addAttachment(doc, event),
+    onRemove: () =>
+      setAttachments((current) => current.filter((item) => item.doc !== doc)),
+  });
 
 
   /* Line items chosen through Add Product, replacing the old fixed
@@ -4132,7 +4148,7 @@ function NewOpportunityPage({
                     value={gstNumber}
                     onChange={(value) => setGstNumber(capCode(value, 15))}
                     placeholder="Enter GSTIN"
-                    onFile={addAttachment}
+                    {...documentProps("gst")}
                   />
 
                   <DocumentInput
@@ -4140,7 +4156,7 @@ function NewOpportunityPage({
                     value={panNumber}
                     onChange={(value) => setPanNumber(capCode(value, 10))}
                     placeholder="Enter PAN"
-                    onFile={addAttachment}
+                    {...documentProps("pan")}
                   />
 
                   <DocumentInput
@@ -4148,26 +4164,25 @@ function NewOpportunityPage({
                     value={coiNumber}
                     onChange={setCoiNumber}
                     placeholder="COI Number"
-                    onFile={addAttachment}
+                    {...documentProps("coi")}
                   />
                 </div>
 
-                {/* What the three Upload Doc buttons have put on the
-                    opportunity, as on the lead. */}
-                {(attachments.length > 0 || uploadingAttachments > 0) && (
+                {/* Each field's document shows in its own slot above.
+                    Files with no field - a lead's older documents - are
+                    listed here so they can be opened or removed. */}
+                {attachments.some((item) => !item.doc) && (
                   <div className="mt-4">
                     <p className="mb-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                       Uploaded Documents
                     </p>
 
                     <AttachmentList
-                      files={attachments}
-                      uploadingCount={uploadingAttachments}
-                      onRemove={(index) =>
-                        setAttachments((current) =>
-                          current.filter((_, position) => position !== index),
-                        )
-                      }
+                      files={attachments.filter((item) => !item.doc)}
+                      onRemove={(index) => {
+                        const gone = attachments.filter((item) => !item.doc)[index];
+                        setAttachments((current) => current.filter((item) => item !== gone));
+                      }}
                     />
                   </div>
                 )}
@@ -5406,14 +5421,21 @@ function DocumentInput({
   value,
   onChange,
   placeholder,
+  file,
+  uploading,
   onFile,
+  onRemove,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /** This field's uploaded document, shown in place of Upload Doc. */
+  file?: StoredAttachment;
+  uploading?: boolean;
   /** Receives the chosen document: PDF, Word, Excel or an image. */
   onFile: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemove: () => void;
 }) {
   return (
     <div className="grid grid-cols-[1fr_145px] items-end gap-3">
@@ -5424,17 +5446,15 @@ function DocumentInput({
         placeholder={placeholder}
       />
 
-      <label className="mb-0 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 text-[10px] font-medium text-slate-400 transition hover:bg-slate-50 dark:border-[#31506b] dark:hover:bg-[#071929]">
-        <FiUploadCloud size={14} />
-        Upload Doc
-        <input
-          type="file"
-          className="hidden"
-          accept={ATTACHMENT_ACCEPT}
-          aria-label={`Upload ${label} document`}
-          onChange={onFile}
-        />
-      </label>
+      <DocumentSlot
+        label={label}
+        file={file}
+        uploading={uploading}
+        onFile={onFile}
+        onRemove={onRemove}
+        emptyClassName="mb-0 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 text-[10px] font-medium text-slate-400 transition hover:bg-slate-50 dark:border-[#31506b] dark:hover:bg-[#071929]"
+        filledClassName="mb-0 flex h-10 min-w-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 text-[10px] dark:border-[#17304a] dark:bg-[#0b2034]"
+      />
     </div>
   );
 }
