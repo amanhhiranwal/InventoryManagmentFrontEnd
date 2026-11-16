@@ -100,6 +100,8 @@ export interface QuotationItem {
   /** Sold above its list price: ``unit_price`` is the selling price and the
       line takes no discount. */
   marked_up?: boolean;
+  /** AI taken on this Interactive Flat Panel; charged on the AI line. */
+  ai?: boolean;
   /** The price list's figure, as the server read it. Read-only. */
   list_price?: number | null;
 }

@@ -95,6 +95,15 @@ import {
   useInventoryCatalog,
 } from "@/features/catalog/useInventoryCatalog";
 import {
+  AI_SKU,
+  alignAiLine,
+  isAiLine,
+  removeAiLine,
+  setLineAi,
+  takesAi,
+  useAiRate,
+} from "@/features/catalog/aiLines";
+import {
   alignWarrantyLines,
   coverFor,
   unitsOnTerm,
@@ -195,6 +204,8 @@ interface LineItem {
   /** Sold above the list price: the unit price is the selling price, and
       the line takes no discount. */
   markedUp?: boolean;
+  /** AI taken on this Interactive Flat Panel; charged on the AI line. */
+  ai?: boolean;
 }
 
 interface AddressState {
@@ -579,7 +590,7 @@ export default function QuotationPage() {
   /* What the table shows, totals and saves: each warranty line's quantity
      follows the products on its term, so it is never typed. */
   const items = useMemo(
-    () => alignWarrantyLines(rawItems, (item) => item.sku),
+    () => alignAiLine(alignWarrantyLines(rawItems, (item) => item.sku), (item) => item.sku),
     [rawItems],
   );
   const [editingItemKey, setEditingItemKey] = useState<string | null>(null);
@@ -692,9 +703,16 @@ export default function QuotationPage() {
   /* The picker's choices, counted with the lines already on the proposal:
      a panel already on 4 Years is covered by a 4 Years Warranty picked now. */
   const picked = useMemo(
-    () => alignWarrantyLines(rawPicked, (item) => item.sku, items),
+    () =>
+      alignAiLine(
+        alignWarrantyLines(rawPicked, (item) => item.sku, items),
+        (item) => item.sku,
+        items,
+      ),
     [rawPicked, items],
   );
+  /* The AI price per panel from Masters; the AI line starts at it. */
+  const aiRate = useAiRate();
   const warrantyCover = useMemo(
     () => unitsOnTerm([...items, ...picked], (item) => item.sku),
     [items, picked],
@@ -1225,6 +1243,7 @@ export default function QuotationPage() {
             warrantyTerm: item.warranty_term || "",
             listPrice: Number(item.list_price) || Number(item.unit_price) || 0,
             markedUp: Boolean(item.marked_up),
+            ai: Boolean(item.ai),
           })),
         );
 
@@ -1385,6 +1404,7 @@ export default function QuotationPage() {
         /* A line the opportunity sold above its list price stays so. */
         listPrice: num("list_price") || num("unit_price", "unitPrice", "price"),
         markedUp: Boolean(item.marked_up),
+        ai: Boolean(item.ai),
       };
     });
 
@@ -1479,6 +1499,7 @@ export default function QuotationPage() {
       tax: item.tax,
       warranty_term: item.warrantyTerm,
       marked_up: Boolean(item.markedUp),
+      ai: Boolean(item.ai),
     })),
 
     discount_mode: discountMode,
@@ -1706,6 +1727,11 @@ export default function QuotationPage() {
   };
 
   const togglePicked = (product: CatalogProduct) => {
+    if (isAiLine(product.id)) {
+      setPicked((current) => removeAiLine(current, (item) => item.sku));
+      return;
+    }
+
     setPicked((current) => {
       const existing = current.find((item) => item.productId === product.id);
 
@@ -1746,6 +1772,35 @@ export default function QuotationPage() {
     );
   };
 
+  /** AI on or off for a picked panel; the first panel on AI adds the AI
+      line, unless the proposal already carries one. */
+  const setPickedAi = (sku: string, ai: boolean) => {
+    setPicked((current) =>
+      setLineAi(
+        current,
+        (item) => item.sku,
+        sku,
+        ai,
+        () => ({
+          key: `${AI_SKU}-${Date.now()}`,
+          productId: AI_SKU,
+          product: "AI",
+          model: "AI",
+          sku: AI_SKU,
+          hsn: "",
+          quantity: 1,
+          unitPrice: aiRate,
+          listPrice: aiRate,
+          markedUp: false,
+          discount: 0,
+          tax: 18,
+          warrantyTerm: "",
+        }),
+        items,
+      ),
+    );
+  };
+
   const confirmProducts = () => {
     if (!picked.length) {
       addToast("Select at least one product.", "warning");
@@ -1772,7 +1827,11 @@ export default function QuotationPage() {
   };
 
   const removeItem = (key: string) => {
-    setItems((current) => current.filter((item) => item.key !== key));
+    setItems((current) =>
+      isAiLine(current.find((item) => item.key === key)?.sku)
+        ? removeAiLine(current, (item) => item.sku)
+        : current.filter((item) => item.key !== key),
+    );
     addToast("Product removed from the proposal.", "info");
   };
 
@@ -2184,7 +2243,7 @@ export default function QuotationPage() {
                           <td className="px-4 py-3">
                             {/* A warranty line's quantity follows the
                                 products on its term, so it has no stepper. */}
-                            {editing && !isWarrantyLine(item.sku) ? (
+                            {editing && !isWarrantyLine(item.sku) && !isAiLine(item.sku) ? (
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
@@ -2287,7 +2346,7 @@ export default function QuotationPage() {
                               costs: that is settled on the server from
                               Masters, so it cannot be retyped here. */}
                           <td className="px-4 py-3">
-                            {isWarrantyLine(item.sku) ? (
+                            {isWarrantyLine(item.sku) || isAiLine(item.sku) ? (
                               <span className="text-[11px] text-slate-400">—</span>
                             ) : editing ? (
                               <select
@@ -2740,6 +2799,8 @@ export default function QuotationPage() {
             onCategory={setProductCategory}
             onToggle={togglePicked}
             onUpdate={updatePicked}
+            onAi={setPickedAi}
+            aiPriced={aiRate > 0}
             onClose={() => setShowProductModal(false)}
             onConfirm={confirmProducts}
             warrantyTerms={warrantyTerms}
@@ -3610,6 +3671,8 @@ function ProductPickerModal({
   onCategory,
   onToggle,
   onUpdate,
+  onAi,
+  aiPriced,
   onClose,
   onConfirm,
   warrantyTerms,
@@ -3636,6 +3699,10 @@ function ProductPickerModal({
   onCategory: (value: string) => void;
   onToggle: (product: CatalogProduct) => void;
   onUpdate: (key: string, patch: Partial<LineItem>) => void;
+  /** AI on or off for a picked Interactive Flat Panel, by SKU. */
+  onAi: (sku: string, ai: boolean) => void;
+  /** Whether Masters has an AI price yet; until then AI cannot be chosen. */
+  aiPriced: boolean;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -3863,13 +3930,15 @@ function ProductPickerModal({
                     <span className="text-[10px] text-slate-500">
                       {isWarrantyLine(item.sku)
                         ? `Quantity · matches the products on ${warrantyTermOfSku(item.sku)}`
-                        : "Quantity"}
+                        : isAiLine(item.sku)
+                          ? "Quantity · matches the panels with AI"
+                          : "Quantity"}
                     </span>
 
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        hidden={isWarrantyLine(item.sku)}
+                        hidden={isWarrantyLine(item.sku) || isAiLine(item.sku)}
                         onClick={() =>
                           onUpdate(item.key, {
                             quantity: Math.max(1, item.quantity - 1),
@@ -3886,7 +3955,7 @@ function ProductPickerModal({
 
                       <button
                         type="button"
-                        hidden={isWarrantyLine(item.sku)}
+                        hidden={isWarrantyLine(item.sku) || isAiLine(item.sku)}
                         onClick={() =>
                           onUpdate(item.key, { quantity: item.quantity + 1 })
                         }
@@ -3897,7 +3966,7 @@ function ProductPickerModal({
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-5 gap-2">
+                  <div className="mt-3 grid grid-cols-6 gap-2">
                     <div>
                       <label className="mb-1 block text-[9px] text-slate-500">
                         Unit Price (₹)
@@ -3950,11 +4019,11 @@ function ProductPickerModal({
                       {/* The cover quoted on this line. The price of it is
                           held against the product and applied on the
                           server, so it cannot be typed here. */}
-                      {isWarrantyLine(item.sku) && (
+                      {(isWarrantyLine(item.sku) || isAiLine(item.sku)) && (
                         <p className="flex h-[30px] items-center text-[11px] text-slate-400">—</p>
                       )}
                       <select
-                        hidden={isWarrantyLine(item.sku)}
+                        hidden={isWarrantyLine(item.sku) || isAiLine(item.sku)}
                         value={item.warrantyTerm}
                         onChange={(event) =>
                           onUpdate(item.key, { warrantyTerm: event.target.value })
@@ -3972,6 +4041,30 @@ function ProductPickerModal({
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[9px] text-slate-500">
+                        AI
+                      </label>
+
+                      {/* Interactive Flat Panels only. Yes adds the AI
+                          line, priced from Masters. */}
+                      {takesAi(item.product) ? (
+                        <select
+                          value={item.ai ? "yes" : "no"}
+                          disabled={!item.ai && !aiPriced}
+                          title={!item.ai && !aiPriced ? "Set the AI price in Masters > Warranty Terms first" : undefined}
+                          onChange={(event) => onAi(item.sku, event.target.value === "yes")}
+                          aria-label={`AI for ${item.model}`}
+                          className={CELL_INPUT}
+                        >
+                          <option value="no">No</option>
+                          <option value="yes">Yes</option>
+                        </select>
+                      ) : (
+                        <p className="flex h-[30px] items-center text-[11px] text-slate-400">—</p>
+                      )}
                     </div>
 
                     <div>

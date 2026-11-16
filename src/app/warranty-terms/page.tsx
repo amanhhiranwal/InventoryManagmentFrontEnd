@@ -10,10 +10,13 @@
  * Each term may carry a price per unit (before GST). A priced term is
  * listed in Add Products under the Warranty Terms tab and sold as its own
  * line; the server prices that line from here when a document is saved.
+ *
+ * AI is kept here too: one price per Interactive Flat Panel. A panel set to
+ * AI = Yes in Add Products brings an "AI" line at this price.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { FiEdit2, FiPlus, FiShield, FiTrash2 } from "react-icons/fi";
+import { FiCpu, FiEdit2, FiPlus, FiShield, FiTrash2 } from "react-icons/fi";
 
 import PageHeader from "@/components/ui/PageHeader";
 import { ListPage, ListToolbar, PrimaryAction } from "@/components/crm/ListPageShell";
@@ -60,6 +63,57 @@ export default function WarrantyTermsPage() {
   const [isDefault, setIsDefault] = useState(false);
   const [price, setPrice] = useState("");
   const [description, setDescription] = useState("");
+
+  /* The AI add-on's single price per panel, before GST. */
+  const [aiPrice, setAiPrice] = useState(0);
+  const [editingAi, setEditingAi] = useState(false);
+  const [aiDraft, setAiDraft] = useState("");
+  const [savingAi, setSavingAi] = useState(false);
+
+  const fetchAiPrice = useCallback(async () => {
+    try {
+      const { data } = await api.get("/api/v1/warranty-terms/ai");
+      setAiPrice(Number(data?.data?.price) || 0);
+    } catch (error) {
+      console.error(error);
+      addToast("Could not load the AI price.", "error");
+    }
+  }, [addToast]);
+
+  useEffect(() => {
+    fetchAiPrice();
+  }, [fetchAiPrice]);
+
+  const openAiEdit = () => {
+    setAiDraft(aiPrice ? String(aiPrice) : "");
+    setEditingAi(true);
+  };
+
+  const saveAi = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const value = aiDraft.trim() === "" ? 0 : Number(aiDraft);
+    if (!Number.isFinite(value) || value < 0) {
+      addToast("Enter the price as an amount of 0 or more.", "warning");
+      return;
+    }
+
+    setSavingAi(true);
+
+    try {
+      const { data } = await api.put("/api/v1/warranty-terms/ai", { price: value });
+      setAiPrice(Number(data?.data?.price) || 0);
+      addToast("AI price saved.", "success");
+      setEditingAi(false);
+    } catch (error) {
+      const detail =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail || "The AI price could not be saved.";
+      addToast(detail, "error");
+    } finally {
+      setSavingAi(false);
+    }
+  };
 
   const fetchTerms = useCallback(async () => {
     try {
@@ -171,6 +225,8 @@ export default function WarrantyTermsPage() {
       .some((field) => String(field).toLowerCase().includes(term)),
   );
 
+  const showAi = !term || "ai interactive flat panel".includes(term);
+
   return (
     <ListPage>
       <PageHeader
@@ -256,7 +312,73 @@ export default function WarrantyTermsPage() {
             </td>
           </tr>
         ))}
+
+        {/* AI: one price for every Interactive Flat Panel, added as its
+            own line when a panel's AI is set to Yes. */}
+        {!loading && showAi && (
+          <tr className="transition-all duration-150 hover:bg-slate-50/50 dark:hover:bg-[#071929]/20">
+            <td className="px-5 py-4 text-sm font-bold text-slate-800 dark:text-white">
+              <div className="flex items-center gap-2">
+                <FiCpu className="text-primary" />
+                <span>AI</span>
+              </div>
+            </td>
+
+            <td className="px-5 py-4 text-sm text-slate-500">-</td>
+
+            <td className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
+              {aiPrice > 0 ? `${rupees(aiPrice)} + GST` : "Not priced"}
+            </td>
+
+            <td className="px-5 py-4 text-sm text-slate-500 dark:text-slate-400">
+              Per Interactive Flat Panel with AI set to Yes.
+            </td>
+
+            <td className="px-5 py-4 text-right">
+              <div className="flex justify-end gap-1.5">
+                {superAdmin && (
+                  <button
+                    onClick={openAiEdit}
+                    className="cursor-pointer rounded-lg border-none bg-transparent p-1.5 text-slate-400 hover:bg-slate-100 hover:text-[#233353] dark:hover:bg-[#0d2336]"
+                    title="Edit AI price"
+                  >
+                    <FiEdit2 className="text-sm" />
+                  </button>
+                )}
+              </div>
+            </td>
+          </tr>
+        )}
       </Table>
+
+      <Modal isOpen={editingAi} onClose={() => setEditingAi(false)} title="Edit AI Price">
+        <form onSubmit={saveAi} className="space-y-4">
+          <div>
+            <Input
+              label="Price per panel (₹, before GST)"
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="0"
+              value={aiDraft}
+              onChange={(event) => setAiDraft(event.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">
+              Charged once for each Interactive Flat Panel set to AI = Yes in
+              Add Products. New documents use it straight away.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-3 dark:border-[#0d2336]">
+            <Button variant="outline" type="button" onClick={() => setEditingAi(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={savingAi}>
+              Save AI Price
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         isOpen={showForm}
