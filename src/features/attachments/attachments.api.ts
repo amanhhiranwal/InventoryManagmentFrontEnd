@@ -21,6 +21,9 @@ export interface StoredAttachment {
   /** What the server stored it as. Without one there is nothing to open:
    *  a record saved before this existed carries a name and no file. */
   key?: string;
+  /** Which document field it was uploaded for ("gst", "pan", "coi"), so it
+   *  shows in that field's slot. Absent on files attached any other way. */
+  doc?: string;
 }
 
 /** Older records hold a bare filename, or metadata with no key. Both read
@@ -35,6 +38,7 @@ export function asAttachment(
     size: value?.size,
     type: value?.type,
     key: value?.key,
+    ...(value?.doc ? { doc: value.doc } : {}),
   };
 }
 

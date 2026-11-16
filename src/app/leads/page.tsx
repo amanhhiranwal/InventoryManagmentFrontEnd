@@ -30,12 +30,13 @@ import {
 
 import { useUIStore } from "@/lib/store/ui.store";
 import {
+  ATTACHMENT_ACCEPT,
   MAX_ATTACHMENT_BYTES,
   StoredAttachment,
   asAttachments,
   uploadAttachments,
 } from "@/features/attachments/attachments.api";
-import { AttachmentList } from "@/features/attachments/AttachmentList";
+import { AttachmentList, DocumentSlot } from "@/features/attachments/AttachmentList";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { hasPermission } from "@/features/auth/utils/permissions";
 
@@ -689,7 +690,8 @@ export default function LeadsPage() {
   const [pageMode, setPageMode] = useState<"list" | "create" | "edit">("list");
 
   const [form, setForm] = useState<LeadFormState>(EMPTY_FORM);
-  const [uploadingAttachments, setUploadingAttachments] = useState(0);
+  /* The document fields ("gst", "pan", "coi") with an upload in flight. */
+  const [uploadingDocs, setUploadingDocs] = useState<string[]>([]);
 
   const [rowMenuLeadId, setRowMenuLeadId] = useState<number | string | null>(null);
 
@@ -1751,46 +1753,53 @@ export default function LeadsPage() {
      ATTACHMENTS
   -------------------------------------------------------------------------- */
 
-  const addAttachment = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
+  /** Upload the document for one field. It shows in that field's own
+      slot, and choosing another replaces it. */
+  const addAttachment = async (
+    doc: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
 
     // Cleared straight away: the upload is awaited below, and the input
     // keeping the file means choosing the same one again does nothing.
     event.target.value = "";
 
-    if (!files.length) return;
+    if (!file) return;
 
-    const validFiles = files.filter(
-      (file) => file.size <= MAX_ATTACHMENT_BYTES,
-    );
-
-    if (validFiles.length !== files.length) {
-      addToast("Files above 10MB were ignored.", "warning");
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      addToast(`${file.name}: File size must be 10MB or less.`, "warning");
+      return;
     }
 
-    if (!validFiles.length) return;
-
-    setUploadingAttachments((count) => count + validFiles.length);
+    setUploadingDocs((current) => [...current, doc]);
 
     try {
       // Stored now, so the GSTIN or PAN document can be opened from the
       // lead afterwards. It used to keep the filename and drop the file.
-      const stored = await uploadAttachments(validFiles, (file, reason) =>
-        addToast(`${file.name}: ${reason}`, "warning"),
+      const stored = await uploadAttachments([file], (failed, reason) =>
+        addToast(`${failed.name}: ${reason}`, "warning"),
       );
 
       if (stored.length) {
         setForm((previous) => ({
           ...previous,
-          attachments: [...previous.attachments, ...stored],
+          attachments: [
+            ...previous.attachments.filter((item) => item.doc !== doc),
+            { ...stored[0], doc },
+          ],
         }));
       }
     } finally {
-      setUploadingAttachments((count) =>
-        Math.max(0, count - validFiles.length),
-      );
+      setUploadingDocs((current) => current.filter((item) => item !== doc));
     }
   };
+
+  const removeDocument = (doc: string) =>
+    setForm((previous) => ({
+      ...previous,
+      attachments: previous.attachments.filter((item) => item.doc !== doc),
+    }));
 
   /* ==========================================================================
      CREATE / EDIT PAGE
@@ -1809,7 +1818,8 @@ export default function LeadsPage() {
         onChange={updateForm}
         onSubmit={pageMode === "create" ? handleCreateLead : handleUpdateLead}
         onAttachment={addAttachment}
-        uploadingAttachments={uploadingAttachments}
+        onRemoveDocument={removeDocument}
+        uploadingDocs={uploadingDocs}
         onSaveDraft={
           pageMode === "create" || (editingLead && isDraftLead(editingLead))
             ? saveLeadDraft
@@ -2621,7 +2631,8 @@ function LeadFormPage({
   onChange,
   onSubmit,
   onAttachment,
-  uploadingAttachments,
+  onRemoveDocument,
+  uploadingDocs,
   onSaveDraft,
   onClose,
 }: {
@@ -2637,8 +2648,9 @@ function LeadFormPage({
     value: LeadFormState[K],
   ) => void;
   onSubmit: (event: FormEvent) => void;
-  onAttachment: (event: ChangeEvent<HTMLInputElement>) => void;
-  uploadingAttachments: number;
+  onAttachment: (doc: string, event: ChangeEvent<HTMLInputElement>) => void;
+  onRemoveDocument: (doc: string) => void;
+  uploadingDocs: string[];
   /** Keeps the half-filled form. Absent while editing a saved lead. */
   onSaveDraft?: () => void;
   onClose: () => void;
@@ -2817,7 +2829,10 @@ function LeadFormPage({
                 error={shown("gstNumber", gstinError(form.gstNumber))}
                 onBlur={() => touch("gstNumber")}
                 onChange={(value) => onChange("gstNumber", value)}
-                onFile={onAttachment}
+                file={form.attachments.find((item) => item.doc === "gst")}
+                uploading={uploadingDocs.includes("gst")}
+                onFile={(event) => onAttachment("gst", event)}
+                onRemove={() => onRemoveDocument("gst")}
               />
 
               <DocumentField
@@ -2827,37 +2842,42 @@ function LeadFormPage({
                 error={shown("panNumber", panError(form.panNumber))}
                 onBlur={() => touch("panNumber")}
                 onChange={(value) => onChange("panNumber", value)}
-                onFile={onAttachment}
+                file={form.attachments.find((item) => item.doc === "pan")}
+                uploading={uploadingDocs.includes("pan")}
+                onFile={(event) => onAttachment("pan", event)}
+                onRemove={() => onRemoveDocument("pan")}
               />
 
               <DocumentField
                 label="COI (Certificate of Incorporation)"
                 value={form.coiNumber}
                 onChange={(value) => onChange("coiNumber", value)}
-                onFile={onAttachment}
+                file={form.attachments.find((item) => item.doc === "coi")}
+                uploading={uploadingDocs.includes("coi")}
+                onFile={(event) => onAttachment("coi", event)}
+                onRemove={() => onRemoveDocument("coi")}
               />
             </div>
 
-            {/* What those three Upload Doc buttons have put on the lead.
-                There was nothing here before: a file was chosen, its name
-                went into the record, and the person never saw it again. */}
-            {(form.attachments.length > 0 || uploadingAttachments > 0) && (
+            {/* Each field's document shows in its own slot above. Files
+                saved before that - with no field - are still listed here
+                so they can be opened or removed. */}
+            {form.attachments.some((item) => !item.doc) && (
               <div className="mt-4">
                 <p className="mb-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
                   Uploaded Documents
                 </p>
 
                 <AttachmentList
-                  files={form.attachments}
-                  uploadingCount={uploadingAttachments}
-                  onRemove={(index) =>
+                  files={form.attachments.filter((item) => !item.doc)}
+                  onRemove={(index) => {
+                    const loose = form.attachments.filter((item) => !item.doc);
+                    const gone = loose[index];
                     onChange(
                       "attachments",
-                      form.attachments.filter(
-                        (_, position) => position !== index,
-                      ),
-                    )
-                  }
+                      form.attachments.filter((item) => item !== gone),
+                    );
+                  }}
                 />
               </div>
             )}
@@ -4372,6 +4392,9 @@ function DocumentField({
   value,
   onChange,
   onFile,
+  file,
+  uploading,
+  onRemove,
   error,
   onBlur,
   transform,
@@ -4380,6 +4403,10 @@ function DocumentField({
   value: string;
   onChange: (value: string) => void;
   onFile: (event: ChangeEvent<HTMLInputElement>) => void;
+  /** This field's uploaded document, shown in place of Upload Doc. */
+  file?: StoredAttachment;
+  uploading?: boolean;
+  onRemove: () => void;
   error?: string;
   onBlur?: () => void;
   transform?: (value: string) => string;
@@ -4402,31 +4429,15 @@ function DocumentField({
           placeholder={`Enter ${label}`}
         />
 
-        <label
-          className="
-            flex
-            cursor-pointer
-            items-center
-            justify-center
-            gap-1.5
-            h-[39px]
-            rounded-lg
-            border
-            border-dashed
-            border-[#c4c4c4]
-            px-3
-            text-[13px]
-            font-medium
-            text-[#a9a9a9]
-            hover:bg-slate-50
-            dark:border-[#0d2336]
-            dark:hover:bg-[#071929]
-          "
-        >
-          <FiUploadCloud />
-          Upload Doc
-          <input type="file" className="hidden" onChange={onFile} />
-        </label>
+        <DocumentSlot
+          label={label}
+          file={file}
+          uploading={uploading}
+          onFile={onFile}
+          onRemove={onRemove}
+          emptyClassName="flex h-[39px] cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#c4c4c4] px-3 text-[13px] font-medium text-[#a9a9a9] hover:bg-slate-50 dark:border-[#0d2336] dark:hover:bg-[#071929]"
+          filledClassName="flex h-[39px] min-w-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-[12px] dark:border-[#0d2336] dark:bg-[#0b2034]"
+        />
       </div>
 
       {error && <p className="mt-1 text-[11px] text-rose-500">{error}</p>}
