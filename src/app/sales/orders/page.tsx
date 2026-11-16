@@ -29,6 +29,15 @@ import {
   useInventoryCatalog,
 } from "@/features/catalog/useInventoryCatalog";
 import {
+  AI_SKU,
+  alignAiLine,
+  isAiLine,
+  removeAiLine,
+  setLineAi,
+  takesAi,
+  useAiRate,
+} from "@/features/catalog/aiLines";
+import {
   alignWarrantyLines,
   coverFor,
   unitsOnTerm,
@@ -275,6 +284,8 @@ interface SelectedProduct {
   /** Sold above the list price: ``price`` is the selling price, and the
       line takes no discount. */
   markedUp?: boolean;
+  /** AI taken on this Interactive Flat Panel; charged on the AI line. */
+  ai?: boolean;
 }
 
 /* =========================================================
@@ -574,9 +585,11 @@ export default function OrdersListPage() {
   /* What the table and picker show, total and save: each warranty line's
      quantity follows the products on its term, so it is never typed. */
   const selectedProducts = useMemo(
-    () => alignWarrantyLines(rawSelected, (item) => item.id),
+    () => alignAiLine(alignWarrantyLines(rawSelected, (item) => item.id), (item) => item.id),
     [rawSelected],
   );
+  /* The AI price per panel from Masters; the AI line starts at it. */
+  const aiRate = useAiRate();
   const warrantyCover = useMemo(
     () => unitsOnTerm(selectedProducts, (item) => item.id),
     [selectedProducts],
@@ -1275,6 +1288,7 @@ export default function OrdersListPage() {
               warrantyTerm: item.warranty_term || "",
               listPrice: Number(item.list_price) || Number(item.rate ?? item.price) || 0,
               markedUp: Boolean(item.marked_up),
+              ai: Boolean(item.ai),
             };
           }),
         );
@@ -1647,6 +1661,7 @@ export default function OrdersListPage() {
               /* So does a price above the list price. */
               listPrice: Number(item.list_price) || Number(item.unit_price) || 0,
               markedUp: Boolean(item.marked_up),
+              ai: Boolean(item.ai),
             };
           }),
         );
@@ -1808,7 +1823,30 @@ export default function OrdersListPage() {
   };
 
   const removeSelectedProduct = (id: string) => {
-    setSelectedProducts((current) => current.filter((item) => item.id !== id));
+    setSelectedProducts((current) =>
+      isAiLine(id)
+        ? removeAiLine(current, (item) => item.id)
+        : current.filter((item) => item.id !== id),
+    );
+  };
+
+  /** AI on or off for a panel; the first panel on AI adds the AI line. */
+  const setSelectedProductAi = (id: string, ai: boolean) => {
+    setSelectedProducts((current) =>
+      setLineAi(current, (item) => item.id, id, ai, () => ({
+        id: AI_SKU,
+        name: "AI",
+        category: "AI",
+        hsn: "",
+        price: aiRate,
+        listPrice: aiRate,
+        markedUp: false,
+        quantity: 1,
+        discount: 0,
+        tax: 18,
+        warrantyTerm: "",
+      })),
+    );
   };
 
   /* =======================================================
@@ -1959,6 +1997,7 @@ export default function OrdersListPage() {
           tax_rate: item.tax,
           warranty_term: item.warrantyTerm,
           marked_up: Boolean(item.markedUp),
+          ai: Boolean(item.ai),
         })),
 
         total_amount: subtotal,
@@ -3030,7 +3069,7 @@ export default function OrdersListPage() {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  hidden={isWarrantyLine(item.id)}
+                                  hidden={isWarrantyLine(item.id) || isAiLine(item.id)}
                                   onClick={() =>
                                     updateSelectedProduct(
                                       item.id,
@@ -3049,7 +3088,7 @@ export default function OrdersListPage() {
 
                                 <button
                                   type="button"
-                                  hidden={isWarrantyLine(item.id)}
+                                  hidden={isWarrantyLine(item.id) || isAiLine(item.id)}
                                   onClick={() =>
                                     updateSelectedProduct(
                                       item.id,
@@ -3098,11 +3137,11 @@ export default function OrdersListPage() {
                                 applied on the server, so it cannot be
                                 retyped here. */}
                             <td className="px-3 py-3">
-                              {isWarrantyLine(item.id) && (
+                              {(isWarrantyLine(item.id) || isAiLine(item.id)) && (
                                 <span className="text-[11px] text-slate-400">—</span>
                               )}
                               <select
-                                hidden={isWarrantyLine(item.id)}
+                                hidden={isWarrantyLine(item.id) || isAiLine(item.id)}
                                 value={item.warrantyTerm}
                                 aria-label={`Warranty for ${item.name}`}
                                 onChange={(event) =>
@@ -3988,13 +4027,15 @@ export default function OrdersListPage() {
                             <span className="text-[10px] text-slate-500">
                               {isWarrantyLine(item.id)
                                 ? `Quantity · matches the products on ${warrantyTermOfSku(item.id)}`
-                                : "Quantity"}
+                                : isAiLine(item.id)
+                                  ? "Quantity · matches the panels with AI"
+                                  : "Quantity"}
                             </span>
 
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                hidden={isWarrantyLine(item.id)}
+                                hidden={isWarrantyLine(item.id) || isAiLine(item.id)}
                                 onClick={() =>
                                   updateSelectedProduct(
                                     item.id,
@@ -4013,7 +4054,7 @@ export default function OrdersListPage() {
 
                               <button
                                 type="button"
-                                hidden={isWarrantyLine(item.id)}
+                                hidden={isWarrantyLine(item.id) || isAiLine(item.id)}
                                 onClick={() =>
                                   updateSelectedProduct(
                                     item.id,
@@ -4028,7 +4069,7 @@ export default function OrdersListPage() {
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-5 gap-2 mt-3">
+                          <div className="grid grid-cols-6 gap-2 mt-3">
                             <div>
                               <label className="block text-[9px] text-slate-500 mb-1">
                                 Unit Price (₹)
@@ -4084,11 +4125,11 @@ export default function OrdersListPage() {
                                 Warranty
                               </label>
 
-                              {isWarrantyLine(item.id) && (
+                              {(isWarrantyLine(item.id) || isAiLine(item.id)) && (
                                 <p className="flex h-9 items-center text-xs text-slate-400">—</p>
                               )}
                               <select
-                                hidden={isWarrantyLine(item.id)}
+                                hidden={isWarrantyLine(item.id) || isAiLine(item.id)}
                                 value={item.warrantyTerm}
                                 aria-label={`Warranty for ${item.name}`}
                                 onChange={(e) =>
@@ -4110,6 +4151,32 @@ export default function OrdersListPage() {
                                   </option>
                                 ))}
                               </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[9px] text-slate-500 mb-1">
+                                AI
+                              </label>
+
+                              {/* Interactive Flat Panels only. Yes adds the
+                                  AI line, priced from Masters. */}
+                              {takesAi(item.category) ? (
+                                <select
+                                  value={item.ai ? "yes" : "no"}
+                                  disabled={!item.ai && aiRate <= 0}
+                                  title={!item.ai && aiRate <= 0 ? "Set the AI price in Masters > Warranty Terms first" : undefined}
+                                  aria-label={`AI for ${item.name}`}
+                                  onChange={(e) =>
+                                    setSelectedProductAi(item.id, e.target.value === "yes")
+                                  }
+                                  className="w-full h-9 rounded-md border border-slate-200 px-2 text-xs bg-white disabled:cursor-not-allowed disabled:bg-slate-50"
+                                >
+                                  <option value="no">No</option>
+                                  <option value="yes">Yes</option>
+                                </select>
+                              ) : (
+                                <p className="flex h-9 items-center text-xs text-slate-400">—</p>
+                              )}
                             </div>
 
                             <div>
