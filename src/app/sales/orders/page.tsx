@@ -53,7 +53,7 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
-import { rebaseLinePrice, round, type LinePrice } from "@/features/pricing/lineMath";
+import { rebaseLinePrice, type LinePrice } from "@/features/pricing/lineMath";
 import {
   upliftFor,
   useWarrantyRates,
@@ -4773,35 +4773,20 @@ function PercentCell({
   value: number;
   onChange: (next: number) => void;
 }) {
-  const settled = round(value);
-  const [draft, setDraft] = useState(String(settled));
-  const [editing, setEditing] = useState(false);
-
-  useEffect(() => {
-    if (!editing) setDraft(String(settled));
-  }, [settled, editing]);
-
   return (
     <div className="flex h-8 w-[70px] items-center rounded-md border border-slate-200 px-2 focus-within:border-slate-400 dark:border-[#17304a]">
       <input
         type="text"
         inputMode="decimal"
-        value={draft}
-        onFocus={(event) => {
-          setEditing(true);
-          event.target.select();
-        }}
-        onChange={(event) => {
-          setDraft(event.target.value);
-          const cleaned = event.target.value.replace(/[^\d.]/g, "");
+        value={String(value)}
+        onChange={(event) =>
           onChange(
             Math.min(
               100,
-              Math.max(0, Number(cleaned) || 0),
+              Math.max(0, Number(event.target.value.replace(/[^\d.]/g, "")) || 0),
             ),
-          );
-        }}
-        onBlur={() => setEditing(false)}
+          )
+        }
         className="field-compact w-full min-w-0 border-0 bg-transparent p-0 text-xs text-slate-700 outline-none dark:text-white"
       />
 

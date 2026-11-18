@@ -22,7 +22,6 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
-import { round } from "@/features/pricing/lineMath";
 import {
   priceBasisFor,
   productSku,
@@ -4457,7 +4456,7 @@ function NewOpportunityPage({
                                 </div>
                               ) : (
                                 <span className="text-[10px] text-slate-600 dark:text-slate-300">
-                                  {round(item.discount)} %
+                                  {item.discount} %
                                 </span>
                               )}
                             </td>
@@ -4780,16 +4779,15 @@ function LineNumberInput({
   onChange: (next: number) => void;
   ariaLabel: string;
 }) {
-  const settled = round(value);
-  const [draft, setDraft] = useState(String(settled));
+  const [draft, setDraft] = useState(String(value));
 
   /* Focus is tracked in a ref rather than state: setting state here would
      re-render and move the caret to the end, defeating select-on-focus. */
   const focusedRef = useRef(false);
 
   useEffect(() => {
-    if (!focusedRef.current) setDraft(String(settled));
-  }, [settled]);
+    if (!focusedRef.current) setDraft(String(value));
+  }, [value]);
 
   return (
     <input
