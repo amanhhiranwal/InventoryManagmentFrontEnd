@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { useUIStore } from "@/lib/store/ui.store";
+import { round } from "@/features/pricing/lineMath";
 import { numericText } from "@/components/crm/AmountInput";
 import { StatusPill } from "@/components/crm/Pill";
 import {
@@ -893,7 +894,7 @@ export default function QuotationDetailPage() {
                         </td>
 
                         <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">
-                          {Number(item.discount) || 0} %
+                          {round(Number(item.discount) || 0)} %
                         </td>
 
                         <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">

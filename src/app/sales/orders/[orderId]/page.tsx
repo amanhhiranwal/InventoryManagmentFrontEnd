@@ -13,6 +13,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import api from "@/lib/axios";
 import { numericText } from "@/components/crm/AmountInput";
+import { round } from "@/features/pricing/lineMath";
 import { useUIStore } from "@/lib/store/ui.store";
 import { StatusPill } from "@/components/crm/Pill";
 import { sendSalesOrderForApproval } from "@/features/salesOrders/sendForApproval";
@@ -1816,15 +1817,16 @@ function PercentCell({
   disabled?: boolean;
   onCommit: (next: number) => void;
 }) {
-  const [draft, setDraft] = useState(String(value));
+  const settled = round(value);
+  const [draft, setDraft] = useState(String(settled));
 
-  useEffect(() => setDraft(String(value)), [value]);
+  useEffect(() => setDraft(String(settled)), [settled]);
 
   const commit = () => {
     const next = Math.min(100, Math.max(0, Number(draft.replace(/[^\d.]/g, "")) || 0));
 
     if (next !== value) onCommit(next);
-    else setDraft(String(value));
+    else setDraft(String(settled));
   };
 
   return (
