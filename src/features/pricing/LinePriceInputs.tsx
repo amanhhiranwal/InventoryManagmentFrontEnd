@@ -9,6 +9,7 @@ import {
   discountPercentFor,
   percentForDiscountAmount,
   priceFromSelling,
+  round,
   sellingPriceFor,
   type LinePrice,
 } from "./lineMath";
@@ -110,7 +111,7 @@ export function LineDiscountInput({
   const [mode, setMode] = useState<"PERCENT" | "AMOUNT">("PERCENT");
 
   const settled =
-    mode === "PERCENT" ? discount : discountAmountFor(unitPrice, discount);
+    mode === "PERCENT" ? round(discount) : discountAmountFor(unitPrice, discount);
 
   const [draft, setDraft] = useState(String(settled));
   const [editing, setEditing] = useState(false);
