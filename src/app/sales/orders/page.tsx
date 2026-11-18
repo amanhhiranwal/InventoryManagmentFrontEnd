@@ -197,6 +197,8 @@ interface Order {
 
   discount_amount?: number;
   payment_status?: string;
+  /** The approver an order waiting for approval is with ("AVP", "CEO"...). */
+  waiting_on?: string | null;
 }
 
 type StatusFilter =
@@ -4658,6 +4660,13 @@ export default function OrdersListPage() {
 
                       <td className="px-3 py-3">
                         <StatusPill status={order.status} label={status} />
+                        {/* The coordinator reads pending orders to see where
+                            each one is: name the approver it is with. */}
+                        {readOnly && order.waiting_on && (
+                          <p className="mt-1 whitespace-nowrap text-[10px] text-slate-600 dark:text-slate-400">
+                            Waiting on {order.waiting_on}
+                          </p>
+                        )}
                       </td>
 
                       <td
