@@ -98,6 +98,12 @@ const PAGE_ACTIONS: Record<string, { key: string; title: string }[]> = {
   "user.read": [
     { key: "user.bulk_upload", title: "Bulk Upload from Excel" },
   ],
+  /* The business coordinator's Sales Order list also shows orders waiting
+     for approval, read only, naming the approver each is with. Checked on
+     the server (sales_order_service.hidden_from_coordinator). */
+  "coordination_desk.read": [
+    { key: "order.pending_approval.read", title: "View Pending Approvals (read only)" },
+  ],
 };
 
 /** The pages a menu group grants. A group with sub-pages grants those; a

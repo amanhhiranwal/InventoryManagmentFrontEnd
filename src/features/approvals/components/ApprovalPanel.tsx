@@ -22,6 +22,7 @@ import {
 } from "react-icons/fi";
 
 import { useUIStore } from "@/lib/store/ui.store";
+import { useAuthStore } from "@/features/auth/store/auth.store";
 import {
   ApprovalDocumentType,
   PRICE_TYPE,
@@ -157,6 +158,9 @@ export default function ApprovalPanel({
   if (loading || !approval) return null;
 
   const pending = approval.status === "PENDING";
+  const me = useAuthStore.getState().user;
+  const mayWithdraw =
+    !!me && (me.is_super_admin || String(approval.requested_by || "") === String(me.id));
 
   const tone =
     approval.status === "APPROVED"
@@ -272,7 +276,10 @@ export default function ApprovalPanel({
             </>
           )}
 
-          {pending && !mine && (
+          {/* The server's rule: only whoever raised the request, or a super
+              admin, may pull it back. Anyone else reading it - the business
+              coordinator following pending orders - only sees it. */}
+          {pending && !mine && mayWithdraw && (
             <button
               type="button"
               disabled={busy}
