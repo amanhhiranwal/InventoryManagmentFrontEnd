@@ -35,7 +35,7 @@ export function discountPercentFor(unitPrice: number, sellingPrice: number): num
 
   if (price <= 0) return 0;
 
-  return clampPercent(((price - selling) / price) * 100);
+  return clampPercent(round(((price - selling) / price) * 100));
 }
 
 /** A line's price once a selling price is typed, allowing a markup. */
@@ -109,7 +109,7 @@ export function percentForDiscountAmount(unitPrice: number, amount: number): num
 
   if (price <= 0) return 0;
 
-  return clampPercent(((Number(amount) || 0) / price) * 100);
+  return clampPercent(round(((Number(amount) || 0) / price) * 100));
 }
 
 /** Nothing below free, nothing above the whole price. */
@@ -123,6 +123,6 @@ export function clampPercent(value: number): number {
 }
 
 /** Two decimal places, so a third of a rupee does not become 0.3333333. */
-export function round(value: number): number {
+function round(value: number): number {
   return Math.round((Number(value) || 0) * 100) / 100;
 }

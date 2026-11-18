@@ -52,7 +52,7 @@ import {
   StoredAttachment,
   uploadAttachments,
 } from "@/features/attachments/attachments.api";
-import { round, sellingPriceFor } from "@/features/pricing/lineMath";
+import { sellingPriceFor } from "@/features/pricing/lineMath";
 import {
   upliftFor,
   useWarrantyRates,
@@ -2294,7 +2294,7 @@ export default function QuotationPage() {
                                   type="number"
                                   min={0}
                                   max={100}
-                                  value={round(item.discount)}
+                                  value={item.discount}
                                   onChange={(event) =>
                                     updateItem(item.key, {
                                       discount: Number(event.target.value) || 0,
@@ -2313,7 +2313,7 @@ export default function QuotationPage() {
                               </span>
                             ) : (
                               <span className="text-[11px] text-slate-600 dark:text-slate-300">
-                                {round(item.discount)} %
+                                {item.discount} %
                               </span>
                             )}
                           </td>
