@@ -71,7 +71,7 @@ const SAMPLE_ROW = [
   "Karnataka",
   "560001",
   "India",
-  "29ABCDE1234F1Z5",
+  "29ABCDE1234F1ZW",
   "ABCDE1234F",
   "Dealer",
   "Education",

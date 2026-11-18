@@ -270,7 +270,7 @@ export default function CompanyProfilePage() {
                 <input
                   value={profile.company_gstin}
                   onChange={(event) => set("company_gstin", event.target.value)}
-                  placeholder="29ABCDE1234F1Z5"
+                  placeholder="29ABCDE1234F1ZW"
                   className={INPUT}
                 />
               </Field>

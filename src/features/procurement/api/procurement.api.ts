@@ -65,6 +65,38 @@ export const saveDepartmentApi = async (payload: Partial<Department>, id?: numbe
 export const deleteDepartmentApi = async (id: number) =>
   (await api.delete(`/api/v1/departments/${id}`)).data;
 
+/** What a vendor supplies, from Masters > Product Categories. */
+export interface ProductCategory {
+  id: number;
+  name: string;
+  is_active: boolean;
+}
+
+export const getProductCategoriesApi = async (active = true): Promise<ProductCategory[]> =>
+  (await api.get("/api/v1/product-categories", { params: { active } })).data.data;
+export const saveProductCategoryApi = async (payload: Partial<ProductCategory>, id?: number) =>
+  id
+    ? (await api.put(`/api/v1/product-categories/${id}`, payload)).data
+    : (await api.post("/api/v1/product-categories", payload)).data;
+export const deleteProductCategoryApi = async (id: number) =>
+  (await api.delete(`/api/v1/product-categories/${id}`)).data;
+
+/** A GSTIN checked offline on the server: format, state code, PAN and
+    check digit. ``live`` says whether the registration status was looked
+    up (it needs a GST Suvidha Provider account). */
+export interface GstinCheck {
+  gstin: string;
+  valid: boolean;
+  reason: string;
+  state?: string | null;
+  state_code?: string;
+  pan?: string;
+  live: { status: "not_configured" | "not_checked" | string; detail?: string };
+}
+
+export const verifyGstinApi = async (gstin: string): Promise<GstinCheck> =>
+  (await api.get("/api/v1/gst/verify", { params: { gstin }, skipErrorToast: true })).data.data;
+
 export const getApprovalMatrixApi = async (): Promise<ApprovalMatrix> =>
   (await api.get("/api/v1/procurement/approval-matrix")).data.data;
 export const saveApprovalMatrixApi = async (bands: MatrixBandInput[]): Promise<ApprovalMatrix> =>
