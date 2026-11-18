@@ -125,9 +125,43 @@ export function gstinError(
     return `That is ${text.length} characters; a ${field} has 15.`;
   }
 
-  return GSTIN.test(text)
-    ? null
-    : "Two state digits, a PAN, an entity digit, Z, then a checksum character.";
+  if (!GSTIN.test(text)) {
+    return "Two state digits, a PAN, an entity digit, Z, then a checksum character.";
+  }
+
+  if (!GST_STATE_CODES.has(text.slice(0, 2))) {
+    return `${text.slice(0, 2)} is not a GST state code.`;
+  }
+
+  const expected = gstinCheckDigit(text);
+  if (text[14] !== expected) {
+    return `This ${field} fails its check digit (the last character should be ${expected}). Check it for a typing mistake.`;
+  }
+
+  return null;
+}
+
+/** State and UT codes a GSTIN can start with: 01-38, 97 and 99. Mirrors
+    GST_STATE_CODES in app/core/field_checks.py. */
+const GST_STATE_CODES = new Set([
+  ...Array.from({ length: 38 }, (_, i) => String(i + 1).padStart(2, "0")),
+  "97",
+  "99",
+]);
+
+const GSTIN_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/** The 15th character the GST network computes from the first 14; mirrors
+    gstin_check_digit on the server. */
+export function gstinCheckDigit(gstin: string): string {
+  let total = 0;
+
+  for (let index = 0; index < 14; index += 1) {
+    const product = GSTIN_ALPHABET.indexOf(gstin[index]) * (index % 2 ? 2 : 1);
+    total += Math.floor(product / 36) + (product % 36);
+  }
+
+  return GSTIN_ALPHABET[(36 - (total % 36)) % 36];
 }
 
 export function panError(

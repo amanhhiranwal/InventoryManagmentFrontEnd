@@ -7,16 +7,24 @@
  * through verification. */
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
-import { FiBriefcase, FiCreditCard, FiFileText, FiUpload, FiUser } from "react-icons/fi";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FiBriefcase, FiCheckCircle, FiCreditCard, FiFileText, FiUpload, FiUser, FiX } from "react-icons/fi";
 
 import { FormCard, FormSectionBlock } from "@/components/crm/FormCard";
 import FormPageHeader, { CancelButton, DraftButton, SubmitButton } from "@/components/crm/FormPageHeader";
 import { AttachmentList } from "@/features/attachments/AttachmentList";
 import { ATTACHMENT_ACCEPT, uploadAttachment, type StoredAttachment } from "@/features/attachments/attachments.api";
+import { gstinError } from "@/lib/fieldChecks";
 import { useUIStore } from "@/lib/store/ui.store";
 
-import { saveVendorApi, type Vendor } from "../api/procurement.api";
+import {
+  errorDetail,
+  getProductCategoriesApi,
+  saveVendorApi,
+  verifyGstinApi,
+  type GstinCheck,
+  type Vendor,
+} from "../api/procurement.api";
 import { AttachmentsField } from "./shared";
 
 const LABEL = "mb-1.5 block";
@@ -34,7 +42,7 @@ const TEXT_FIELDS = [
   "payment_terms", "credit_days", "freight_terms", "lead_time_days", "warranty_terms", "remarks",
 ] as const;
 
-type Form = Record<(typeof TEXT_FIELDS)[number], string> & { product_categories: string; brands: string };
+type Form = Record<(typeof TEXT_FIELDS)[number], string> & { product_categories: string[]; brands: string };
 
 const fromVendor = (v?: Vendor | null): Form => {
   const form = {} as Form;
@@ -43,7 +51,7 @@ const fromVendor = (v?: Vendor | null): Form => {
     form[key] = value === null || value === undefined ? "" : String(value);
   });
   form.vendor_type = form.vendor_type || "Distributor";
-  form.product_categories = (v?.product_categories || []).join(", ");
+  form.product_categories = [...(v?.product_categories || [])];
   form.brands = (v?.brands || []).join(", ");
   return form;
 };
@@ -103,7 +111,27 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
   const [docs, setDocs] = useState<Docs>(existing?.documents || {});
   const [saving, setSaving] = useState<"draft" | "submit" | null>(null);
 
-  const set = (key: keyof Form, value: string) => setForm((c) => ({ ...c, [key]: value }));
+  const set = (key: Exclude<keyof Form, "product_categories">, value: string) => setForm((c) => ({ ...c, [key]: value }));
+  const setCategories = (product_categories: string[]) => setForm((c) => ({ ...c, product_categories }));
+
+  /* The GSTIN, checked as it is typed (format, state code, check digit),
+     and on request by the server, which also names the state and PAN. */
+  const [gstTouched, setGstTouched] = useState(false);
+  const [gstCheck, setGstCheck] = useState<GstinCheck | null>(null);
+  const [checkingGst, setCheckingGst] = useState(false);
+  const gstProblem = gstTouched ? gstinError(form.gstin) : null;
+
+  const checkGstin = async () => {
+    setGstTouched(true);
+    setCheckingGst(true);
+    try {
+      setGstCheck(await verifyGstinApi(form.gstin));
+    } catch (failure) {
+      addToast(errorDetail(failure, "The GSTIN could not be checked."), "error");
+    } finally {
+      setCheckingGst(false);
+    }
+  };
   const setDoc = (key: SingleDoc, file?: StoredAttachment) =>
     setDocs((c) => {
       const next = { ...c };
@@ -114,11 +142,16 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
 
   const save = async (submit: boolean) => {
     if (!form.name.trim()) return addToast("Enter the vendor's name.", "error");
+    const gstSaveProblem = gstinError(form.gstin);
+    if (gstSaveProblem) {
+      setGstTouched(true);
+      return addToast(`GSTIN: ${gstSaveProblem}`, "error");
+    }
     const payload = {
       ...form,
       credit_days: form.credit_days === "" ? null : Number(form.credit_days),
       lead_time_days: form.lead_time_days === "" ? null : Number(form.lead_time_days),
-      product_categories: list(form.product_categories),
+      product_categories: form.product_categories,
       brands: list(form.brands),
       documents: docs,
       status: !existing && submit ? "PENDING_VERIFICATION" : undefined,
@@ -135,7 +168,7 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
     }
   };
 
-  const input = (key: keyof Form, label: string, props: Record<string, unknown> = {}) => (
+  const input = (key: Exclude<keyof Form, "product_categories">, label: string, props: Record<string, unknown> = {}) => (
     <div>
       <label className={LABEL} htmlFor={`v-${key}`}>{label}</label>
       <input id={`v-${key}`} className={FIELD} value={form[key]} onChange={(e) => set(key, e.target.value)} {...props} />
@@ -177,7 +210,9 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
                   {VENDOR_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <div className="sm:col-span-2 lg:col-span-3">{input("product_categories", "Product Categories (comma separated)")}</div>
+              <div className="sm:col-span-2 lg:col-span-3">
+                <CategoryPicker value={form.product_categories} onChange={setCategories} />
+              </div>
               <div className="sm:col-span-2 lg:col-span-3">{input("brands", "Brands (comma separated)")}</div>
             </div>
           </FormSectionBlock>
@@ -197,7 +232,44 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
 
           <FormSectionBlock icon={<FiCreditCard />} title="Tax and Bank">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {input("gstin", "GSTIN")}
+              <div>
+                <label className={LABEL} htmlFor="v-gstin">GSTIN</label>
+                <div className="flex gap-2">
+                  <input
+                    id="v-gstin"
+                    className={FIELD}
+                    value={form.gstin}
+                    maxLength={15}
+                    aria-invalid={Boolean(gstProblem)}
+                    onChange={(e) => {
+                      set("gstin", e.target.value.toUpperCase().replace(/\s/g, ""));
+                      setGstCheck(null);
+                    }}
+                    onBlur={() => setGstTouched(true)}
+                  />
+                  <button
+                    type="button"
+                    onClick={checkGstin}
+                    disabled={!form.gstin.trim() || checkingGst}
+                    className="shrink-0 rounded-lg border border-slate-200 px-3 text-[12px] font-medium text-[#233353] hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:text-sky-300"
+                  >
+                    {checkingGst ? "Checking..." : "Check"}
+                  </button>
+                </div>
+                {gstProblem ? (
+                  <p className="mt-1 text-[11px] text-rose-500">{gstProblem}</p>
+                ) : gstCheck?.valid ? (
+                  <p className="mt-1 flex items-start gap-1 text-[11px] text-emerald-700">
+                    <FiCheckCircle className="mt-0.5 shrink-0" />
+                    <span>
+                      Valid GSTIN{gstCheck.state ? ` · ${gstCheck.state}` : ""}{gstCheck.pan ? ` · PAN ${gstCheck.pan}` : ""}.{" "}
+                      <span className="text-slate-400">{gstCheck.live.detail}</span>
+                    </span>
+                  </p>
+                ) : gstCheck && !gstCheck.valid ? (
+                  <p className="mt-1 text-[11px] text-rose-500">{gstCheck.reason}</p>
+                ) : null}
+              </div>
               {input("pan", "PAN")}
               {input("bank_name", "Bank Name")}
               {input("account_holder", "Account Holder")}
@@ -239,6 +311,106 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
           </FormCard>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Pick what the vendor supplies from Masters > Product Categories.
+ *  Names already on the vendor that the list no longer has (older free
+ *  text) stay as they are until removed. */
+function CategoryPicker({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
+  const [options, setOptions] = useState<string[]>([]);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    getProductCategoriesApi(true)
+      .then((rows) => live && setOptions(rows.map((row) => row.name)))
+      .catch((failure) => live && setFailed(errorDetail(failure, "Could not load product categories.")));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent) => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const chosen = useMemo(() => new Set(value.map((v) => v.toLowerCase())), [value]);
+  const term = query.trim().toLowerCase();
+  const matches = useMemo(
+    () => options.filter((name) => !chosen.has(name.toLowerCase()) && (!term || name.toLowerCase().includes(term))).slice(0, 50),
+    [options, chosen, term],
+  );
+
+  const add = (name: string) => {
+    onChange([...value, name]);
+    setQuery("");
+  };
+
+  return (
+    <div ref={box} className="relative">
+      <label className={LABEL} htmlFor="v-categories">Product Categories</label>
+      <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-lg border bg-white px-2 py-1.5 focus-within:border-[#233353] dark:bg-[#071929]">
+        {value.map((name) => (
+          <span key={name} className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[12px] text-slate-700 dark:bg-[#0d2336] dark:text-slate-200">
+            {name}
+            <button type="button" aria-label={`Remove ${name}`} onClick={() => onChange(value.filter((v) => v !== name))} className="text-slate-400 hover:text-rose-500">
+              <FiX size={11} />
+            </button>
+          </span>
+        ))}
+        <input
+          id="v-categories"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="v-categories-list"
+          className="min-w-[160px] flex-1 border-none bg-transparent px-1 py-1 text-[13px] outline-none"
+          placeholder={value.length ? "Add another..." : "Search and pick categories"}
+          value={query}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (matches[0]) add(matches[0]);
+            } else if (e.key === "Escape") {
+              setOpen(false);
+            } else if (e.key === "Backspace" && !query && value.length) {
+              onChange(value.slice(0, -1));
+            }
+          }}
+        />
+      </div>
+      {failed && <p className="mt-1 text-[11px] text-rose-500">{failed}</p>}
+      {open && !failed && (
+        <ul id="v-categories-list" role="listbox" className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-[#17304a] dark:bg-[#071929]">
+          {matches.length === 0 ? (
+            <li className="px-3 py-2 text-[12px] text-slate-400">
+              {options.length ? "No matching category. Add it under Masters > Product Categories." : "Loading categories..."}
+            </li>
+          ) : (
+            matches.map((name) => (
+              <li key={name} role="option" aria-selected={false}>
+                <button type="button" onClick={() => add(name)} className="w-full px-3 py-1.5 text-left text-[12px] text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-[#0d2336]">
+                  {name}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
     </div>
   );
 }
