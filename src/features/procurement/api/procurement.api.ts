@@ -445,6 +445,10 @@ export interface Vendor {
   account_number?: string | null;
   ifsc?: string | null;
   branch?: string | null;
+  bank_address?: string | null;
+  /** Current, CC (cash credit) or OD (overdraft). */
+  account_type?: string | null;
+  micr?: string | null;
   product_categories: string[];
   brands: string[];
   payment_terms?: string | null;

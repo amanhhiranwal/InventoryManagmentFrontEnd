@@ -8,7 +8,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FiBriefcase, FiCheckCircle, FiCreditCard, FiFileText, FiUpload, FiUser, FiX } from "react-icons/fi";
+import { FiBriefcase, FiCheckCircle, FiCreditCard, FiFileText, FiPercent, FiUpload, FiUser, FiX } from "react-icons/fi";
 
 import { FormCard, FormSectionBlock } from "@/components/crm/FormCard";
 import FormPageHeader, { CancelButton, DraftButton, SubmitButton } from "@/components/crm/FormPageHeader";
@@ -37,6 +37,31 @@ const AREA = "w-full rounded-lg border px-3 py-2 outline-none focus:border-[#233
     server checks the same (vendors.IFSC). */
 const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
+/** The bank details the IFSC lookup fills in. */
+const LOOKUP_FIELDS = ["bank_name", "branch", "bank_address", "micr"] as const;
+type LookupField = (typeof LOOKUP_FIELDS)[number];
+
+/** The lookup's answer as form values. The bank address takes the city
+    and state too when the branch's own address does not already say them. */
+const fromLookup = (found: IfscBranch): Record<LookupField, string> => {
+  const address = found.address.trim();
+  const upper = address.toUpperCase();
+  const extra = [found.city, found.state].filter((part) => part && !upper.includes(part.toUpperCase()));
+  return {
+    bank_name: found.bank,
+    branch: found.branch,
+    bank_address: [address, ...extra].filter(Boolean).join(", "),
+    micr: /^\d{9}$/.test(found.micr) ? found.micr : "",
+  };
+};
+
+/** A vendor's bank account: current, cash credit or overdraft. */
+const ACCOUNT_TYPES = [
+  { value: "Current", label: "Current" },
+  { value: "CC", label: "CC (Cash Credit)" },
+  { value: "OD", label: "OD (Overdraft)" },
+];
+
 const VENDOR_TYPES = ["Manufacturer", "Distributor", "Dealer", "Service Provider", "Contractor", "Other"];
 
 type Docs = Vendor["documents"];
@@ -45,6 +70,7 @@ type SingleDoc = "gst" | "pan" | "bank" | "msme";
 const TEXT_FIELDS = [
   "name", "vendor_type", "contact_person", "designation", "mobile", "email", "address", "city", "state",
   "pin_code", "gstin", "pan", "bank_name", "account_holder", "account_number", "ifsc", "branch",
+  "bank_address", "account_type", "micr",
   "payment_terms", "credit_days", "freight_terms", "lead_time_days", "warranty_terms", "remarks",
 ] as const;
 
@@ -147,8 +173,8 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
   const [findingBank, setFindingBank] = useState(false);
   const ifscAsked = useRef("");
   /* What the last lookup wrote, so changing the IFSC clears it - but not a
-     bank name or branch somebody typed themselves. */
-  const ifscFilled = useRef<{ bank: string; branch: string } | null>(null);
+     bank detail somebody typed themselves. */
+  const ifscFilled = useRef<Partial<Record<LookupField, string>> | null>(null);
 
   const findBank = async (code: string) => {
     if (!IFSC_PATTERN.test(code)) {
@@ -162,9 +188,14 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
       const branch = await lookupIfscApi(code);
       if (ifscAsked.current !== code) return;
       setIfscBranch(branch);
+      const found = fromLookup(branch);
       setForm((c) => {
-        const next = { ...c, bank_name: branch.bank || c.bank_name, branch: branch.branch || c.branch };
-        ifscFilled.current = { bank: next.bank_name, branch: next.branch };
+        const next = { ...c };
+        const filled: Partial<Record<LookupField, string>> = {};
+        LOOKUP_FIELDS.forEach((key) => {
+          if (found[key]) next[key] = filled[key] = found[key];
+        });
+        ifscFilled.current = filled;
         return next;
       });
     } catch (failure) {
@@ -274,7 +305,7 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
             </div>
           </FormSectionBlock>
 
-          <FormSectionBlock icon={<FiCreditCard />} title="Tax and Bank">
+          <FormSectionBlock icon={<FiPercent />} title="Tax Details">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <label className={LABEL} htmlFor="v-gstin">GSTIN</label>
@@ -315,11 +346,31 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
                 ) : null}
               </div>
               {input("pan", "PAN")}
+            </div>
+            {existing && (
+              <p className="mt-3 text-[11px] text-amber-700">Changing the GSTIN sends the vendor back for verification.</p>
+            )}
+          </FormSectionBlock>
+
+          {/* The bank details, each in its own field, in the order of the
+              vendor's bank details sheet. A whole IFSC fills the bank name,
+              branch, bank address and MICR from Razorpay's IFSC lookup. */}
+          <FormSectionBlock icon={<FiCreditCard />} title="Bank Details">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {input("account_holder", "Account Holder Name")}
               {input("bank_name", "Bank Name")}
-              {input("account_holder", "Account Holder")}
+              {input("branch", "Branch")}
+              <div className="sm:col-span-2 lg:col-span-3">{input("bank_address", "Bank Address")}</div>
               {input("account_number", "Account Number", { inputMode: "numeric", autoComplete: "off" })}
               <div>
-                <label className={LABEL} htmlFor="v-ifsc">IFSC</label>
+                <label className={LABEL} htmlFor="v-account_type">Account Type</label>
+                <select id="v-account_type" className={FIELD} value={form.account_type} onChange={(e) => set("account_type", e.target.value)}>
+                  <option value="">Select</option>
+                  {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL} htmlFor="v-ifsc">IFSC Code</label>
                 <div className="flex gap-2">
                   <input
                     id="v-ifsc"
@@ -332,12 +383,13 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
                       const code = e.target.value.toUpperCase().replace(/\s/g, "");
                       const filled = ifscFilled.current;
                       ifscFilled.current = null;
-                      setForm((c) => ({
-                        ...c,
-                        ifsc: code,
-                        bank_name: filled && c.bank_name === filled.bank ? "" : c.bank_name,
-                        branch: filled && c.branch === filled.branch ? "" : c.branch,
-                      }));
+                      setForm((c) => {
+                        const next = { ...c, ifsc: code };
+                        LOOKUP_FIELDS.forEach((key) => {
+                          if (filled?.[key] !== undefined && c[key] === filled[key]) next[key] = "";
+                        });
+                        return next;
+                      });
                       setIfscBranch(null);
                       setIfscProblem(null);
                       ifscAsked.current = "";
@@ -365,13 +417,15 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
                         {ifscBranch.city || ifscBranch.state ? ` · ${[ifscBranch.city, ifscBranch.state].filter(Boolean).join(", ")}` : ""}
                       </span>
                     </p>
-                  ) : null}
+                  ) : (
+                    <p className="mt-1 text-[11px] text-slate-400">Fills the bank name, branch, address and MICR.</p>
+                  )}
                 </div>
               </div>
-              {input("branch", "Branch")}
+              {input("micr", "MICR Code", { inputMode: "numeric", maxLength: 9 })}
             </div>
             {existing && (
-              <p className="mt-3 text-[11px] text-amber-700">Changing GSTIN or bank details sends the vendor back for verification.</p>
+              <p className="mt-3 text-[11px] text-amber-700">Changing the account number or IFSC sends the vendor back for verification.</p>
             )}
           </FormSectionBlock>
 
