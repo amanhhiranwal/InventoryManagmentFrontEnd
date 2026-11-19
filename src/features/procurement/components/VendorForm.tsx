@@ -20,9 +20,11 @@ import { useUIStore } from "@/lib/store/ui.store";
 import {
   errorDetail,
   getProductCategoriesApi,
+  lookupIfscApi,
   saveVendorApi,
   verifyGstinApi,
   type GstinCheck,
+  type IfscBranch,
   type Vendor,
 } from "../api/procurement.api";
 import { AttachmentsField } from "./shared";
@@ -30,6 +32,10 @@ import { AttachmentsField } from "./shared";
 const LABEL = "mb-1.5 block";
 const FIELD = "w-full rounded-lg border bg-white px-3 outline-none focus:border-[#233353] dark:bg-[#071929]";
 const AREA = "w-full rounded-lg border px-3 py-2 outline-none focus:border-[#233353]";
+
+/** An IFSC: four letters for the bank, a 0, then six for the branch. The
+    server checks the same (vendors.IFSC). */
+const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
 const VENDOR_TYPES = ["Manufacturer", "Distributor", "Dealer", "Service Provider", "Contractor", "Other"];
 
@@ -132,6 +138,44 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
       setCheckingGst(false);
     }
   };
+
+  /* The bank branch behind the IFSC, looked up as soon as a whole code is
+     typed (or on Find Bank), filling Bank Name and Branch. A reply for a
+     code that has since been changed is dropped. */
+  const [ifscBranch, setIfscBranch] = useState<IfscBranch | null>(null);
+  const [ifscProblem, setIfscProblem] = useState<string | null>(null);
+  const [findingBank, setFindingBank] = useState(false);
+  const ifscAsked = useRef("");
+  /* What the last lookup wrote, so changing the IFSC clears it - but not a
+     bank name or branch somebody typed themselves. */
+  const ifscFilled = useRef<{ bank: string; branch: string } | null>(null);
+
+  const findBank = async (code: string) => {
+    if (!IFSC_PATTERN.test(code)) {
+      setIfscProblem("An IFSC is four letters, 0, then six characters.");
+      return;
+    }
+    ifscAsked.current = code;
+    setIfscProblem(null);
+    setFindingBank(true);
+    try {
+      const branch = await lookupIfscApi(code);
+      if (ifscAsked.current !== code) return;
+      setIfscBranch(branch);
+      setForm((c) => {
+        const next = { ...c, bank_name: branch.bank || c.bank_name, branch: branch.branch || c.branch };
+        ifscFilled.current = { bank: next.bank_name, branch: next.branch };
+        return next;
+      });
+    } catch (failure) {
+      if (ifscAsked.current !== code) return;
+      setIfscBranch(null);
+      setIfscProblem(errorDetail(failure, "The IFSC could not be looked up. Enter the bank details by hand."));
+    } finally {
+      if (ifscAsked.current === code) setFindingBank(false);
+    }
+  };
+
   const setDoc = (key: SingleDoc, file?: StoredAttachment) =>
     setDocs((c) => {
       const next = { ...c };
@@ -274,7 +318,56 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
               {input("bank_name", "Bank Name")}
               {input("account_holder", "Account Holder")}
               {input("account_number", "Account Number", { inputMode: "numeric", autoComplete: "off" })}
-              {input("ifsc", "IFSC")}
+              <div>
+                <label className={LABEL} htmlFor="v-ifsc">IFSC</label>
+                <div className="flex gap-2">
+                  <input
+                    id="v-ifsc"
+                    className={FIELD}
+                    value={form.ifsc}
+                    maxLength={11}
+                    aria-invalid={Boolean(ifscProblem)}
+                    aria-describedby="v-ifsc-note"
+                    onChange={(e) => {
+                      const code = e.target.value.toUpperCase().replace(/\s/g, "");
+                      const filled = ifscFilled.current;
+                      ifscFilled.current = null;
+                      setForm((c) => ({
+                        ...c,
+                        ifsc: code,
+                        bank_name: filled && c.bank_name === filled.bank ? "" : c.bank_name,
+                        branch: filled && c.branch === filled.branch ? "" : c.branch,
+                      }));
+                      setIfscBranch(null);
+                      setIfscProblem(null);
+                      ifscAsked.current = "";
+                      setFindingBank(false);
+                      if (IFSC_PATTERN.test(code)) findBank(code);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => findBank(form.ifsc)}
+                    disabled={!form.ifsc.trim() || findingBank}
+                    className="shrink-0 rounded-lg border border-slate-200 px-3 text-[12px] font-medium text-[#233353] hover:bg-slate-50 disabled:opacity-50 dark:border-[#17304a] dark:text-sky-300"
+                  >
+                    {findingBank ? "Finding..." : "Find Bank"}
+                  </button>
+                </div>
+                <div id="v-ifsc-note" aria-live="polite">
+                  {ifscProblem ? (
+                    <p className="mt-1 text-[11px] text-rose-500">{ifscProblem}</p>
+                  ) : ifscBranch ? (
+                    <p className="mt-1 flex items-start gap-1 text-[11px] text-emerald-700">
+                      <FiCheckCircle className="mt-0.5 shrink-0" />
+                      <span>
+                        {ifscBranch.bank} · {ifscBranch.branch}
+                        {ifscBranch.city || ifscBranch.state ? ` · ${[ifscBranch.city, ifscBranch.state].filter(Boolean).join(", ")}` : ""}
+                      </span>
+                    </p>
+                  ) : null}
+                </div>
+              </div>
               {input("branch", "Branch")}
             </div>
             {existing && (

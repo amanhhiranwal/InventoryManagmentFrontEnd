@@ -97,6 +97,21 @@ export interface GstinCheck {
 export const verifyGstinApi = async (gstin: string): Promise<GstinCheck> =>
   (await api.get("/api/v1/gst/verify", { params: { gstin }, skipErrorToast: true })).data.data;
 
+/** The bank branch behind an IFSC (Razorpay's IFSC service, via the server). */
+export interface IfscBranch {
+  ifsc: string;
+  bank: string;
+  branch: string;
+  address: string;
+  city: string;
+  district: string;
+  state: string;
+  micr: string;
+}
+
+export const lookupIfscApi = async (ifsc: string): Promise<IfscBranch> =>
+  (await api.get(`/api/v1/ifsc/${encodeURIComponent(ifsc)}`, { skipErrorToast: true })).data.data;
+
 export const getApprovalMatrixApi = async (): Promise<ApprovalMatrix> =>
   (await api.get("/api/v1/procurement/approval-matrix")).data.data;
 export const saveApprovalMatrixApi = async (bands: MatrixBandInput[]): Promise<ApprovalMatrix> =>
