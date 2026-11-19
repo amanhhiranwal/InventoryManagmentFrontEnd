@@ -352,15 +352,15 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
             )}
           </FormSectionBlock>
 
-          {/* The bank details, each in its own field, in the order of the
+          {/* The bank details, each in its own field - the fields of the
               vendor's bank details sheet. A whole IFSC fills the bank name,
               branch, bank address and MICR from Razorpay's IFSC lookup. */}
           <FormSectionBlock icon={<FiCreditCard />} title="Bank Details">
+            {/* Three rows: what is typed (holder, number, type); the IFSC
+                beside what it fills (bank, branch); then MICR and the bank
+                address, which the IFSC fills too. */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {input("account_holder", "Account Holder Name")}
-              {input("bank_name", "Bank Name")}
-              {input("branch", "Branch")}
-              <div className="sm:col-span-2 lg:col-span-3">{input("bank_address", "Bank Address")}</div>
               {input("account_number", "Account Number", { inputMode: "numeric", autoComplete: "off" })}
               <div>
                 <label className={LABEL} htmlFor="v-account_type">Account Type</label>
@@ -410,19 +410,19 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
                   {ifscProblem ? (
                     <p className="mt-1 text-[11px] text-rose-500">{ifscProblem}</p>
                   ) : ifscBranch ? (
-                    <p className="mt-1 flex items-start gap-1 text-[11px] text-emerald-700">
-                      <FiCheckCircle className="mt-0.5 shrink-0" />
-                      <span>
-                        {ifscBranch.bank} · {ifscBranch.branch}
-                        {ifscBranch.city || ifscBranch.state ? ` · ${[ifscBranch.city, ifscBranch.state].filter(Boolean).join(", ")}` : ""}
-                      </span>
+                    <p className="mt-1 flex items-center gap-1 text-[11px] text-emerald-700">
+                      <FiCheckCircle className="shrink-0" />
+                      Filled bank, branch, address and MICR from this IFSC.
                     </p>
                   ) : (
                     <p className="mt-1 text-[11px] text-slate-400">Fills the bank name, branch, address and MICR.</p>
                   )}
                 </div>
               </div>
+              {input("bank_name", "Bank Name")}
+              {input("branch", "Branch")}
               {input("micr", "MICR Code", { inputMode: "numeric", maxLength: 9 })}
+              <div className="sm:col-span-2">{input("bank_address", "Bank Address")}</div>
             </div>
             {existing && (
               <p className="mt-3 text-[11px] text-amber-700">Changing the account number or IFSC sends the vendor back for verification.</p>
