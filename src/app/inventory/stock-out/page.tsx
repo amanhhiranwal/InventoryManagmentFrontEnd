@@ -12,6 +12,10 @@
  * Its own permission, stock_out.read: a super admin sees it, and Roles &
  * Access can give it to anyone else. A unit whose order was held or
  * cancelled afterwards came back; it stays listed, marked returned.
+ *
+ * A serial taken off a product on the Inventory page's Edit form is listed
+ * too, marked removed, with who removed it and when. It has no order, so it
+ * is left out of the figures across the top.
  */
 
 import Link from "next/link";
@@ -41,7 +45,7 @@ const PAGE_SIZE = 20;
 /** Wait this long after the last keystroke before searching. */
 const SEARCH_DELAY_MS = 300;
 
-type View = "out" | "returned" | null;
+type View = "out" | "returned" | "removed" | null;
 
 const TH =
   "px-5 py-3 text-[12px] font-normal text-[#777777] dark:text-slate-400";
@@ -115,7 +119,8 @@ export default function StockOutPage() {
 
       <p className="-mt-3 text-[13px] text-[#777777] dark:text-slate-400">
         Every unit issued from inventory to an order: which serial, for whom,
-        where it went, and who sent it.
+        where it went, and who sent it. Serials removed on the Inventory page
+        are listed under Removed.
       </p>
 
       <StatGrid cols={4}>
@@ -157,6 +162,7 @@ export default function StockOutPage() {
               label: "Returned",
               count: counts?.returned ?? 0,
             },
+            { value: "removed", label: "Removed", count: counts?.removed ?? 0 },
           ]}
           active={view}
           onChange={(value) => {
@@ -245,7 +251,9 @@ export default function StockOutPage() {
                     </td>
                     <td className="px-5 py-4">{row.customer_name || "—"}</td>
                     <td className="min-w-[240px] max-w-[320px] px-5 py-4 text-[12px] text-[#555555] dark:text-slate-300">
-                      {row.place || row.state || "—"}
+                      {row.removed
+                        ? "Removed from the product on the Inventory page"
+                        : row.place || row.state || "—"}
                     </td>
                     <td className="px-5 py-4 text-[12px]">
                       {row.actor || "—"}
@@ -254,7 +262,11 @@ export default function StockOutPage() {
                       {formatDateTime(row.created_at)}
                     </td>
                     <td className="px-5 py-4">
-                      {row.returned ? (
+                      {row.removed ? (
+                        <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                          Removed
+                        </span>
+                      ) : row.returned ? (
                         <span
                           title={`Returned ${formatDateTime(row.returned_at)}`}
                           className="rounded-md bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-600 dark:bg-amber-950/30 dark:text-amber-400"

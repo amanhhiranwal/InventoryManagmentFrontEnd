@@ -331,6 +331,8 @@ export interface StockOutRow {
   /** Put back because the order was held or cancelled afterwards. */
   returned: boolean;
   returned_at: string | null;
+  /** Taken off the product on the Inventory page's Edit form, not sent to an order. */
+  removed: boolean;
 }
 
 export interface StockOutPage {
@@ -342,12 +344,12 @@ export interface StockOutPage {
     last_30_days: number;
     returned: number;
   };
-  counts: { all: number; out: number; returned: number };
+  counts: { all: number; out: number; returned: number; removed: number };
 }
 
 export const getStockOutApi = async (params: {
   search?: string;
-  view?: "out" | "returned";
+  view?: "out" | "returned" | "removed";
   page: number;
   size: number;
 }): Promise<StockOutPage> => {
