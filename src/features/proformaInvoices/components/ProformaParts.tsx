@@ -18,6 +18,7 @@ import {
 } from "react-icons/lu";
 
 import { PRODUCT_CATALOG, productSku } from "@/features/catalog/productCatalog";
+import { formatPercent } from "@/features/pricing/lineMath";
 import type {
   CompanyProfile,
   ProformaAddress,
@@ -559,8 +560,8 @@ export function ProductsTable({
                 </td>
                 <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-200">
                   {onEdit
-                    ? numberCell(index, "discount", line.discount, "%")
-                    : `${line.discount} %`}
+                    ? numberCell(index, "discount", formatPercent(line.discount), "%")
+                    : `${formatPercent(line.discount)} %`}
                 </td>
                 <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-200">
                   {onEdit ? numberCell(index, "tax", line.tax, "%") : `${line.tax} %`}

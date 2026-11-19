@@ -22,6 +22,7 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
+import { formatPercent } from "@/features/pricing/lineMath";
 import {
   priceBasisFor,
   productSku,
@@ -4443,7 +4444,7 @@ function NewOpportunityPage({
                                 <div className="flex items-center gap-1">
                                   <LineNumberInput
                                     ariaLabel={`Discount for ${item.model}`}
-                                    value={item.discount}
+                                    value={formatPercent(item.discount)}
                                     onChange={(next) =>
                                       updateLineItem(item.key, {
                                         discount: next,
@@ -4456,7 +4457,7 @@ function NewOpportunityPage({
                                 </div>
                               ) : (
                                 <span className="text-[10px] text-slate-600 dark:text-slate-300">
-                                  {item.discount} %
+                                  {formatPercent(item.discount)} %
                                 </span>
                               )}
                             </td>

@@ -7,6 +7,7 @@ import { parseAmount } from "@/components/crm/AmountInput";
 import {
   discountAmountFor,
   discountPercentFor,
+  formatPercent,
   percentForDiscountAmount,
   priceFromSelling,
   sellingPriceFor,
@@ -110,7 +111,7 @@ export function LineDiscountInput({
   const [mode, setMode] = useState<"PERCENT" | "AMOUNT">("PERCENT");
 
   const settled =
-    mode === "PERCENT" ? discount : discountAmountFor(unitPrice, discount);
+    mode === "PERCENT" ? formatPercent(discount) : discountAmountFor(unitPrice, discount);
 
   const [draft, setDraft] = useState(String(settled));
   const [editing, setEditing] = useState(false);
