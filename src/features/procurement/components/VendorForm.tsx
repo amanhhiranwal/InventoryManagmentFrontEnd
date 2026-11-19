@@ -424,12 +424,14 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
               {input("micr", "MICR Code", { inputMode: "numeric", maxLength: 9 })}
               <div className="sm:col-span-2">
                 <label className={LABEL} htmlFor="v-bank_address">Bank Address</label>
-                {/* Two lines: a branch address is longer than one field shows. */}
+                {/* Two lines: a branch address is longer than one field shows.
+                    White like the fields around it, over the form card's
+                    grey for text areas. */}
                 <textarea
                   id="v-bank_address"
                   rows={2}
                   maxLength={500}
-                  className={`${AREA} resize-none`}
+                  className={`${AREA} resize-none !bg-white dark:!bg-[#071929]`}
                   value={form.bank_address}
                   onChange={(e) => set("bank_address", e.target.value)}
                 />
