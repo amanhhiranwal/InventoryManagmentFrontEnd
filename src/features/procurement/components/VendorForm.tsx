@@ -422,7 +422,18 @@ export default function VendorForm({ existing }: { existing?: Vendor | null }) {
               {input("bank_name", "Bank Name")}
               {input("branch", "Branch")}
               {input("micr", "MICR Code", { inputMode: "numeric", maxLength: 9 })}
-              <div className="sm:col-span-2">{input("bank_address", "Bank Address")}</div>
+              <div className="sm:col-span-2">
+                <label className={LABEL} htmlFor="v-bank_address">Bank Address</label>
+                {/* Two lines: a branch address is longer than one field shows. */}
+                <textarea
+                  id="v-bank_address"
+                  rows={2}
+                  maxLength={500}
+                  className={`${AREA} resize-none`}
+                  value={form.bank_address}
+                  onChange={(e) => set("bank_address", e.target.value)}
+                />
+              </div>
             </div>
             {existing && (
               <p className="mt-3 text-[11px] text-amber-700">Changing the account number or IFSC sends the vendor back for verification.</p>
