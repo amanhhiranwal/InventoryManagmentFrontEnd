@@ -820,8 +820,11 @@ export default function InventoryPage() {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemToEdit) return;
-    if (!editName.trim() || editSerials.length === 0) {
-      addToast("Name and at least one Serial Number are required.", "warning");
+    /* No serials is allowed on an edit: every unit has gone, and the
+       product stays at 0 in stock. Each removed serial is recorded on
+       Stock Out. */
+    if (!editName.trim()) {
+      addToast("Product Name is required.", "warning");
       return;
     }
 
@@ -2326,7 +2329,7 @@ function SerialListEditor({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Hardware Serial Numbers *
+          Hardware Serial Numbers
         </label>
         <span className="text-[10px] font-semibold text-slate-400">
           {serials.length} serial{serials.length === 1 ? "" : "s"}
@@ -2358,7 +2361,9 @@ function SerialListEditor({
 
       <div className="max-h-32 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/60 p-2 dark:border-[#0d2336] dark:bg-[#071929]/40">
         {serials.length === 0 ? (
-          <p className="py-1 text-[10px] italic text-slate-400">No serial numbers. Add at least one.</p>
+          <p className="py-1 text-[10px] italic text-slate-400">
+            No serial numbers. Saving keeps the product at 0 in stock.
+          </p>
         ) : shown.length === 0 ? (
           <p className="py-1 text-[10px] italic text-slate-400">
             No serial matches &quot;{draft.trim()}&quot; - press Enter to add it.
@@ -2387,7 +2392,7 @@ function SerialListEditor({
 
       <p className="text-[10px] text-slate-400">
         One unit per serial: In-Stock is set to the number of serials whenever the list
-        changes, and must match it to save.
+        changes, and must match it to save. Serials you remove are recorded on Stock Out.
       </p>
 
       {notice && <p className="text-[10px] font-medium text-amber-600">{notice}</p>}
