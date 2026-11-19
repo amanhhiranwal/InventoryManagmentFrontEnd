@@ -208,6 +208,11 @@ export default function InventoryPage() {
      profile, or every company for a super admin. */
   const [scopeCompanies, setScopeCompanies] = useState<ScopeCompany[]>([]);
   const [anyCompany, setAnyCompany] = useState(false);
+  const [companiesLoaded, setCompaniesLoaded] = useState(false);
+  /* Products belong to companies and a user sees only the ones on their
+     profile. With none assigned the list is empty however much is in
+     stock, which has to be said rather than shown as an empty shelf. */
+  const noCompany = companiesLoaded && !anyCompany && scopeCompanies.length === 0;
   const [selectedFilterCompany, setSelectedFilterCompany] = useState<string>("");
 
   /* A narrower catalogue has fewer pages, and page 7 of a search that
@@ -435,6 +440,7 @@ export default function InventoryPage() {
       const { companies, unrestricted } = await getInventoryCompaniesApi();
       setScopeCompanies(companies);
       setAnyCompany(unrestricted);
+      setCompaniesLoaded(true);
 
       // With a single company there is nothing to choose, so the form
       // fills it in rather than asking every time.
@@ -1302,7 +1308,9 @@ export default function InventoryPage() {
           </div>
         ) : (
           <div className="px-5 py-12 text-center text-[13px] text-slate-400">
-            {items.length === 0
+            {noCompany
+              ? "Your profile is not assigned to any company, so no products are shown. Ask a super admin to add a company to your profile in Users."
+              : items.length === 0
               ? "No products on the shelf yet."
               : "Nothing in this category."}
           </div>
