@@ -52,7 +52,7 @@ import {
   StoredAttachment,
   uploadAttachments,
 } from "@/features/attachments/attachments.api";
-import { sellingPriceFor } from "@/features/pricing/lineMath";
+import { formatPercent, sellingPriceFor } from "@/features/pricing/lineMath";
 import {
   upliftFor,
   useWarrantyRates,
@@ -2294,7 +2294,7 @@ export default function QuotationPage() {
                                   type="number"
                                   min={0}
                                   max={100}
-                                  value={item.discount}
+                                  value={formatPercent(item.discount)}
                                   onChange={(event) =>
                                     updateItem(item.key, {
                                       discount: Number(event.target.value) || 0,
@@ -2313,7 +2313,7 @@ export default function QuotationPage() {
                               </span>
                             ) : (
                               <span className="text-[11px] text-slate-600 dark:text-slate-300">
-                                {item.discount} %
+                                {formatPercent(item.discount)} %
                               </span>
                             )}
                           </td>

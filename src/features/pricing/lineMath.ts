@@ -35,7 +35,10 @@ export function discountPercentFor(unitPrice: number, sellingPrice: number): num
 
   if (price <= 0) return 0;
 
-  return clampPercent(round(((price - selling) / price) * 100));
+  /* Not rounded: the line is billed from this percentage, so a 7.14 kept
+     for 7.142857 billed 92,860 for a panel typed at 92,857. Show it with
+     formatPercent; store it whole. */
+  return clampPercent(((price - selling) / price) * 100);
 }
 
 /** A line's price once a selling price is typed, allowing a markup. */
@@ -109,7 +112,15 @@ export function percentForDiscountAmount(unitPrice: number, amount: number): num
 
   if (price <= 0) return 0;
 
-  return clampPercent(round(((Number(amount) || 0) / price) * 100));
+  /* Whole, for the same reason as discountPercentFor: the rupees typed
+     are what comes off. */
+  return clampPercent(((Number(amount) || 0) / price) * 100);
+}
+
+/** A discount percentage as shown: two decimal places. Display only - the
+    stored figure keeps its precision so the line bills what was typed. */
+export function formatPercent(value: number): number {
+  return round(Number(value) || 0);
 }
 
 /** Nothing below free, nothing above the whole price. */

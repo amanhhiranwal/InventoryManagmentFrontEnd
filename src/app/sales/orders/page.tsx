@@ -53,7 +53,7 @@ import {
   LineDiscountInput,
   LineSellingPriceInput,
 } from "@/features/pricing/LinePriceInputs";
-import { rebaseLinePrice, type LinePrice } from "@/features/pricing/lineMath";
+import { formatPercent, rebaseLinePrice, type LinePrice } from "@/features/pricing/lineMath";
 import {
   upliftFor,
   useWarrantyRates,
@@ -3111,7 +3111,7 @@ export default function OrdersListPage() {
                                 <span className="text-[11px] text-slate-400" title="Sold above the list price - no discount">—</span>
                               ) : (
                                 <PercentCell
-                                  value={item.discount}
+                                  value={formatPercent(item.discount)}
                                   onChange={(next) =>
                                     updateSelectedProduct(
                                       item.id,

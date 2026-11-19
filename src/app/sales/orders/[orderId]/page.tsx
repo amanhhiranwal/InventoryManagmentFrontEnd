@@ -13,6 +13,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import api from "@/lib/axios";
 import { numericText } from "@/components/crm/AmountInput";
+import { formatPercent } from "@/features/pricing/lineMath";
 import { useUIStore } from "@/lib/store/ui.store";
 import { StatusPill } from "@/components/crm/Pill";
 import { sendSalesOrderForApproval } from "@/features/salesOrders/sendForApproval";
@@ -1816,15 +1817,20 @@ function PercentCell({
   disabled?: boolean;
   onCommit: (next: number) => void;
 }) {
-  const [draft, setDraft] = useState(String(value));
+  /* Shown to two places. A discount worked out from a selling price keeps
+     every decimal so the line bills what was typed, so leaving the field
+     untouched must not save the two-place figure back over it: only a
+     change from what is shown is committed. */
+  const shown = formatPercent(value);
+  const [draft, setDraft] = useState(String(shown));
 
-  useEffect(() => setDraft(String(value)), [value]);
+  useEffect(() => setDraft(String(shown)), [shown]);
 
   const commit = () => {
     const next = Math.min(100, Math.max(0, Number(draft.replace(/[^\d.]/g, "")) || 0));
 
-    if (next !== value) onCommit(next);
-    else setDraft(String(value));
+    if (next !== shown) onCommit(next);
+    else setDraft(String(shown));
   };
 
   return (
@@ -1842,7 +1848,7 @@ function PercentCell({
              - the field stays focused for the next edit, and Enter behaves
              the same whether or not the window has focus. */
           if (event.key === "Enter") commit();
-          if (event.key === "Escape") setDraft(String(value));
+          if (event.key === "Escape") setDraft(String(shown));
         }}
         className="w-full min-w-0 border-0 bg-transparent p-0 text-[11px] text-slate-700 outline-none disabled:opacity-50 dark:text-white"
       />

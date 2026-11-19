@@ -34,6 +34,13 @@ import { DetailHeader } from "@/features/procurement/components/DetailParts";
 import { ActivityHistory } from "@/features/procurement/components/ApprovalAndActivity";
 import { useUIStore } from "@/lib/store/ui.store";
 
+/** How a vendor's account type reads; the form offers the same three. */
+const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  Current: "Current",
+  CC: "CC (Cash Credit)",
+  OD: "OD (Overdraft)",
+};
+
 const BUTTON = "flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium transition disabled:opacity-50";
 
 /** Which moves make sense from each status. The server enforces its own rules. */
@@ -160,9 +167,6 @@ export default function VendorDetailPage() {
               </div>
               <Field label="GSTIN">{vendor.gstin}</Field>
               <Field label="PAN">{vendor.pan}</Field>
-              <Field label="Bank">{[vendor.bank_name, vendor.branch].filter(Boolean).join(", ")}</Field>
-              <Field label="Account">{vendor.account_holder}{vendor.account_number ? ` · ${vendor.account_number}` : ""}</Field>
-              <Field label="IFSC">{vendor.ifsc}</Field>
               <Field label="Payment Terms">{vendor.payment_terms}{vendor.credit_days != null ? ` · ${vendor.credit_days} days credit` : ""}</Field>
               <Field label="Lead Time">{vendor.lead_time_days != null ? `${vendor.lead_time_days} days` : null}</Field>
               <Field label="Freight Terms">{vendor.freight_terms}</Field>
@@ -170,6 +174,21 @@ export default function VendorDetailPage() {
               <Field label="Categories">{vendor.product_categories.join(", ")}</Field>
               <Field label="Brands">{vendor.brands.join(", ")}</Field>
               {vendor.remarks && <div className="sm:col-span-2 lg:col-span-4"><Field label="Remarks">{vendor.remarks}</Field></div>}
+            </div>
+          </Panel>
+
+          <Panel title="Bank Details">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="Account Holder Name">{vendor.account_holder}</Field>
+              <Field label="Bank Name">{vendor.bank_name}</Field>
+              <Field label="Branch">{vendor.branch}</Field>
+              <Field label="Account Number">{vendor.account_number}</Field>
+              <div className="sm:col-span-2 lg:col-span-4">
+                <Field label="Bank Address">{vendor.bank_address}</Field>
+              </div>
+              <Field label="Account Type">{ACCOUNT_TYPE_LABELS[vendor.account_type || ""] || vendor.account_type}</Field>
+              <Field label="IFSC Code">{vendor.ifsc}</Field>
+              <Field label="MICR Code">{vendor.micr}</Field>
             </div>
           </Panel>
 

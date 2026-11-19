@@ -14,6 +14,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useUIStore } from "@/lib/store/ui.store";
 import { numericText } from "@/components/crm/AmountInput";
 import { StatusPill } from "@/components/crm/Pill";
+import { formatPercent } from "@/features/pricing/lineMath";
 import {
   getOpportunityApi,
   type OpportunityModel,
@@ -893,7 +894,7 @@ export default function QuotationDetailPage() {
                         </td>
 
                         <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">
-                          {Number(item.discount) || 0} %
+                          {formatPercent(Number(item.discount) || 0)} %
                         </td>
 
                         <td className="px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">
