@@ -77,8 +77,17 @@ export default function LoginForm() {
          the first stop is choosing their own. The server refuses
          everything else until they have, which is what makes this a
          rule rather than a suggestion. */
+      let targetUrl = "/dashboard";
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const redirectParam = searchParams.get("redirect");
+        if (redirectParam && redirectParam.startsWith("/")) {
+          targetUrl = redirectParam;
+        }
+      } catch {}
+
       router.replace(
-        rawUser.must_change_password ? "/change-password" : "/dashboard",
+        rawUser.must_change_password ? "/change-password" : targetUrl,
       );
     } catch (err: unknown) {
       console.error(err);
