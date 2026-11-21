@@ -2,10 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get("token")?.value;
+  const { pathname, search } = request.nextUrl;
 
-  const pathname = request.nextUrl.pathname;
-
-  const protectedRoutes = ["/dashboard", "/users", "/companies", "/locations", "/rbac", "/workflows", "/leads"];
+  const protectedRoutes = [
+    "/dashboard",
+    "/users",
+    "/companies",
+    "/locations",
+    "/rbac",
+    "/workflows",
+    "/leads",
+    "/sales",
+    "/procurement",
+    "/fulfilment",
+    "/inventory",
+  ];
 
   const authRoutes = ["/login"];
 
@@ -16,15 +27,17 @@ export function middleware(request: NextRequest) {
   const isAuthRoute = authRoutes.includes(pathname);
 
   // User not logged in
-
   if (isProtected && !token) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirect", `${pathname}${search}`);
+    return NextResponse.redirect(loginUrl);
   }
 
   // User already logged in
-
   if (isAuthRoute && token) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    const redirect = request.nextUrl.searchParams.get("redirect");
+    const target = redirect && redirect.startsWith("/") ? redirect : "/dashboard";
+    return NextResponse.redirect(new URL(target, request.url));
   }
 
   return NextResponse.next();
@@ -39,6 +52,10 @@ export const config = {
     "/rbac/:path*",
     "/workflows/:path*",
     "/leads/:path*",
-    "/login"
+    "/sales/:path*",
+    "/procurement/:path*",
+    "/fulfilment/:path*",
+    "/inventory/:path*",
+    "/login",
   ],
 };

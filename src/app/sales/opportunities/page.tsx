@@ -590,9 +590,18 @@ function mapLeadToOpportunity(lead: any): Opportunity {
     id: String(lead.id),
     leadId: String(lead.lead_id ?? getLeadId(lead)),
 
-    /* The opportunity's title was never carried through, so the list had
-       nothing to show but the customer and company. */
-    name: lead.title || lead.opportunity_name || company,
+    /* Clean opportunity name: prefer organization name if title was formatted
+       as "Contact (Organization)". */
+    name: (() => {
+      let rawName = lead.title || lead.opportunity_name || company;
+      if (rawName && rawName.includes("(") && rawName.endsWith(")")) {
+        const match = rawName.match(/\((.*?)\)$/);
+        if (match && match[1]) {
+          return match[1].trim();
+        }
+      }
+      return rawName;
+    })(),
 
     customerName,
     email: lead.email || lead.email_address || "",
@@ -2185,9 +2194,13 @@ function OpportunityBoardCard({
             {opportunity.name}
           </p>
 
-          <p className="truncate text-[9px] font-medium text-slate-500">
-            {opportunity.company}
-          </p>
+          {opportunity.company &&
+            opportunity.company.trim().toLowerCase() !==
+              opportunity.name.trim().toLowerCase() && (
+              <p className="truncate text-[9px] font-medium text-slate-500">
+                {opportunity.company}
+              </p>
+            )}
         </button>
 
         <ActionMenu
@@ -2332,9 +2345,13 @@ function ListView({
                     {opp.name}
                   </p>
 
-                  <p className="mt-0.5 text-[10px] text-slate-500">
-                    {opp.company}
-                  </p>
+                  {opp.company &&
+                    opp.company.trim().toLowerCase() !==
+                      opp.name.trim().toLowerCase() && (
+                      <p className="mt-0.5 text-[10px] text-slate-500">
+                        {opp.company}
+                      </p>
+                    )}
 
                   {(opp.state || opp.city) && (
                     <p className="mt-0.5 flex items-center gap-1 text-[9px] text-slate-500">
@@ -3417,12 +3434,18 @@ function NewOpportunityPage({
   );
   const [sameAsBilling, setSameAsBilling] = useState(false);
 
-  /* Names the opportunity itself. Seeded from the saved title when editing
-     and left empty otherwise - pre-filling it with the organisation meant
-     every converted lead opened a deal called after its own company, and
-     the list then printed that name twice, once as the deal and once as
-     the company under it. */
-  const [opportunityName, setOpportunityName] = useState(seed.title || "");
+  /* Names the opportunity itself. Defaults to the organisation name so the
+     opportunity is named after the client. */
+  const [opportunityName, setOpportunityName] = useState(() => {
+    if (opportunity) return seed.title || "";
+    const org = seed.organization_name || seed.company;
+    if (org) return org;
+    if (seed.title && seed.title.includes("(") && seed.title.endsWith(")")) {
+      const match = seed.title.match(/\((.*?)\)$/);
+      if (match && match[1]) return match[1].trim();
+    }
+    return seed.title || "";
+  });
 
   const [opportunityNameError, setOpportunityNameError] = useState("");
 

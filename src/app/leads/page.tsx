@@ -637,6 +637,7 @@ export default function LeadsPage() {
      the customers one: importing enquiries and importing people who have
      already bought are different privileges. */
   const superAdmin = useAuthStore((state) => state.user?.is_super_admin === true);
+  const currentUserId = useAuthStore((state) => state.user?.id);
 
   const canBulkUpload =
     superAdmin || hasPermission(LEAD_BULK_UPLOAD_PERMISSION);
@@ -1007,9 +1008,17 @@ export default function LeadsPage() {
   const resetForm = () => {
     setForm({
       ...EMPTY_FORM,
-      assignedToId: users[0]?.id || "",
+      assignedToId: currentUserId || users[0]?.id || "",
     });
   };
+
+  useEffect(() => {
+    if (pageMode === "create" && currentUserId && (!form.assignedToId || form.assignedToId === users[0]?.id)) {
+      if (users.some((u) => u.id === currentUserId)) {
+        setForm((prev) => ({ ...prev, assignedToId: currentUserId }));
+      }
+    }
+  }, [pageMode, currentUserId, users, form.assignedToId]);
 
   const openCreatePage = () => {
     resetForm();
@@ -1126,11 +1135,9 @@ export default function LeadsPage() {
       /* A draft usually has neither name yet, so it is titled by whatever
          it does have rather than reading "()" in the list. */
       title:
-        details.contactName || details.organizationName
-          ? `${details.contactName || "Unnamed"} (${
-              details.organizationName || "No organization"
-            })`
-          : "Untitled draft",
+        details.organizationName ||
+        details.contactName ||
+        "Untitled draft",
       contact_name: details.contactName,
       organization_name: details.organizationName,
       email: details.email,

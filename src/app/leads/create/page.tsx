@@ -8,6 +8,7 @@ import { useUIStore } from "@/lib/store/ui.store";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import { getUsersApi, User } from "@/features/users/api/users.api";
+import { useAuthStore } from "@/features/auth/store/auth.store";
 import { createLeadApi } from "@/features/workflows/api/workflows.api";
 import { getCustomerTypesApi, CustomerTypeModel } from "@/features/inventory/api/inventory.api";
 import { getStatesApi, StateModel } from "@/features/locations/api/locations.api";
@@ -25,6 +26,7 @@ import { CgSpinner } from "react-icons/cg";
 export default function CreateLeadPage() {
   const router = useRouter();
   const { addToast } = useUIStore();
+  const currentUserId = useAuthStore((state) => state.user?.id);
 
   const [users, setUsers] = useState<User[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -84,12 +86,35 @@ export default function CreateLeadPage() {
       const uData = res.data || [];
       setUsers(uData);
       if (uData.length > 0) {
-        setAssignedToId(uData[0].id);
+        setAssignedToId((prev) => {
+          if (prev && uData.some((u: User) => u.id === prev)) {
+            return prev;
+          }
+          const meId = useAuthStore.getState().user?.id;
+          if (meId && uData.some((u: User) => u.id === meId)) {
+            return meId;
+          }
+          return uData[0].id;
+        });
       }
     } catch (err) {
       console.error("Failed to load users:", err);
     }
   }, []);
+
+  useEffect(() => {
+    if (currentUserId && users.length > 0) {
+      const hasCurrent = users.some((u) => u.id === currentUserId);
+      if (hasCurrent) {
+        setAssignedToId((prev) => {
+          if (!prev || prev === users[0]?.id) {
+            return currentUserId;
+          }
+          return prev;
+        });
+      }
+    }
+  }, [currentUserId, users]);
 
   const fetchLeadSources = useCallback(async () => {
     try {
@@ -137,7 +162,7 @@ export default function CreateLeadPage() {
       const selectedLeadSource = leadSources.find((ls) => ls.name === leadSource || String(ls.id) === String(leadSource));
 
       await createLeadApi({
-        title: `${customerName.trim()} (${organizationName.trim()})`,
+        title: organizationName.trim() || customerName.trim(),
         contact_name: customerName.trim(),
         organization_name: organizationName.trim(),
         email: `${customerName.toLowerCase().replace(/\s+/g, ".")}@${(organizationWebsite || "company.com").replace(/^https?:\/\//, "")}`,
