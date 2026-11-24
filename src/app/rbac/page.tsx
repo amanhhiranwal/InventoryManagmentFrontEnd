@@ -97,12 +97,77 @@ const PAGE_ACTIONS: Record<string, { key: string; title: string }[]> = {
      the list. Checked on the server (routes/user.py). */
   "user.read": [
     { key: "user.bulk_upload", title: "Bulk Upload from Excel" },
+    { key: "user.update", title: "Edit Users, Roles, Companies & Warehouses" },
+    { key: "user.delete", title: "Delete Users" },
+  ],
+  /* The product catalogue: seeing it is not changing it. Each checked on
+     the server (routes/inventory.py). */
+  "inventory.read": [
+    { key: "inventory.create", title: "Add Products" },
+    { key: "inventory.update", title: "Edit Products" },
+    { key: "inventory.delete", title: "Delete Products" },
+    { key: "inventory.bulk_upload", title: "Bulk Upload from Excel" },
+  ],
+  /* Stock In: recording what arrived is the storekeeper's; accepting it
+     into stock is the inspector's (routes/grn.py). */
+  "grn.read": [
+    { key: "grn.create", title: "Record Goods Received (GRN)" },
+    { key: "grn.post", title: "Post GRN Receipt (into Quarantine)" },
+    { key: "grn.approve", title: "Quality Check (release Accepted Goods)" },
+  ],
+  /* Stock out: reserving is a sales/warehouse act, working the dispatch
+     order is logistics', and committing it - the moment stock leaves - is
+     its own tick (routes/dispatch.py). */
+  "dispatch.read": [
+    { key: "stock.reserve", title: "Reserve & Release Stock for Sales Orders" },
+    { key: "dispatch.manage", title: "Create Dispatch, Pick, Pack, Documents & POD" },
+    { key: "dispatch.commit", title: "Commit Dispatch (stock goes out)" },
+  ],
+  /* Procurement's working permissions (app/core/procurement.py). */
+  "procurement.read": [
+    { key: "procurement.manage", title: "Work Requisitions: Assign, Quotations, Compare" },
+  ],
+  "vendor.read": [
+    { key: "vendor.manage", title: "Add & Edit Vendors" },
+    { key: "vendor.approve", title: "Verify, Approve or Block Vendors" },
+  ],
+  "purchase_order.read": [
+    { key: "purchase_order.manage", title: "Create & Move Purchase Orders" },
   ],
   /* The business coordinator's Sales Order list also shows orders waiting
      for approval, read only, naming the approver each is with. Checked on
      the server (sales_order_service.hidden_from_coordinator). */
   "coordination_desk.read": [
     { key: "order.pending_approval.read", title: "View Pending Approvals (read only)" },
+  ],
+};
+
+/** Actions for pages that share one view permission: Warehouse, Transfers
+    and Stock Count are all seen with stock.read, so their own ticks are
+    keyed by the page's path and each shows once, under its own page. */
+const PATH_ACTIONS: Record<string, { key: string; title: string }[]> = {
+  /* Opening stock, adjustments and vendor returns are each prepared by one
+     person and approved by another (routes/stock.py). */
+  "/inventory/warehouse": [
+    { key: "stock.opening.create", title: "Prepare Opening Stock" },
+    { key: "stock.opening.approve", title: "Approve Opening Stock" },
+    { key: "stock.adjust.create", title: "Prepare Stock Adjustments" },
+    { key: "stock.adjust.approve", title: "Approve Stock Adjustments" },
+    { key: "stock.adjust.finance", title: "Approve Adjustments & Counts Above the Finance Limit" },
+    { key: "vendor_return.create", title: "Prepare Vendor Returns" },
+    { key: "vendor_return.approve", title: "Approve Vendor Returns (stock goes back)" },
+  ],
+  /* Requesting, approving, shipping and receiving are separate people
+     (routes/transfers.py). */
+  "/inventory/transfers": [
+    { key: "transfer.create", title: "Request Transfers" },
+    { key: "transfer.approve", title: "Approve Transfers" },
+    { key: "transfer.ship", title: "Ship Transfers (stock leaves, in transit)" },
+    { key: "transfer.receive", title: "Receive Transfers (shortage & damage)" },
+  ],
+  "/inventory/counts": [
+    { key: "stock.count.create", title: "Start Counts & Enter Quantities" },
+    { key: "stock.count.approve", title: "Approve Counts (differences posted)" },
   ],
 };
 
@@ -115,7 +180,7 @@ function groupPages(group: DBMenuItem): DBMenuItem[] {
 
   return pages.flatMap((page) => [
     page,
-    ...(PAGE_ACTIONS[page.permission_key || ""] || []).map((action) => ({
+    ...(PATH_ACTIONS[page.path || ""] || PAGE_ACTIONS[page.permission_key || ""] || []).map((action) => ({
       ...page,
       id: `${page.id}:${action.key}`,
       title: action.title,

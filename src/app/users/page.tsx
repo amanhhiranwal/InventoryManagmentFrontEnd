@@ -5,6 +5,7 @@ import { AxiosError } from "axios";
 import { getUsersApi, createUserApi, updateUserApi, deleteUserApi, User } from "@/features/users/api/users.api";
 import { getRolesApi, Role } from "@/features/rbac/api/rbac.api";
 import { getCompaniesApi, Company } from "@/features/companies/api/companies.api";
+import { getMyWarehousesApi, MyWarehouse } from "@/features/locations/api/locations.api";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { useUIStore } from "@/lib/store/ui.store";
 import api from "@/lib/axios";
@@ -189,6 +190,7 @@ export default function UserListPage() {
   const sortedUsers = sortRows(users);
   const [roles, setRoles] = useState<Role[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [warehouses, setWarehouses] = useState<MyWarehouse[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Pagination State
@@ -303,6 +305,7 @@ export default function UserListPage() {
   };
   const [editRoleIds, setEditRoleIds] = useState<string[]>([]);
   const [editCompanyIds, setEditCompanyIds] = useState<string[]>([]);
+  const [editWarehouseIds, setEditWarehouseIds] = useState<string[]>([]);
   const [editReportsToId, setEditReportsToId] = useState("");
   const [updating, setUpdating] = useState(false);
 
@@ -356,7 +359,7 @@ export default function UserListPage() {
     const hasCompanyView = hasPermission("company.view");
     const hasRoleRead = hasPermission("role.read");
 
-    const [rolesData, companiesData, everyone] = await Promise.all([
+    const [rolesData, companiesData, everyone, warehouseList] = await Promise.all([
       hasRoleRead ? getRolesApi().catch(() => [] as Role[]) : Promise.resolve([] as Role[]),
       hasCompanyView
         ? getCompaniesApi().then((res) => res.data).catch(() => [] as Company[])
@@ -365,11 +368,15 @@ export default function UserListPage() {
         data: [] as User[],
         total: 0,
       })),
+      /* Only warehouses the signed-in user works in can be granted; the
+         server refuses any other, so the picker offers just those. */
+      getMyWarehousesApi().catch(() => [] as MyWarehouse[]),
     ]);
 
     setRoles(rolesData);
     setCompanies(companiesData);
     setManagerOptions(everyone.data);
+    setWarehouses(warehouseList);
   }, []);
 
   useEffect(() => {
@@ -394,6 +401,7 @@ export default function UserListPage() {
     setEditLocation(u.location || "");
     setEditRoleIds(u.role_ids || []);
     setEditCompanyIds(u.company_ids || []);
+    setEditWarehouseIds(u.warehouse_ids || []);
     setEditReportsToId(u.reports_to_id || "");
     setEditDepartmentId(u.department_id ? String(u.department_id) : "");
     setEditDesignation(u.designation || "");
@@ -419,6 +427,15 @@ export default function UserListPage() {
         location: editLocation,
         role_ids: editRoleIds,
         company_ids: editCompanyIds,
+        // A warehouse belongs to one company: taking the company away takes
+        // its warehouses too (the server drops them the same way).
+        // Grants in warehouses this editor does not work in are not shown
+        // to them, so they are sent back untouched rather than dropped.
+        warehouse_ids: editWarehouseIds.filter(
+          (id) =>
+            !warehouses.some((w) => w.id === id) ||
+            warehouses.some((w) => w.id === id && editCompanyIds.includes(w.company_id)),
+        ),
         reports_to_id: editReportsToId || null,
         department_id: editDepartmentId ? Number(editDepartmentId) : null,
         designation: editDesignation.trim() || null,
@@ -1200,6 +1217,28 @@ export default function UserListPage() {
               options={companies.map((c) => ({ id: c.id, name: c.company_name }))}
               selectedIds={editCompanyIds}
               onChange={(ids) => setEditCompanyIds(ids)}
+            />
+
+            <SearchableMultiSelect
+              label="Warehouse Access"
+              placeholder={
+                editCompanyIds.length ? "Select warehouses..." : "Assign a company first"
+              }
+              options={warehouses
+                .filter((w) => editCompanyIds.includes(w.company_id))
+                .map((w) => ({
+                  id: w.id,
+                  name: `${w.location_name} (${w.location_code})${w.company_name ? ` · ${w.company_name}` : ""}`,
+                }))}
+              selectedIds={editWarehouseIds.filter((id) =>
+                warehouses.some((w) => w.id === id && editCompanyIds.includes(w.company_id)),
+              )}
+              onChange={(ids) =>
+                setEditWarehouseIds([
+                  ...editWarehouseIds.filter((id) => !warehouses.some((w) => w.id === id)),
+                  ...ids,
+                ])
+              }
             />
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-[#0d2336]">

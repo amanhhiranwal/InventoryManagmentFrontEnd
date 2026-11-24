@@ -8,13 +8,16 @@ import {
   updateLocationApi,
   deleteLocationApi,
   Location,
-  CreateLocationPayload
+  CreateLocationPayload,
+  LocationType,
+  locationTypeOf,
 } from "@/features/locations/api/locations.api";
+import WarehouseBinsModal from "@/features/locations/components/WarehouseBinsModal";
 import { getCompaniesApi, Company } from "@/features/companies/api/companies.api";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { hasPermission } from "@/features/auth/utils/permissions";
 import { useUIStore } from "@/lib/store/ui.store";
-import { FiPlus, FiMapPin, FiCheckCircle, FiBriefcase, FiEdit2, FiTrash2, FiMail, FiPhone } from "react-icons/fi";
+import { FiPlus, FiMapPin, FiCheckCircle, FiBriefcase, FiEdit2, FiTrash2, FiMail, FiPhone, FiGrid, FiHome } from "react-icons/fi";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
@@ -35,6 +38,7 @@ export default function LocationsPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [binsFor, setBinsFor] = useState<Location | null>(null);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,6 +65,7 @@ export default function LocationsPage() {
     state: "",
     country: "",
     postal_code: "",
+    location_type: "WAREHOUSE",
   };
 
   const [formData, setFormData] = useState<CreateLocationPayload>({ ...initialFormState });
@@ -117,6 +122,7 @@ export default function LocationsPage() {
       state: loc.state || "",
       country: loc.country || "",
       postal_code: loc.postal_code || "",
+      location_type: locationTypeOf(loc),
     });
     setShowEditModal(true);
   };
@@ -262,7 +268,7 @@ export default function LocationsPage() {
       </ListToolbar>
 
         <Table
-          headers={["Location", "Company Assignment", "Address", "Status", "Actions"]}
+          headers={["Location", "Type", "Company Assignment", "Address", "Status", "Actions"]}
           loading={loading}
           currentPage={currentPage}
           totalItems={totalItems}
@@ -288,6 +294,19 @@ export default function LocationsPage() {
                     </p>
                   </div>
                 </div>
+              </td>
+              <td className="py-4 px-5">
+                {locationTypeOf(loc) === "WAREHOUSE" ? (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/10 text-sky-600 px-2 py-0.5 text-xs font-semibold">
+                    <FiGrid className="text-xs" />
+                    <span>Warehouse</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-slate-500/10 text-slate-500 px-2 py-0.5 text-xs font-semibold">
+                    <FiHome className="text-xs" />
+                    <span>Office</span>
+                  </span>
+                )}
               </td>
               <td className="py-4 px-5">
                 <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -316,6 +335,11 @@ export default function LocationsPage() {
               </td>
               <td className="py-4 px-5 text-right">
                 <div className="flex justify-end gap-2">
+                  {locationTypeOf(loc) === "WAREHOUSE" && (
+                    <Button variant="outline" size="sm" onClick={() => setBinsFor(loc)} icon={<FiGrid />}>
+                      Bins
+                    </Button>
+                  )}
                   {canUpdateLocation && (
                     <Button variant="outline" size="sm" onClick={() => handleOpenEditModal(loc)} icon={<FiEdit2 />}>
                       Edit
@@ -326,7 +350,7 @@ export default function LocationsPage() {
                       Delete
                     </Button>
                   )}
-                  {!canUpdateLocation && !canDeleteLocation && (
+                  {!canUpdateLocation && !canDeleteLocation && locationTypeOf(loc) !== "WAREHOUSE" && (
                     <span className="text-xs text-slate-400 italic">No permissions</span>
                   )}
                 </div>
@@ -360,6 +384,25 @@ export default function LocationsPage() {
               value={formData.location_code}
               onChange={(e) => setFormData({ ...formData, location_code: e.target.value })}
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="location-type" className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Location Type *</label>
+            <div className="relative">
+              <select
+                id="location-type"
+                required
+                className="w-full appearance-none rounded-xl border border-slate-200 dark:border-[#0d2336] bg-slate-50/50 dark:bg-[#071929]/50 pl-3.5 pr-8 py-2 text-sm text-slate-900 dark:text-white outline-none transition-all focus:border-primary focus:bg-white dark:focus:border-primary-hover dark:focus:bg-[#071929] cursor-pointer"
+                value={formData.location_type || "WAREHOUSE"}
+                onChange={(e) => setFormData({ ...formData, location_type: e.target.value as LocationType })}
+              >
+                <option value="WAREHOUSE">Warehouse (holds stock, has bins)</option>
+                <option value="OFFICE">Office (no stock)</option>
+              </select>
+              <span className="absolute inset-y-0 right-3.5 flex items-center pointer-events-none text-slate-400 text-[10px]">
+                ▼
+              </span>
+            </div>
           </div>
 
           <div className="space-y-1.5">
@@ -451,6 +494,10 @@ export default function LocationsPage() {
           </div>
         </form>
       </Modal>
+
+      {binsFor && (
+        <WarehouseBinsModal warehouse={binsFor} canManage={superAdmin} onClose={() => setBinsFor(null)} />
+      )}
 
       {/* Delete Confirmation Modal */}
       <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Delete Location?">

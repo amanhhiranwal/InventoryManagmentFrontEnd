@@ -30,6 +30,8 @@ export interface User {
   designation?: string | null;
   /** Managers they also report to, beside reports_to_id. */
   also_reports_to_ids?: string[];
+  /** Warehouses they may work in, within their companies. */
+  warehouse_ids?: string[];
 }
 
 export interface CreateUserPayload {
@@ -47,6 +49,8 @@ export interface CreateUserPayload {
   department_id?: number | null;
   designation?: string | null;
   also_reports_to_ids?: string[];
+  /** Sent only by the edit form; left out, the server keeps them. */
+  warehouse_ids?: string[];
 }
 
 /** One sheet row, as Users > Bulk Upload would or did handle it. */
