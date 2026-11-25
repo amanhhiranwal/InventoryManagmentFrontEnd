@@ -242,7 +242,10 @@ function SerialStatus({
   }
 
   return (
-    <Status tone="good" text={`In stock · ${check.product || check.serial}`} />
+    <Status
+      tone="good"
+      text={`In stock${check.store ? ` at ${check.store}` : ""} · ${check.product || check.serial}`}
+    />
   );
 }
 

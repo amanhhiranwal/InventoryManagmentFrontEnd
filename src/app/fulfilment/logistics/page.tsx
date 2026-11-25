@@ -36,6 +36,7 @@ import { Panel } from "@/features/fulfilment/components/DeskPanels";
 import { DeskWithHistory } from "@/features/fulfilment/components/DeskHistory";
 import StockDetail from "@/features/fulfilment/components/StockDetail";
 import GatePassPanel from "@/features/stock/components/GatePassPanel";
+import OrderDispatches from "@/features/stock/components/OrderDispatches";
 import { SALES_ORDER_STATUS } from "@/features/salesOrders/api/salesOrders.api";
 
 const BUTTON: Record<string, string> = {
@@ -153,6 +154,14 @@ function LogisticsDetail({
           <GatePassPanel salesOrderId={order.id} canMake />
         </Panel>
       )}
+
+      <OrderDispatches orderId={order.id}>
+        {(body) => (
+          <Panel title="Dispatch Orders" icon={<FiTruck size={14} />}>
+            {body}
+          </Panel>
+        )}
+      </OrderDispatches>
 
       <Panel title="Dispatch Documents" icon={<FiFileText size={14} />}>
         <p className="text-[11px] text-[#777777] dark:text-slate-400">

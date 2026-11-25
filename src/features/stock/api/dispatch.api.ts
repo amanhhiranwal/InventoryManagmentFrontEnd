@@ -138,6 +138,13 @@ export const releaseStockApi = async (orderId: number, reason: string, soLineId?
   return data.data;
 };
 
+/** Whether the stock ledger is live. Until it is, orders go out from the
+ *  Logistics desk and dispatch orders are not used. */
+export const getLedgerLiveApi = async (): Promise<boolean> => {
+  const { data } = await api.get("/api/v1/stock/ledger-status", QUIET);
+  return Boolean(data.data?.live);
+};
+
 export const getDispatchesApi = async (params: {
   warehouse_id?: string;
   status?: string;

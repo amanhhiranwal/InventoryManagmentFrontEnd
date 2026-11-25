@@ -46,6 +46,8 @@ export interface SerialCheck {
   model_number?: string | null;
   matches_line?: boolean;
   message?: string | null;
+  /** The store the ledger holds it in, when the ledger tracks it. */
+  store?: string | null;
 }
 
 /** One number across the top of a desk. The backend decides which ones

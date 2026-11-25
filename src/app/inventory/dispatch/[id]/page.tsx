@@ -164,8 +164,8 @@ export default function DispatchDetailPage() {
         <p role="alert" className="rounded-xl bg-white p-8 text-center text-[13px] text-rose-600 dark:bg-[#071929]">
           {error}
         </p>
-        <Link href="/inventory/stock-out?view=dispatch" className="text-[13px] text-[#233353] hover:underline">
-          Back to Stock Out
+        <Link href="/fulfilment/logistics" className="text-[13px] text-[#233353] hover:underline">
+          Back to Logistics
         </Link>
       </ListPage>
     );
@@ -251,8 +251,8 @@ export default function DispatchDetailPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            aria-label="Back to Stock Out"
-            onClick={() => router.push("/inventory/stock-out?view=dispatch")}
+            aria-label="Back to Logistics"
+            onClick={() => router.push("/fulfilment/logistics")}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-[#0b2034]"
           >
             <FiArrowLeft />

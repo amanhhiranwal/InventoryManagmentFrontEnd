@@ -94,6 +94,19 @@ function splitSerials(text: string): string[] {
     .filter(Boolean);
 }
 
+/** Warranty rates ({term: {rate, mode}}) as text: "4 Years: 10% · 5 Years: ₹500". */
+function warrantyRatesText(value: unknown): string {
+  if (!value || typeof value !== "object") return "None set";
+  const parts = Object.entries(value as Record<string, { rate?: number; mode?: string }>)
+    .filter(([, entry]) => entry && Number(entry.rate) > 0)
+    .map(([term, entry]) =>
+      entry.mode === "AMOUNT"
+        ? `${term}: ₹${Number(entry.rate).toLocaleString("en-IN")}`
+        : `${term}: ${Number(entry.rate)}%`,
+    );
+  return parts.length ? parts.join(" · ") : "None set";
+}
+
 /** The catalogue as a spreadsheet: what a stock take is done against. */
 const INVENTORY_COLUMNS: ExportColumn<InventoryItem>[] = [
   { header: "Model Number", value: (item) => String(item.attributes?.model_number ?? "") },
@@ -1528,7 +1541,15 @@ export default function InventoryPage() {
                         <div key={key} className="flex flex-col gap-0.5">
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{key.replace(/_/g, " ")}</span>
                           <span className="font-semibold text-slate-800 dark:text-white text-xs">
-                            {typeof value === "boolean" ? (value ? "Enabled" : "Disabled") : String(value)}
+                            {typeof value === "boolean"
+                              ? value
+                                ? "Enabled"
+                                : "Disabled"
+                              : key === "warranty_rates"
+                                ? warrantyRatesText(value)
+                                : value !== null && typeof value === "object"
+                                  ? JSON.stringify(value)
+                                  : String(value ?? "")}
                           </span>
                         </div>
                       );
