@@ -10,13 +10,21 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { CgSpinner } from "react-icons/cg";
-import { FiArrowLeft, FiDownload, FiEdit2, FiPrinter, FiSend, FiX } from "react-icons/fi";
+import { FiArrowLeft, FiDownload, FiEdit2, FiFileText, FiPrinter, FiSend, FiX } from "react-icons/fi";
 
 import { ListPage } from "@/components/crm/ListPageShell";
 import Button from "@/components/ui/Button";
 import { hasPermission } from "@/features/auth/utils/permissions";
 import { getMyWarehousesApi, MyWarehouse } from "@/features/locations/api/locations.api";
-import { Grn, Letterhead, cancelGrnApi, getGrnApi, postGrnReceiptApi, submitGrnApi } from "@/features/stock/api/grn.api";
+import {
+  Grn,
+  Letterhead,
+  cancelGrnApi,
+  downloadGrnPdfApi,
+  getGrnApi,
+  postGrnReceiptApi,
+  submitGrnApi,
+} from "@/features/stock/api/grn.api";
 import GrnForm from "@/features/stock/components/GrnForm";
 import GrnProcess from "@/features/stock/components/GrnProcess";
 import GrnQualityCheck from "@/features/stock/components/GrnQualityCheck";
@@ -48,6 +56,7 @@ export default function StockInDetailPage() {
   const [editing, setEditing] = useState(false);
   const [warehouses, setWarehouses] = useState<MyWarehouse[]>([]);
   const [busy, setBusy] = useState<"submit" | "receive" | "cancel" | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -96,6 +105,18 @@ export default function StockInDetailPage() {
       addToast(errorText(err, "Could not post the receipt."), "error");
     } finally {
       setBusy(null);
+    }
+  };
+
+  const downloadPdf = async () => {
+    if (!grn) return;
+    try {
+      setDownloading(true);
+      await downloadGrnPdfApi(grn.id, grn.grn_number);
+    } catch (err: unknown) {
+      addToast(errorText(err, "Could not download the GRN."), "error");
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -204,6 +225,9 @@ export default function StockInDetailPage() {
           )}
           <Button variant="outline" size="sm" icon={<FiPrinter />} onClick={() => window.print()}>
             Print GRN
+          </Button>
+          <Button variant="outline" size="sm" icon={<FiFileText />} loading={downloading} onClick={downloadPdf}>
+            Download PDF
           </Button>
         </div>
       </div>

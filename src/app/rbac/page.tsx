@@ -37,6 +37,7 @@ import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import PageHeader from "@/components/ui/PageHeader";
 import Modal from "@/components/ui/Modal";
+import RoleProductScope from "@/features/stock/components/RoleProductScope";
 import RoleStoreAccess from "@/features/stock/components/RoleStoreAccess";
 
 function CustomCheckbox({
@@ -842,6 +843,10 @@ export default function RBACPage() {
                 </div>
               )}
             </Card>
+
+            {selectedRoleId && (
+              <RoleProductScope roleId={selectedRoleId} roleName={selectedRoleObj?.name} canManage={canManageRoles} />
+            )}
 
             {selectedRoleId && (
               <RoleStoreAccess roleId={selectedRoleId} roleName={selectedRoleObj?.name} canManage={canManageRoles} />

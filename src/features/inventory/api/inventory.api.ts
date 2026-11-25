@@ -150,6 +150,8 @@ export interface BulkUploadItem {
   product_type_code: string;
   category: string;
   company_name?: string | null;
+  /** The store its In-Stock goes into; empty for a company with no store yet. */
+  warehouse_name?: string | null;
   model_number?: string;
   unit?: string;
   rate?: number;

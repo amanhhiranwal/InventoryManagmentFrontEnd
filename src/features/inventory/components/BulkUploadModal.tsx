@@ -151,6 +151,8 @@ export default function BulkUploadModal({
               One product per row, the same fields as the form. Serial number is
               optional. A row can carry several serial numbers separated by{" "}
               <strong>/</strong> or comma — each one is loaded as its own product.
+              The Warehouse column says which of the company&apos;s stores the stock
+              is in (blank: its main store).
             </p>
           </div>
 
@@ -265,6 +267,7 @@ export default function BulkUploadModal({
                     <th className="px-2 py-1.5 font-medium">Serial</th>
                     <th className="px-2 py-1.5 font-medium">Type</th>
                     <th className="px-2 py-1.5 font-medium">Stock</th>
+                    <th className="px-2 py-1.5 font-medium">Store</th>
                     <th className="px-2 py-1.5 font-medium">ECP</th>
                   </tr>
                 </thead>
@@ -287,6 +290,9 @@ export default function BulkUploadModal({
                       </td>
                       <td className="px-2 py-1.5 text-slate-500">
                         {item.instock} {item.unit}
+                      </td>
+                      <td className="px-2 py-1.5 text-slate-500">
+                        {item.warehouse_name || (item.company_name ? "Main store" : "Shared")}
                       </td>
                       <td className="px-2 py-1.5 text-slate-500">
                         ₹{Number(item.rate || 0).toLocaleString("en-IN")}

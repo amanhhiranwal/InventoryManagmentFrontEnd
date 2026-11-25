@@ -26,6 +26,7 @@ import {
   recordPodApi,
   saveDispatchDocumentsApi,
 } from "@/features/stock/api/dispatch.api";
+import GatePassPanel from "@/features/stock/components/GatePassPanel";
 import { DispatchStatusPill, errorText, money, qty } from "@/features/stock/components/stockUi";
 import { formatDate, formatDateTime, toDateInput } from "@/lib/datetime";
 import { useUIStore } from "@/lib/store/ui.store";
@@ -370,7 +371,8 @@ export default function DispatchDetailPage() {
           <section className={CARD}>
             <h2 className="mb-1 text-[15px] font-semibold text-slate-900 dark:text-white">Delivery Documents</h2>
             <p className="mb-3 text-[12px] text-[#777777]">
-              Challan, gate pass and a vehicle or docket are needed to dispatch. An e-way bill is needed when the consignment value is
+              Challan and a vehicle or docket are needed to dispatch. Leave the gate pass number blank to have the next one
+              made for you on dispatch. An e-way bill is needed when the consignment value is
               {" "}
               {money(d.eway_bill_threshold)} or more.
             </p>
@@ -378,7 +380,7 @@ export default function DispatchDetailPage() {
               {docField("challan_no", "Delivery Challan No. *")}
               {docField("challan_date", "Challan Date", "date")}
               {docField("invoice_no", "Invoice No.")}
-              {docField("gate_pass_no", "Gate Pass No. *")}
+              {docField("gate_pass_no", "Gate Pass No.")}
               {docField("consignment_value", "Consignment Value (Rs.) *", "number")}
               {docField("transporter", "Transporter / Courier")}
               {docField("vehicle_number", "Vehicle Number")}
@@ -396,6 +398,13 @@ export default function DispatchDetailPage() {
               </div>
             )}
           </section>
+
+          {(d.status === "DISPATCHED" || d.status === "DELIVERED") && (
+            <section className={CARD}>
+              <h2 className="mb-3 text-[15px] font-semibold text-slate-900 dark:text-white">Gate Pass</h2>
+              <GatePassPanel dispatchOrderId={d.id} />
+            </section>
+          )}
 
           {d.status === "DISPATCHED" && canManage && (
             <section className={CARD}>

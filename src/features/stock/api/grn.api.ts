@@ -1,4 +1,5 @@
 import api from "@/lib/axios";
+import { downloadFile } from "@/lib/downloadFile";
 
 /** Every stock screen reports its own errors, so the shared client's
     toast is turned off here; otherwise each failure would show twice. */
@@ -175,6 +176,10 @@ export const getGrnApi = async (id: number): Promise<{ grn: Grn; letterhead: Let
   const { data } = await api.get(`/api/v1/grn/${id}`, QUIET);
   return { grn: data.data, letterhead: data.letterhead };
 };
+
+/** The GRN sheet as a PDF, drawn by the server. */
+export const downloadGrnPdfApi = (id: number, grnNumber?: string) =>
+  downloadFile(`/api/v1/grn/${id}/pdf`, `GRN_${(grnNumber || `GRN-${id}`).replace(/[^A-Za-z0-9-_]/g, "-")}.pdf`);
 
 export const getReceivableOrdersApi = async (warehouseId: string, search?: string): Promise<ReceivableOrder[]> => {
   const { data } = await api.get("/api/v1/grn/purchase-orders", { ...QUIET, params: clean({ warehouse_id: warehouseId, search }) });

@@ -35,6 +35,7 @@ import DeskBoard, {
 import { Panel } from "@/features/fulfilment/components/DeskPanels";
 import { DeskWithHistory } from "@/features/fulfilment/components/DeskHistory";
 import StockDetail from "@/features/fulfilment/components/StockDetail";
+import GatePassPanel from "@/features/stock/components/GatePassPanel";
 import { SALES_ORDER_STATUS } from "@/features/salesOrders/api/salesOrders.api";
 
 const BUTTON: Record<string, string> = {
@@ -74,6 +75,9 @@ function LogisticsDetail({
     .join(", ");
   const ready = order.status === SALES_ORDER_STATUS.READY;
   const goingOut = order.status === SALES_ORDER_STATUS.DISPATCHED;
+  /* The gate pass is made when the order goes out for delivery. */
+  const afterOut =
+    order.status === SALES_ORDER_STATUS.OUT_FOR_DELIVERY || order.status === SALES_ORDER_STATUS.DELIVERED;
 
   /* Out for delivery needs the vehicle and the driver taking it; the
      server refuses the move without both. */
@@ -100,7 +104,8 @@ function LogisticsDetail({
       {goingOut && (
         <Panel title="Vehicle & Driver" icon={<FiTruck size={14} />}>
           <p className="text-[11px] text-[#777777] dark:text-slate-400">
-            Both are needed to mark the order out for delivery. They are kept on the sales order.
+            Both are needed to mark the order out for delivery. They are kept on the sales order and printed on the gate
+            pass, which is made when it goes out.
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
@@ -140,6 +145,12 @@ function LogisticsDetail({
           <p className="text-[12px] text-[#474747] dark:text-slate-200">
             {order.delivery_vehicle_number} · {order.delivery_driver_name}
           </p>
+        </Panel>
+      )}
+
+      {afterOut && (
+        <Panel title="Gate Pass" icon={<FiFileText size={14} />}>
+          <GatePassPanel salesOrderId={order.id} canMake />
         </Panel>
       )}
 
