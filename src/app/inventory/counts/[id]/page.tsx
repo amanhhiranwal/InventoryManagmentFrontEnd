@@ -17,7 +17,6 @@ import { LIST_TABLE, ListPage } from "@/components/crm/ListPageShell";
 import Button from "@/components/ui/Button";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { hasPermission } from "@/features/auth/utils/permissions";
-import { WarehouseBin, getBinsApi } from "@/features/locations/api/locations.api";
 import { CatalogueProduct, getStockCatalogueApi } from "@/features/stock/api/stock.api";
 import {
   CountRecordBody,
@@ -40,7 +39,6 @@ const LABEL = "text-[12px] text-[#777777] dark:text-slate-400";
 interface Found {
   key: number;
   sku: string;
-  bin: string;
   counted: string;
   remarks: string;
 }
@@ -63,7 +61,6 @@ export default function StockCountDetailPage() {
   const [counted, setCounted] = useState<Record<number, string>>({});
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [found, setFound] = useState<Found[]>([]);
-  const [bins, setBins] = useState<WarehouseBin[]>([]);
   const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
 
   const adopt = useCallback((next: StockCount) => {
@@ -83,15 +80,12 @@ export default function StockCountDetailPage() {
   const counting = !!c && c.status === "OPEN" && canCount;
   const warehouseId = c?.warehouse_id;
 
-  /* Bins and products, only for adding something found while counting. */
+  /* Products, only for adding something found while counting. */
   useEffect(() => {
     if (!counting || !warehouseId) return;
-    Promise.all([getBinsApi(warehouseId), getStockCatalogueApi(warehouseId)])
-      .then(([binRows, products]) => {
-        setBins(binRows.filter((b) => b.is_active && b.bin_type === "STORE"));
-        setCatalogue(products);
-      })
-      .catch((err: unknown) => addToast(errorText(err, "Could not load bins and products for found items."), "error"));
+    getStockCatalogueApi(warehouseId)
+      .then(setCatalogue)
+      .catch((err: unknown) => addToast(errorText(err, "Could not load products for found items."), "error"));
   }, [counting, warehouseId, addToast]);
 
   const saved = useMemo(
@@ -127,8 +121,8 @@ export default function StockCountDetailPage() {
         <p role="alert" className="rounded-xl bg-white p-8 text-center text-[13px] text-rose-600 dark:bg-[#071929]">
           {error}
         </p>
-        <Link href="/inventory/counts" className="text-[13px] text-[#233353] hover:underline">
-          Back to Stock Count
+        <Link href="/inventory/stock?tab=counts" className="text-[13px] text-[#233353] hover:underline">
+          Back to Stock
         </Link>
       </ListPage>
     );
@@ -151,7 +145,7 @@ export default function StockCountDetailPage() {
       const text = (counted[line.id] ?? "").trim();
       if (text === "") continue;
       const value = Number(text);
-      if (!Number.isFinite(value) || value < 0) return `${line.sku} in ${line.bin_code}: a count cannot be negative.`;
+      if (!Number.isFinite(value) || value < 0) return `${line.sku}: a count cannot be negative.`;
       lines.push({ line_id: line.id, qty_counted: value, remarks: notes[line.id]?.trim() || undefined });
     }
     const extra = [];
@@ -160,7 +154,7 @@ export default function StockCountDetailPage() {
       const value = f.counted.trim() === "" ? null : Number(f.counted);
       if (!sku) return "Choose the product that was found.";
       if (value === null || !Number.isFinite(value) || value < 0) return `${sku}: enter how many were found.`;
-      extra.push({ sku, bin_id: f.bin || c.bin_id || undefined, qty_counted: value, remarks: f.remarks.trim() || undefined });
+      extra.push({ sku, bin_id: c.bin_id || undefined, qty_counted: value, remarks: f.remarks.trim() || undefined });
     }
     return { lines, found: extra };
   };
@@ -198,8 +192,8 @@ export default function StockCountDetailPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            aria-label="Back to Stock Count"
-            onClick={() => router.push("/inventory/counts")}
+            aria-label="Back to Stock"
+            onClick={() => router.push("/inventory/stock?tab=counts")}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-[#0b2034]"
           >
             <FiArrowLeft />
@@ -254,7 +248,6 @@ export default function StockCountDetailPage() {
         <dl className="grid grid-cols-1 gap-x-8 gap-y-2 text-[13px] lg:grid-cols-3">
           {[
             ["Warehouse", `${c.warehouse_name || ""}${c.warehouse_code ? ` (${c.warehouse_code})` : ""}`],
-            ["Bin", c.bin_code || "Every store bin"],
             ["Count Date", formatDate(c.count_date)],
             ["Started By", c.created_by_name],
             ["Submitted", c.submitted_at ? `${formatDateTime(c.submitted_at)} by ${c.submitted_by_name}` : "-"],
@@ -284,7 +277,6 @@ export default function StockCountDetailPage() {
           <table className={`w-full min-w-[760px] text-left ${LIST_TABLE}`}>
             <thead>
               <tr>
-                <th className={TH}>Bin</th>
                 <th className={TH}>Product</th>
                 {!blind && <th className={`${TH} text-right`}>System</th>}
                 <th className={`${TH} text-right`}>Counted</th>
@@ -302,7 +294,6 @@ export default function StockCountDetailPage() {
               )}
               {c.lines.map((line) => (
                 <tr key={line.id} className="align-top text-[13px] text-[#141414] dark:text-slate-200">
-                  <td className="whitespace-nowrap px-5 py-3 font-mono text-[12px]">{line.bin_code}</td>
                   <td className="min-w-[200px] px-5 py-3">
                     <span className="block font-semibold">{line.product_name || line.sku}</span>
                     <span className="font-mono text-[11px] text-[#777777]">{line.sku}</span>
@@ -315,7 +306,7 @@ export default function StockCountDetailPage() {
                         min="0"
                         step="any"
                         inputMode="decimal"
-                        aria-label={`Counted ${line.sku} in ${line.bin_code}`}
+                        aria-label={`Counted ${line.sku}`}
                         className={`${FIELD} w-28 text-right`}
                         value={counted[line.id] ?? ""}
                         onChange={(e) => setCounted({ ...counted, [line.id]: e.target.value })}
@@ -364,25 +355,9 @@ export default function StockCountDetailPage() {
             </datalist>
             {found.map((f) => (
               <div key={f.key} className="grid grid-cols-1 gap-3 sm:grid-cols-12">
-                <label className="space-y-1 sm:col-span-4">
+                <label className="space-y-1 sm:col-span-7">
                   <span className={LABEL}>Product (SKU)</span>
                   <input list="count-catalogue" className={FIELD} value={f.sku} onChange={(e) => setFound(found.map((x) => (x.key === f.key ? { ...x, sku: e.target.value } : x)))} />
-                </label>
-                <label className="space-y-1 sm:col-span-3">
-                  <span className={LABEL}>Bin</span>
-                  <select
-                    className={FIELD}
-                    disabled={!!c.bin_id}
-                    value={f.bin || c.bin_id || ""}
-                    onChange={(e) => setFound(found.map((x) => (x.key === f.key ? { ...x, bin: e.target.value } : x)))}
-                  >
-                    <option value="">Select bin...</option>
-                    {bins.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.code} · {b.name}
-                      </option>
-                    ))}
-                  </select>
                 </label>
                 <label className="space-y-1 sm:col-span-2">
                   <span className={LABEL}>Counted</span>
@@ -416,7 +391,7 @@ export default function StockCountDetailPage() {
               variant="outline"
               size="sm"
               icon={<FiPlus />}
-              onClick={() => setFound([...found, { key: nextKey++, sku: "", bin: "", counted: "", remarks: "" }])}
+              onClick={() => setFound([...found, { key: nextKey++, sku: "", counted: "", remarks: "" }])}
             >
               Add Found Product
             </Button>

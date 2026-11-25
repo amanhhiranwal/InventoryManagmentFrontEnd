@@ -135,7 +135,6 @@ export default function OpeningStockView({
               <tr className="border-b border-[#e2e2e2] dark:border-[#17304a]">
                 <th className={TH}>#</th>
                 <th className={TH}>Product</th>
-                <th className={TH}>Bin</th>
                 <th className={`${TH} text-right`}>Qty</th>
                 <th className={`${TH} text-right`}>Unit Cost</th>
                 <th className={TH}>Serials</th>
@@ -154,7 +153,6 @@ export default function OpeningStockView({
                       </span>
                     )}
                   </td>
-                  <td className="px-5 py-3 font-mono text-[12px]">{line.bin_code || "—"}</td>
                   <td className="px-5 py-3 text-right">{qty(line.quantity)}</td>
                   <td className="px-5 py-3 text-right">{money(line.unit_cost)}</td>
                   <td className="max-w-[260px] px-5 py-3 font-mono text-[11px] text-[#555555] dark:text-slate-300">

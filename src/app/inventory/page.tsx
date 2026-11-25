@@ -33,6 +33,10 @@ import WarrantyRatesPanel from "@/features/pricing/WarrantyRatesPanel";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { hasPermission } from "@/features/auth/utils/permissions";
 import BulkUploadModal from "@/features/inventory/components/BulkUploadModal";
+import ProductWarehouseStock, {
+  sendProductStock,
+  stockCompanyFor,
+} from "@/features/stock/components/ProductWarehouseStock";
 import {
   getInventoryItemsApi,
   createInventoryItemApi,
@@ -280,6 +284,11 @@ export default function InventoryPage() {
   /* HSN for goods, SAC for a service. Kept as text: it is a code, and a
      leading zero in it is not a rounding error. */
   const [hsnCode, setHsnCode] = useState("");
+  /* A shared product's stock is held by one company: the one picked here,
+     when the person has more than one. */
+  const [stockCompanyId, setStockCompanyId] = useState("");
+  /* ...and which of its stores, when it has several. */
+  const [stockStoreId, setStockStoreId] = useState("");
 
   // Dynamic template fields loaded for selected product type (Create Modal)
   const [activeTemplate, setActiveTemplate] = useState<InventoryTemplate | null>(null);
@@ -774,6 +783,14 @@ export default function InventoryPage() {
     const typeDetails = productTypes.find((t) => t.code === selectedTypeCode);
     if (!typeDetails) return;
 
+    /* Where the In-Stock goes: the product's company, or for a shared one
+       the person's only company or the one they chose. */
+    const holder = stockCompanyFor(companyId, stockCompanyId, scopeCompanies);
+    if (instockVal > 0 && !holder) {
+      addToast("Choose which company holds this product's stock.", "warning");
+      return;
+    }
+
     try {
       setCreating(true);
       const mergedAttributes = {
@@ -802,6 +819,12 @@ export default function InventoryPage() {
       });
 
       addToast("Inventory item added successfully!", "success");
+
+      /* The product is saved; its In-Stock goes into the company's store. */
+      const stockNote = await sendProductStock(holder, stockStoreId, modelNumber.trim(), instockVal, typedSerials);
+      if (stockNote) addToast(stockNote.message, stockNote.ok ? "success" : "warning");
+      setStockCompanyId("");
+      setStockStoreId("");
       setName("");
       setModelNumber("");
       setSpecification("");
@@ -907,6 +930,7 @@ export default function InventoryPage() {
       });
 
       addToast("Inventory item updated successfully!", "success");
+
       setShowEditModal(false);
       setItemToEdit(null);
       setEditImageBase64(null);
@@ -953,7 +977,7 @@ export default function InventoryPage() {
   return (
     <ListPage>
       <ListPageHeader
-        title="Inventory Management"
+        title="Inventory"
         refreshing={loading}
         onRefresh={fetchItems}
         actions={
@@ -1030,6 +1054,8 @@ export default function InventoryPage() {
                   icon={<FiBox className="text-primary" />}
                   onClick={() => {
                     setShowAddMenu(false);
+                    setStockCompanyId("");
+                    setStockStoreId("");
                     setShowCreateModal(true);
                   }}
                 >
@@ -1852,6 +1878,17 @@ export default function InventoryPage() {
                 editable={superAdmin}
               />
 
+              <ProductWarehouseStock
+                mode="create"
+                productCompanyId={companyId}
+                companies={scopeCompanies}
+                sku={modelNumber}
+                chosenCompanyId={stockCompanyId}
+                onChooseCompany={setStockCompanyId}
+                chosenStoreId={stockStoreId}
+                onChooseStore={setStockStoreId}
+              />
+
               {/* DYNAMIC FORM SECTION */}
               <div className="border-t border-slate-100 dark:border-[#0d2336] pt-4 space-y-4">
                 <h4 className="text-xs font-bold text-slate-800 dark:text-white uppercase tracking-wider">
@@ -2163,6 +2200,13 @@ export default function InventoryPage() {
                   rates={warrantyRates}
                   onChange={setWarrantyRate}
                   editable={superAdmin}
+                />
+
+                <ProductWarehouseStock
+                  mode="edit"
+                  productCompanyId={editCompanyId}
+                  companies={scopeCompanies}
+                  sku={editModelNumber}
                 />
 
                 {/* DYNAMIC FORM SECTION */}

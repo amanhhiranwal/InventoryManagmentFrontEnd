@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FiCheckCircle } from "react-icons/fi";
 
 import Button from "@/components/ui/Button";
-import { getBinsApi, WarehouseBin } from "@/features/locations/api/locations.api";
 import { Grn, inspectGrnApi } from "@/features/stock/api/grn.api";
 import { errorText, qty } from "@/features/stock/components/stockUi";
 import { useUIStore } from "@/lib/store/ui.store";
@@ -15,7 +14,6 @@ const FIELD =
 interface Decision {
   accepted: string;
   damaged: string;
-  bin_id: string;
   serials: string;
   remarks: string;
 }
@@ -28,26 +26,18 @@ const splitSerials = (text: string) =>
 
 /**
  * Quality check: how many of each product are accepted (the rest are
- * rejected, with a reason), which bin the accepted goods go into, and their
- * serial numbers. Posting moves accepted goods into stock and rejected ones
- * into the rejected-goods bin, through the stock ledger.
+ * rejected, with a reason) and their serial numbers. Posting moves accepted
+ * goods into the company's store and sets rejected and damaged ones apart,
+ * through the stock ledger.
  */
 export default function GrnQualityCheck({ grn, onPosted }: { grn: Grn; onPosted: (grn: Grn) => void }) {
   const { addToast } = useUIStore();
-  const [bins, setBins] = useState<WarehouseBin[]>([]);
-  const [binError, setBinError] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
   const [decisions, setDecisions] = useState<Record<number, Decision>>(() =>
     Object.fromEntries(
-      grn.lines.map((l) => [l.id, { accepted: String(l.qty_received), damaged: "", bin_id: "", serials: "", remarks: l.remarks || "" }]),
+      grn.lines.map((l) => [l.id, { accepted: String(l.qty_received), damaged: "", serials: "", remarks: l.remarks || "" }]),
     ),
   );
-
-  useEffect(() => {
-    getBinsApi(grn.warehouse_id)
-      .then((rows) => setBins(rows.filter((b) => b.is_active && b.bin_type === "STORE")))
-      .catch((err: unknown) => setBinError(errorText(err, "Could not load the warehouse's bins.")));
-  }, [grn.warehouse_id]);
 
   const update = (id: number, patch: Partial<Decision>) =>
     setDecisions((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
@@ -73,7 +63,6 @@ export default function GrnQualityCheck({ grn, onPosted }: { grn: Grn; onPosted:
         qty_accepted: accepted,
         qty_rejected: rejected,
         qty_damaged: damaged,
-        bin_id: d.bin_id || null,
         serials,
         remarks: d.remarks.trim() || null,
       });
@@ -96,13 +85,8 @@ export default function GrnQualityCheck({ grn, onPosted }: { grn: Grn; onPosted:
       <h2 className="mb-1 text-[15px] font-semibold text-slate-900 dark:text-white">Quality Check</h2>
       <p className="mb-4 text-[12px] text-[#777777]">
         The goods are in quarantine. Enter how many passed and how many are damaged; the rest are rejected. Posting makes
-        accepted goods available and puts rejected and damaged goods in the rejected-goods bin, where they cannot be sold.
+        accepted goods available and sets rejected and damaged goods apart, where they cannot be sold.
       </p>
-      {binError && (
-        <p role="alert" className="mb-3 text-[13px] text-rose-600">
-          {binError}
-        </p>
-      )}
       <div className="space-y-3">
         {grn.lines.map((line) => {
           const d = decisions[line.id];
@@ -121,7 +105,7 @@ export default function GrnQualityCheck({ grn, onPosted }: { grn: Grn; onPosted:
                 </p>
                 <p className="text-[12px] text-[#777777]">Received {qty(line.qty_received)}</p>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                 <label className="space-y-1">
                   <span className="text-[12px] text-[#777777]">Qty Accepted *</span>
                   <input
@@ -149,19 +133,6 @@ export default function GrnQualityCheck({ grn, onPosted }: { grn: Grn; onPosted:
                   <span className="text-[12px] text-[#777777]">Qty Rejected</span>
                   <p className={`py-2 text-[13px] font-semibold ${rejected > 0 ? "text-rose-600" : ""}`}>{qty(rejected)}</p>
                 </div>
-                <label className="space-y-1">
-                  <span className="text-[12px] text-[#777777]">Put Accepted Into</span>
-                  <select className={FIELD} value={d.bin_id} onChange={(e) => update(line.id, { bin_id: e.target.value })}>
-                    <option value="">Main store</option>
-                    {bins
-                      .filter((b) => b.code !== "STORE")
-                      .map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.code} · {b.name}
-                        </option>
-                      ))}
-                  </select>
-                </label>
                 <label className="space-y-1">
                   <span className="text-[12px] text-[#777777]">{rejected > 0 || damaged > 0 ? "Reason *" : "Remarks"}</span>
                   <input className={FIELD} value={d.remarks} onChange={(e) => update(line.id, { remarks: e.target.value })} />

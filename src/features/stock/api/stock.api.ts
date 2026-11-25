@@ -243,3 +243,16 @@ export const getStockCatalogueApi = async (warehouseId: string, search?: string)
   const { data } = await api.get("/api/v1/stock/catalogue", { ...QUIET, params: clean({ warehouse_id: warehouseId, search }) });
   return data.data || [];
 };
+
+/** A product's In-Stock, saved on the Inventory page, into its company's store. */
+export const putProductInStockApi = async (payload: {
+  company_id: string;
+  warehouse_id?: string;
+  sku: string;
+  quantity: number;
+  serials: string[];
+  request_id: string;
+}): Promise<{ company_name: string; store: string; sku: string; quantity: number }> => {
+  const { data } = await api.post("/api/v1/stock/product-stock", payload, QUIET);
+  return data.data;
+};

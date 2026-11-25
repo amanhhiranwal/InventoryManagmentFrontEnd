@@ -276,7 +276,7 @@ export default function OpeningStockForm({
                 className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3 dark:border-[#0d2336] dark:bg-[#071929]/40"
               >
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
-                  <div className="space-y-1.5 sm:col-span-4">
+                  <div className="space-y-1.5 sm:col-span-7">
                     <label htmlFor={`sku-${line.key}`} className={LABEL}>
                       Product (SKU) *
                     </label>
@@ -292,23 +292,6 @@ export default function OpeningStockForm({
                     <p className="min-h-[16px] truncate text-[11px] text-slate-500">
                       {line.sku ? product?.name || "Not in this company's catalogue" : ""}
                     </p>
-                  </div>
-                  <div className="space-y-1.5 sm:col-span-3">
-                    <label htmlFor={`bin-${line.key}`} className={LABEL}>
-                      Bin
-                    </label>
-                    <select
-                      id={`bin-${line.key}`}
-                      className={FIELD}
-                      value={line.bin_id || storeBin?.id || ""}
-                      onChange={(e) => update(line.key, { bin_id: e.target.value })}
-                    >
-                      {bins.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.code} · {b.name}
-                        </option>
-                      ))}
-                    </select>
                   </div>
                   <div className="space-y-1.5 sm:col-span-2">
                     <label htmlFor={`qty-${line.key}`} className={LABEL}>

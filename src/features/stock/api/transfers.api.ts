@@ -103,6 +103,7 @@ export interface Page<T, S extends string> {
 }
 
 export interface ListFilters {
+  company_id?: string;
   warehouse_id?: string;
   status?: string;
   search?: string;

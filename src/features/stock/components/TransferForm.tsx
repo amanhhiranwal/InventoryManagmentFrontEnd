@@ -119,7 +119,7 @@ export default function TransferForm({
       if (quantity === null || !Number.isFinite(quantity) || quantity <= 0)
         return addToast(`${label}: enter a quantity above zero.`, "warning");
       if (held && quantity > held.qty_available)
-        return addToast(`${label}: only ${qty(held.qty_available)} is available in bin ${held.bin_code}.`, "warning");
+        return addToast(`${label}: only ${qty(held.qty_available)} is available.`, "warning");
       if (serials.length && serials.length !== quantity)
         return addToast(`${label}: ${serials.length} serial(s) for a quantity of ${quantity}. Enter one per unit.`, "warning");
       const [sku, binId] = line.row.split("|");
@@ -183,14 +183,23 @@ export default function TransferForm({
               To Warehouse *
             </label>
             <select id="trf-to" className={FIELD} disabled={!fromId} value={toId} onChange={(e) => setToId(e.target.value)}>
-              <option value="">{fromId && destinations.length === 0 ? "No other warehouse in this company" : "Select warehouse..."}</option>
+              <option value="">{fromId && destinations.length === 0 ? "No other store in this company" : "Select warehouse..."}</option>
               {destinations.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.location_name} ({w.location_code})
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-slate-500">Same company only. Goods for another company are a sale, not a transfer.</p>
+            {fromId && destinations.length === 0 ? (
+              <p role="note" className="rounded-lg bg-amber-50 p-2 text-[11px] text-amber-700 dark:bg-amber-950/20 dark:text-amber-400">
+                {warehouses.find((w) => w.id === fromId)?.company_name || "This company"}
+                {" "}has only this one store, so there is
+                nowhere to transfer to. Add another store for it under Masters &gt; Locations (type Warehouse). Goods for another
+                company are a sale, not a transfer.
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-500">Same company only. Goods for another company are a sale, not a transfer.</p>
+            )}
           </div>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -216,7 +225,7 @@ export default function TransferForm({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
                   <div className="space-y-1.5 sm:col-span-8">
                     <label htmlFor={`trf-row-${line.key}`} className={LABEL}>
-                      Product and Bin *
+                      Product *
                     </label>
                     <select
                       id={`trf-row-${line.key}`}
@@ -228,7 +237,7 @@ export default function TransferForm({
                       <option value="">{fromId ? (stock.length ? "Select product..." : "Nothing available here") : "Choose a warehouse first"}</option>
                       {stock.map((b) => (
                         <option key={b.id} value={rowKey(b.sku, b.bin_id)}>
-                          {b.product_name || b.sku} · {b.sku} · bin {b.bin_code} · {qty(b.qty_available)} available
+                          {b.product_name || b.sku} · {b.sku} · {qty(b.qty_available)} available
                         </option>
                       ))}
                     </select>

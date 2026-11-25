@@ -17,7 +17,7 @@ import { ListPage } from "@/components/crm/ListPageShell";
 import Button from "@/components/ui/Button";
 import { useAuthStore } from "@/features/auth/store/auth.store";
 import { hasPermission } from "@/features/auth/utils/permissions";
-import { WarehouseBin, getBinsApi, getMyWarehousesApi, MyWarehouse } from "@/features/locations/api/locations.api";
+import { getMyWarehousesApi, MyWarehouse } from "@/features/locations/api/locations.api";
 import {
   ReceiveLine,
   Transfer,
@@ -44,7 +44,6 @@ const BEFORE_SHIP = ["DRAFT", "SUBMITTED", "APPROVED"];
 interface Arrival {
   good: string;
   damaged: string;
-  bin: string;
   serialsGood: string;
   serialsDamaged: string;
   remarks: string;
@@ -119,7 +118,6 @@ export default function TransferDetailPage() {
   const [ship, setShip] = useState({ vehicle_number: "", docket_no: "", challan_no: "" });
   const [arrivals, setArrivals] = useState<Record<number, Arrival>>({});
   const [receiptRemarks, setReceiptRemarks] = useState("");
-  const [bins, setBins] = useState<WarehouseBin[]>([]);
 
   const adopt = useCallback((next: Transfer) => {
     setT(next);
@@ -128,7 +126,7 @@ export default function TransferDetailPage() {
       Object.fromEntries(
         next.lines.map((l) => [
           l.id,
-          { good: String(l.qty), damaged: "", bin: "", serialsGood: (l.serials || []).join("\n"), serialsDamaged: "", remarks: "" },
+          { good: String(l.qty), damaged: "", serialsGood: (l.serials || []).join("\n"), serialsDamaged: "", remarks: "" },
         ]),
       ),
     );
@@ -140,14 +138,6 @@ export default function TransferDetailPage() {
       .then(adopt)
       .catch((err: unknown) => setError(errorText(err, "Could not open this transfer.")));
   }, [canView, id, adopt]);
-
-  /* The receiving store bins, for whoever receives it. */
-  useEffect(() => {
-    if (!t || t.status !== "SHIPPED" || !canReceive) return;
-    getBinsApi(t.to_warehouse_id)
-      .then((rows) => setBins(rows.filter((b) => b.is_active && b.bin_type === "STORE")))
-      .catch((err: unknown) => addToast(errorText(err, "Could not load the receiving warehouse's bins."), "error"));
-  }, [t, canReceive, addToast]);
 
   const run = async (key: string, action: () => Promise<Transfer>, message: string) => {
     try {
@@ -174,8 +164,8 @@ export default function TransferDetailPage() {
         <p role="alert" className="rounded-xl bg-white p-8 text-center text-[13px] text-rose-600 dark:bg-[#071929]">
           {error}
         </p>
-        <Link href="/inventory/transfers" className="text-[13px] text-[#233353] hover:underline">
-          Back to Transfers
+        <Link href="/inventory/stock?tab=transfers" className="text-[13px] text-[#233353] hover:underline">
+          Back to Stock
         </Link>
       </ListPage>
     );
@@ -205,7 +195,7 @@ export default function TransferDetailPage() {
       setBusy("delete");
       await deleteTransferApi(t.id);
       addToast(`${t.transfer_number} deleted.`, "success");
-      router.push("/inventory/transfers");
+      router.push("/inventory/stock?tab=transfers");
     } catch (err: unknown) {
       addToast(errorText(err, "Could not delete the draft."), "error");
       setBusy(null);
@@ -250,7 +240,6 @@ export default function TransferDetailPage() {
         line_id: line.id,
         qty_received: good,
         qty_damaged: damaged,
-        bin_id: a.bin || undefined,
         serials_received: line.serials.length ? splitSerials(a.serialsGood) : [],
         serials_damaged: line.serials.length ? splitSerials(a.serialsDamaged) : [],
         remarks: a.remarks.trim() || undefined,
@@ -272,8 +261,8 @@ export default function TransferDetailPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            aria-label="Back to Transfers"
-            onClick={() => router.push("/inventory/transfers")}
+            aria-label="Back to Stock"
+            onClick={() => router.push("/inventory/stock?tab=transfers")}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-[#0b2034]"
           >
             <FiArrowLeft />
@@ -383,10 +372,10 @@ export default function TransferDetailPage() {
                         {line.product_name || line.sku} <span className="font-mono text-[11px] font-normal text-[#777777]">{line.sku}</span>
                       </p>
                       <p className="text-[12px] text-[#777777]">
-                        Qty {qty(line.qty)} from bin {line.from_bin_code}
+                        Qty {qty(line.qty)}
                         {line.qty_received !== null && line.qty_received !== undefined && (
                           <>
-                            {" "}· received {qty(line.qty_received)} in {line.to_bin_code}
+                            {" "}· received {qty(line.qty_received)}
                             {line.qty_damaged ? ` · damaged ${qty(line.qty_damaged)}` : ""}
                             {line.qty_short ? ` · short ${qty(line.qty_short)}` : ""}
                           </>
@@ -421,17 +410,6 @@ export default function TransferDetailPage() {
                             value={a.damaged}
                             onChange={(e) => setArrival(line.id, { damaged: e.target.value })}
                           />
-                        </label>
-                        <label className="space-y-1">
-                          <span className={LABEL}>Put into bin</span>
-                          <select className={FIELD} value={a.bin} onChange={(e) => setArrival(line.id, { bin: e.target.value })}>
-                            <option value="">Main store</option>
-                            {bins.map((b) => (
-                              <option key={b.id} value={b.id}>
-                                {b.code} · {b.name}
-                              </option>
-                            ))}
-                          </select>
                         </label>
                         {line.serials.length > 0 && (
                           <>

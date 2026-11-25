@@ -160,7 +160,7 @@ function NewDispatch() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[18px] font-semibold text-slate-900 dark:text-white">New Dispatch</h1>
-        <Button variant="outline" size="sm" onClick={() => router.push("/inventory/dispatch")}>
+        <Button variant="outline" size="sm" onClick={() => router.push("/inventory/stock-out?view=dispatch")}>
           Cancel
         </Button>
       </div>

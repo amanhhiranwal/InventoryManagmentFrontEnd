@@ -7,10 +7,10 @@ export const SELECT =
   "h-[39px] shrink-0 rounded-lg border border-[#cccccc] bg-[#f3f3f3] px-3 text-[13px] text-[#141414] outline-none transition focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white";
 
 const STOCK_STATUS: Record<StockStatus, { label: string; style: string }> = {
-  UNRESTRICTED: { label: "Available", style: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400" },
-  QUARANTINE: { label: "Quarantine", style: "bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400" },
+  UNRESTRICTED: { label: "Good Stock", style: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400" },
+  QUARANTINE: { label: "In Quality Check", style: "bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400" },
   REJECTED: { label: "Rejected", style: "bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400" },
-  BLOCKED: { label: "Blocked", style: "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300" },
+  BLOCKED: { label: "Damaged", style: "bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300" },
   IN_TRANSIT: { label: "In Transit", style: "bg-sky-50 text-sky-600 dark:bg-sky-950/30 dark:text-sky-400" },
 };
 

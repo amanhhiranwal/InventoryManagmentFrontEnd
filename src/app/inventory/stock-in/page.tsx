@@ -116,7 +116,7 @@ export default function StockInPage() {
         Goods received at your warehouses. Posting the receipt puts them in quarantine; quality check makes accepted goods available.
       </p>
 
-      <StatGrid cols={5}>
+      <StatGrid cols={4}>
         <StatCard label="Receiving In Progress" value={counts.DRAFT ?? 0} caption="drafts not yet sent in" />
         <StatCard label="Awaiting Receipt Posting" value={counts.SUBMITTED ?? 0} caption="sent in, no stock yet" />
         <StatCard label="QC Pending" value={counts.QC_PENDING ?? 0} caption="in quarantine, awaiting inspection" />
