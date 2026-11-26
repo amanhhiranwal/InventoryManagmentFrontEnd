@@ -68,6 +68,7 @@ export interface Letterhead {
   company_name: string;
   address: string;
   gst_number?: string | null;
+  cin_number?: string | null;
   phone_number?: string | null;
   email?: string | null;
 }

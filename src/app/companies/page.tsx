@@ -49,6 +49,7 @@ export default function CompaniesPage() {
     phone_number: "",
     website: "",
     gst_number: "",
+    cin_number: "",
     address_line_1: "",
     address_line_2: "",
     city: "",
@@ -104,6 +105,7 @@ export default function CompaniesPage() {
       phone_number: company.phone_number || "",
       website: company.website || "",
       gst_number: company.gst_number || "",
+      cin_number: company.cin_number || "",
       address_line_1: company.address_line_1 || "",
       address_line_2: company.address_line_2 || "",
       city: company.city || "",
@@ -388,6 +390,16 @@ export default function CompaniesPage() {
               placeholder="GST123456"
               value={formData.gst_number}
               onChange={(e) => setFormData({ ...formData, gst_number: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="CIN"
+              placeholder="U72200UP2021PTC156318"
+              maxLength={30}
+              value={formData.cin_number}
+              onChange={(e) => setFormData({ ...formData, cin_number: e.target.value })}
             />
           </div>
 

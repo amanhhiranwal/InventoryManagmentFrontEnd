@@ -149,9 +149,13 @@ function LogisticsDetail({
         </Panel>
       )}
 
-      {afterOut && (
+      {(goingOut || afterOut) && (
         <Panel title="Gate Pass" icon={<FiFileText size={14} />}>
-          <GatePassPanel salesOrderId={order.id} canMake />
+          <GatePassPanel
+            salesOrderId={order.id}
+            canMake
+            vehicle={goingOut ? { vehicle_number: vehicle.trim(), driver_name: driver.trim() } : undefined}
+          />
         </Panel>
       )}
 

@@ -8,6 +8,7 @@ export interface Company {
   phone_number?: string;
   website?: string;
   gst_number?: string;
+  cin_number?: string;
   address_line_1?: string;
   address_line_2?: string;
   city?: string;
@@ -26,6 +27,7 @@ export interface CreateCompanyPayload {
   phone_number?: string;
   website?: string;
   gst_number?: string;
+  cin_number?: string;
   address_line_1?: string;
   address_line_2?: string;
   city?: string;
