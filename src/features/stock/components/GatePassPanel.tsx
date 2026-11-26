@@ -2,13 +2,15 @@
 
 /**
  * The gate passes of an order or a dispatch: preview the sheet, download
- * the PDF, and - for Logistics, on an order already out for delivery with
- * none yet - make one. Passes are otherwise made by the server when goods
- * leave (out for delivery, or a dispatch committed).
+ * the PDF, and - for Logistics, on an order dispatched or out - generate
+ * its pass, or update the one it has, with the vehicle, driver and an
+ * optional e-way bill number and transporter ID. Passes are otherwise
+ * made by the server when goods leave (out for delivery, or a dispatch
+ * committed).
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { FiDownload, FiEye, FiPlus } from "react-icons/fi";
+import { FiDownload, FiEye, FiPlus, FiSave } from "react-icons/fi";
 
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
@@ -200,6 +202,9 @@ export function GatePassSheet({ pass, letterhead }: { pass: GatePass; letterhead
   );
 }
 
+/** A pass Logistics made for the order (not a Stock Out dispatch's). */
+const isOrderPass = (pass: GatePass) => pass.source === "OUT_FOR_DELIVERY" && !pass.dispatch_order_id;
+
 export default function GatePassPanel({
   salesOrderId,
   dispatchOrderId,
@@ -219,15 +224,24 @@ export default function GatePassPanel({
   const [making, setMaking] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [preview, setPreview] = useState<{ pass: GatePass; letterhead: Letterhead } | null>(null);
+  const [eway, setEway] = useState("");
+  const [transporterId, setTransporterId] = useState("");
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      setPasses(await listGatePassesApi({ sales_order_id: salesOrderId, dispatch_order_id: dispatchOrderId }));
+      const found = await listGatePassesApi({ sales_order_id: salesOrderId, dispatch_order_id: dispatchOrderId });
+      setPasses(found);
+      // The fields start from what the order's pass already has.
+      const own = canMake ? found.find(isOrderPass) : undefined;
+      if (own) {
+        setEway(own.eway_bill_no || "");
+        setTransporterId(own.docket_no || "");
+      }
     } catch (err: unknown) {
       setError(errorText(err, "Could not load the gate passes."));
     }
-  }, [salesOrderId, dispatchOrderId]);
+  }, [salesOrderId, dispatchOrderId, canMake]);
 
   useEffect(() => {
     load();
@@ -253,12 +267,21 @@ export default function GatePassPanel({
     }
   };
 
+  /* Logistics' own pass on the order, which they can update; a dispatch's
+     pass is fixed by Stock Out. */
+  const editable = canMake ? passes?.find(isOrderPass) : undefined;
+
   const make = async () => {
     if (!salesOrderId) return;
     try {
       setMaking(true);
-      const made = await makeGatePassApi(salesOrderId, vehicle);
-      addToast(`Gate pass ${made.gate_pass_no} generated.`, "success");
+      // Updating sends both, "" clearing a field; generating leaves empty ones out.
+      const made = await makeGatePassApi(salesOrderId, {
+        ...vehicle,
+        eway_bill_no: editable ? eway.trim() : eway.trim() || undefined,
+        transporter_id: editable ? transporterId.trim() : transporterId.trim() || undefined,
+      });
+      addToast(`Gate pass ${made.gate_pass_no} ${editable ? "updated" : "generated"}.`, "success");
       await load();
       // Straight into its preview, as a proforma invoice opens once generated.
       await open(made);
@@ -270,6 +293,13 @@ export default function GatePassPanel({
   };
 
   const missingVehicle = vehicle !== undefined && (!vehicle.vehicle_number.trim() || !vehicle.driver_name.trim());
+  const changed =
+    editable !== undefined &&
+    (eway.trim() !== (editable.eway_bill_no || "") ||
+      transporterId.trim() !== (editable.docket_no || "") ||
+      (vehicle !== undefined &&
+        (vehicle.vehicle_number !== (editable.vehicle_number || "") ||
+          vehicle.driver_name !== (editable.driver_name || ""))));
 
   if (error) {
     return (
@@ -282,6 +312,30 @@ export default function GatePassPanel({
 
   return (
     <div className="space-y-2">
+      {canMake && (passes.length === 0 || editable) && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {(
+            [
+              ["gp-eway", "E-way Bill No", eway, setEway, 40, "If the consignment has one"],
+              ["gp-transporter", "Transporter ID", transporterId, setTransporterId, 80, "e.g. transporter GSTIN"],
+            ] as const
+          ).map(([id, label, value, set, max, hint]) => (
+            <div key={id}>
+              <label htmlFor={id} className="mb-1 block text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+                {label} <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <input
+                id={id}
+                maxLength={max}
+                value={value}
+                onChange={(event) => set(event.target.value.toUpperCase())}
+                placeholder={hint}
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-[12px] uppercase text-slate-700 outline-none placeholder:normal-case focus:border-[#233353] dark:border-[#17304a] dark:bg-[#071929] dark:text-white"
+              />
+            </div>
+          ))}
+        </div>
+      )}
       {passes.length === 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[12px] text-[#777777] dark:text-slate-400">
@@ -321,6 +375,27 @@ export default function GatePassPanel({
           </div>
         ))
       )}
+      {editable && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[12px] text-[#777777] dark:text-slate-400">
+            {missingVehicle
+              ? "Enter the vehicle number and driver name above to update the gate pass."
+              : changed
+                ? "Save the changes to put them on the gate pass; its number stays the same."
+                : "Change the vehicle, driver, e-way bill or transporter ID, then update the gate pass."}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            icon={<FiSave />}
+            loading={making}
+            disabled={missingVehicle || !changed || making}
+            onClick={make}
+          >
+            Update Gate Pass
+          </Button>
+        </div>
+      )}
 
       <Modal
         isOpen={preview !== null}
@@ -330,13 +405,13 @@ export default function GatePassPanel({
       >
         {preview && (
           <div className="space-y-3">
-            <div className="rounded-xl border border-slate-200 dark:border-[#17304a]">
-              <GatePassSheet pass={preview.pass} letterhead={preview.letterhead} />
-            </div>
             <div className="flex justify-end">
               <Button size="sm" icon={<FiDownload />} onClick={() => download(preview.pass)}>
                 Download PDF
               </Button>
+            </div>
+            <div className="rounded-xl border border-slate-200 dark:border-[#17304a]">
+              <GatePassSheet pass={preview.pass} letterhead={preview.letterhead} />
             </div>
           </div>
         )}

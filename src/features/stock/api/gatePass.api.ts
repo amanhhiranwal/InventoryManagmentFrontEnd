@@ -55,13 +55,19 @@ export const getGatePassApi = async (id: number): Promise<{ gatePass: GatePass; 
   return { gatePass: data.data, letterhead: data.letterhead };
 };
 
+export interface GatePassDetails {
+  vehicle_number?: string;
+  driver_name?: string;
+  /** Optional: typed when the consignment has one. */
+  eway_bill_no?: string;
+  /** Optional: printed on the "Transport ID" line. */
+  transporter_id?: string;
+}
+
 /** Logistics generating the order's gate pass: at Dispatched with the
  *  vehicle and driver taking it, or for an order already out. */
-export const makeGatePassApi = async (
-  orderId: number,
-  vehicle?: { vehicle_number: string; driver_name: string },
-): Promise<GatePass> => {
-  const { data } = await api.post(`/api/v1/gate-passes/orders/${orderId}`, vehicle ?? {}, QUIET);
+export const makeGatePassApi = async (orderId: number, details: GatePassDetails = {}): Promise<GatePass> => {
+  const { data } = await api.post(`/api/v1/gate-passes/orders/${orderId}`, details, QUIET);
   return data.data;
 };
 

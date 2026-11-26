@@ -105,8 +105,8 @@ function LogisticsDetail({
       {goingOut && (
         <Panel title="Vehicle & Driver" icon={<FiTruck size={14} />}>
           <p className="text-[11px] text-[#777777] dark:text-slate-400">
-            Both are needed to mark the order out for delivery. They are kept on the sales order and printed on the gate
-            pass, which is made when it goes out.
+            Both are needed to generate the gate pass and to mark the order out for delivery. They are kept on the sales
+            order and printed on the gate pass.
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
