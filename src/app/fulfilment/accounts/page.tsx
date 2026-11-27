@@ -41,8 +41,10 @@ export default function AccountsDeskPage() {
         approveLabel="Verify Payment"
         askReceivedDate
         // ₹0 advance received came in on no day; the balance always has one.
+        // Paise only (₹0.1 to ₹0.9, left over from rounding) count as ₹0
+        // received too; ₹1 or more needs the date.
         receivedDateOptional={(order) =>
-          order.status !== SALES_ORDER_STATUS.INSTALLED && order.advance_received <= 0
+          order.status !== SALES_ORDER_STATUS.INSTALLED && order.advance_received < 1
         }
         emptyNote="Every processed order has had its payment confirmed. New ones arrive here once the business coordinator processes them."
         detail={(order) => <PaymentDetail order={order} />}
