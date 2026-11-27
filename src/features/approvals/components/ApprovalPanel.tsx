@@ -226,9 +226,13 @@ export default function ApprovalPanel({
             <span>on {when(approval.requested_at)}</span>
           </p>
 
-          <p className="mt-1.5 max-w-[560px] text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-            {approval.reason}
-          </p>
+          {/* A sales order shows who it waits on (below), not the sentence
+              explaining why; other documents keep it. */}
+          {documentType !== "SALES_ORDER" && (
+            <p className="mt-1.5 max-w-[560px] text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+              {approval.reason}
+            </p>
+          )}
 
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-slate-400">
             {approval.discount_amount ? (

@@ -26,7 +26,7 @@ import {
   downloadProformaInvoicePdfApi,
   proformaInvoiceStatusLabel,
 } from "@/features/proformaInvoices/api/proformaInvoices.api";
-import { downloadSalesOrderPdfApi } from "@/features/salesOrders/api/salesOrders.api";
+import { SALES_ORDER_STATUS, downloadSalesOrderPdfApi } from "@/features/salesOrders/api/salesOrders.api";
 import { DeskWithHistory } from "@/features/fulfilment/components/DeskHistory";
 
 export default function AccountsDeskPage() {
@@ -40,6 +40,10 @@ export default function AccountsDeskPage() {
         load={getAccountsDeskApi}
         approveLabel="Verify Payment"
         askReceivedDate
+        // ₹0 advance received came in on no day; the balance always has one.
+        receivedDateOptional={(order) =>
+          order.status !== SALES_ORDER_STATUS.INSTALLED && order.advance_received <= 0
+        }
         emptyNote="Every processed order has had its payment confirmed. New ones arrive here once the business coordinator processes them."
         detail={(order) => <PaymentDetail order={order} />}
       />
