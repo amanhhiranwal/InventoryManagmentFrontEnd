@@ -92,6 +92,7 @@ export default function DeskBoard({
   rejectLabel = "Reject",
   emptyNote,
   askReceivedDate = false,
+  receivedDateOptional,
 }: {
   title: string;
   description: string;
@@ -103,6 +104,8 @@ export default function DeskBoard({
   emptyNote: string;
   /** Accounts: the day the money arrived, needed to approve. */
   askReceivedDate?: boolean;
+  /** Orders whose received date may be left empty (the server agrees). */
+  receivedDateOptional?: (order: DeskOrder) => boolean;
 }) {
   const { addToast } = useUIStore();
 
@@ -172,7 +175,7 @@ export default function DeskBoard({
       return;
     }
 
-    if (approve && askReceivedDate && !receivedDate) {
+    if (approve && askReceivedDate && !receivedDate && !receivedDateOptional?.(order)) {
       addToast("Enter the date the payment was received.", "error");
       return;
     }
@@ -187,7 +190,7 @@ export default function DeskBoard({
         approve
           ? {
               ...action.extra,
-              ...(askReceivedDate ? { received_date: receivedDate } : {}),
+              ...(askReceivedDate && receivedDate ? { received_date: receivedDate } : {}),
             }
           : undefined,
       );
@@ -456,6 +459,7 @@ export default function DeskBoard({
           remarks={remarks}
           onRemarks={setRemarks}
           receivedDate={askReceivedDate ? receivedDate : null}
+          receivedDateRequired={!receivedDateOptional?.(selected)}
           onReceivedDate={setReceivedDate}
           deciding={deciding}
           onClose={() => setOpen(null)}
@@ -477,6 +481,7 @@ function Drawer({
   remarks,
   onRemarks,
   receivedDate,
+  receivedDateRequired,
   onReceivedDate,
   deciding,
   onClose,
@@ -492,6 +497,7 @@ function Drawer({
   onRemarks: (value: string) => void;
   /** null where the desk does not ask for one. */
   receivedDate: string | null;
+  receivedDateRequired: boolean;
   onReceivedDate: (value: string) => void;
   deciding: boolean;
   onClose: () => void;
@@ -572,12 +578,17 @@ function Drawer({
                   htmlFor="desk-received-date"
                   className="block text-[10px] font-semibold text-slate-600 dark:text-slate-400"
                 >
-                  Received Date <span className="text-rose-500">*</span>
+                  Received Date{" "}
+                  {receivedDateRequired ? (
+                    <span className="text-rose-500">*</span>
+                  ) : (
+                    <span className="font-normal text-slate-400">(optional)</span>
+                  )}
                 </label>
                 <input
                   id="desk-received-date"
                   type="date"
-                  required
+                  required={receivedDateRequired}
                   value={receivedDate}
                   max={new Date().toLocaleDateString("en-CA")}
                   onChange={(event) => onReceivedDate(event.target.value)}
